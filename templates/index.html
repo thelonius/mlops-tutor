@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MLOps Tutor</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link id="hljs-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="/static/glossary.js"></script>
+<style>
+/* ── CSS variables ── */
+html[data-theme="dark"] {
+  --bg:               #0f0f13;
+  --bg-panel:         #13131a;
+  --border:           #1e1e2e;
+  --text:             #e2e8f0;
+  --text-muted:       #64748b;
+  --text-dim:         #374151;
+  --text-dimmer:      #2d2d3f;
+  --heading:          #f1f5f9;
+  --bubble-ai:        #1a1a2e;
+  --bubble-ai-border: #2d2d3f;
+  --bubble-user:      #1e293b;
+  --bubble-user-bdr:  #2d3748;
+  --code-bg:          #0d0d1a;
+  --code-border:      #2d2d3f;
+  --code-color:       #7dd3fc;
+  --input-bg:         #1a1a2e;
+  --hover-bg:         #1e1e2e;
+  --hover-bg-soft:    #1a1a2e;
+  --avatar-user-bg:   #1e293b;
+  --scrollbar:        #2d2d3f;
+  --send-disabled:    #2d2d3f;
+  --dot-color:        #4b5563;
+  --em-color:         #94a3b8;
+}
+html[data-theme="light"] {
+  --bg:               #f5f6fa;
+  --bg-panel:         #ffffff;
+  --border:           #e2e8f0;
+  --text:             #1e293b;
+  --text-muted:       #64748b;
+  --text-dim:         #94a3b8;
+  --text-dimmer:      #cbd5e1;
+  --heading:          #0f172a;
+  --bubble-ai:        #ffffff;
+  --bubble-ai-border: #e2e8f0;
+  --bubble-user:      #ede9fe;
+  --bubble-user-bdr:  #ddd6fe;
+  --code-bg:          #f1f5f9;
+  --code-border:      #e2e8f0;
+  --code-color:       #0369a1;
+  --input-bg:         #ffffff;
+  --hover-bg:         #f1f5f9;
+  --hover-bg-soft:    #f8fafc;
+  --avatar-user-bg:   #ede9fe;
+  --scrollbar:        #cbd5e1;
+  --send-disabled:    #e2e8f0;
+  --dot-color:        #94a3b8;
+  --em-color:         #64748b;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 256px;
+  min-width: 256px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-header h1 { font-size: 15px; font-weight: 700; color: #a78bfa; }
+.sidebar-header p  { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+.theme-btn {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.theme-btn:hover { background: var(--hover-bg); color: var(--text); }
+
+.mode-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.section-label {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dimmer); margin-bottom: 6px;
+}
+.mode-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 10px;
+  border-radius: 8px; border: none;
+  background: transparent; color: var(--text-muted);
+  font-size: 13px; cursor: pointer; text-align: left;
+  margin-bottom: 2px; transition: all 0.15s;
+}
+.mode-btn:hover  { background: var(--hover-bg); color: var(--text); }
+.mode-btn.active { background: #a78bfa20; color: #a78bfa; }
+.mode-icon { font-size: 15px; }
+
+.curriculum { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
+
+.week-label {
+  padding: 10px 14px 3px;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dimmer);
+}
+.topic-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 6px 14px;
+  border: none; background: transparent;
+  color: var(--text-muted); font-size: 12.5px;
+  cursor: pointer; text-align: left; transition: all 0.15s;
+}
+.topic-btn:hover  { background: var(--hover-bg-soft); color: var(--text); }
+.topic-btn.active { background: #a78bfa18; color: #a78bfa; }
+.topic-btn.done   { color: #22c55e70; }
+.topic-btn.done .t-icon { color: #22c55e; }
+.t-icon  { font-size: 14px; min-width: 18px; text-align: center; }
+.t-title { flex: 1; line-height: 1.3; }
+
+/* ── Depth indicator ── */
+.topic-depth { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
+.depth-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  transition: background 0.3s;
+}
+.depth-dot[title] { cursor: default; }
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.chat-header {
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 12px;
+}
+.header-topic { font-size: 14px; font-weight: 600; color: var(--heading); }
+.mode-badge {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+}
+.badge-learn { background: #a78bfa20; color: #a78bfa; }
+.badge-quiz  { background: #60a5fa20; color: #60a5fa; }
+.badge-mock  { background: #f59e0b20; color: #f59e0b; }
+
+/* ── Messages ── */
+.messages {
+  flex: 1; overflow-y: auto; padding: 20px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.welcome {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; gap: 12px; padding: 40px;
+  color: var(--text-dim);
+}
+.welcome-arrow { font-size: 28px; color: #a78bfa; animation: pulse 2s infinite; }
+.welcome h2    { font-size: 20px; color: var(--text-muted); font-weight: 500; }
+.welcome p     { font-size: 13px; max-width: 380px; line-height: 1.6; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+.msg { display: flex; gap: 10px; max-width: 100%; }
+.msg.user { flex-direction: row-reverse; }
+
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0; margin-top: 2px;
+}
+.avatar.ai   { background: #a78bfa18; }
+.avatar.user { background: var(--avatar-user-bg); }
+
+.bubble {
+  background: var(--bubble-ai);
+  border: 1px solid var(--bubble-ai-border);
+  border-radius: 12px; padding: 11px 15px;
+  max-width: calc(100% - 50px);
+  font-size: 14px; line-height: 1.7;
+}
+.msg.user .bubble {
+  background: var(--bubble-user);
+  border-color: var(--bubble-user-bdr);
+}
+
+/* Markdown */
+.bubble h1,.bubble h2,.bubble h3 {
+  font-size: 14px; font-weight: 600;
+  color: var(--heading); margin: 10px 0 5px;
+}
+.bubble h1:first-child,.bubble h2:first-child,.bubble h3:first-child { margin-top: 0; }
+.bubble p { margin: 5px 0; }
+.bubble p:first-child { margin-top: 0; }
+.bubble p:last-child  { margin-bottom: 0; }
+.bubble ul,.bubble ol { padding-left: 18px; margin: 5px 0; }
+.bubble li { margin: 3px 0; }
+.bubble strong { color: var(--heading); }
+.bubble em     { color: var(--em-color); }
+.bubble blockquote {
+  border-left: 3px solid #a78bfa;
+  padding-left: 10px; margin: 6px 0; color: var(--text-muted);
+}
+
+/* Inline code */
+.bubble code {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  padding: 1px 5px; border-radius: 4px;
+  font-family: 'JetBrains Mono','Fira Code',monospace;
+  font-size: 12px; color: var(--code-color);
+}
+
+/* ── Glossary tooltips ── */
+.gloss-term {
+  border-bottom: 1px dashed var(--text-muted);
+  cursor: help;
+}
+.gloss-term:hover {
+  border-bottom-color: #a78bfa;
+  border-bottom-style: solid;
+  color: #a78bfa;
+}
+
+#tooltip {
+  position: fixed;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  width: max-content;
+  max-width: 320px;
+  line-height: 1.5;
+  color: var(--text);
+  z-index: 9999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  display: none;
+}
+#tooltip.show { display: block; opacity: 1; }
+
+/* Code block wrapper — для кнопки "разобрать" */
+.code-wrap { position: relative; margin: 8px 0; }
+
+.code-explain-btn {
+  position: absolute; top: 6px; right: 6px;
+  padding: 2px 8px; border-radius: 6px;
+  border: 1px solid var(--code-border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 11px; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.code-wrap:hover .code-explain-btn { opacity: 1; }
+.code-explain-btn:hover { color: #a78bfa; border-color: #a78bfa; }
+
+.bubble pre {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 8px; padding: 12px;
+  overflow-x: auto; margin: 0;
+}
+.bubble pre code {
+  background: none; border: none; padding: 0;
+  font-size: 12px; line-height: 1.6; color: var(--text);
+}
+
+/* Typing dots */
+.typing { display: flex; gap: 4px; align-items: center; padding: 2px 0; }
+.typing span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--dot-color); animation: bounce 1.1s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.18s; }
+.typing span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes bounce {
+  0%,80%,100% { transform: translateY(0); opacity: 0.4; }
+  40%          { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── Quick actions ── */
+.quick-area { padding: 8px 20px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.qbtn {
+  padding: 4px 12px; border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-muted);
+  font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.qbtn:hover { border-color: #a78bfa; color: #a78bfa; background: #a78bfa0d; }
+.qbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Input ── */
+.input-area { padding: 10px 20px 16px; display: flex; gap: 10px; align-items: flex-end; }
+.input-wrap {
+  flex: 1; background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px; display: flex;
+  align-items: flex-end; padding: 9px 13px;
+  transition: border-color 0.15s;
+}
+.input-wrap:focus-within { border-color: #a78bfa; }
+textarea {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text); font-size: 14px; line-height: 1.5;
+  resize: none; min-height: 20px; max-height: 120px; font-family: inherit;
+}
+textarea::placeholder { color: var(--text-dim); }
+
+.send-btn {
+  width: 38px; height: 38px; border-radius: 10px;
+  border: none; background: #a78bfa; color: white;
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background 0.15s;
+}
+.send-btn:hover    { background: #9061f9; }
+.send-btn:disabled { background: var(--send-disabled); cursor: not-allowed; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
+
+/* ── Hamburger / overlay (только мобильные) ── */
+.hamburger {
+  display: none;
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998;
+}
+.overlay.show { display: block; }
+
+/* ── Mobile layout ── */
+@media (max-width: 768px) {
+  .hamburger { display: flex; }
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 999;
+    width: 280px;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .main { width: 100%; }
+  .chat-header { padding: 10px 14px; gap: 10px; }
+  .header-topic { font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .messages { padding: 14px; gap: 12px; }
+  .quick-area { padding: 6px 12px 0; }
+  .input-area { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .qbtn { font-size: 11.5px; padding: 4px 10px; }
+  .bubble { font-size: 14px; padding: 10px 13px; }
+  .avatar { width: 28px; height: 28px; }
+}
+
+/* ── Touch-устройства: всегда показываем кнопку "Разобрать" ── */
+@media (hover: none) {
+  .code-explain-btn { opacity: 1; }
+  .gloss-term { /* убираем эффект hover, тултипы по тапу */
+    border-bottom-style: dotted;
+  }
+}
+</style>
+</head>
+<body>
+<div id="tooltip"></div>
+<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>MLOps Tutor</h1>
+      <p>Wildberries · Senior MLOps</p>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌙</button>
+  </div>
+
+  <div class="mode-section">
+    <div class="section-label">Режим</div>
+    <button class="mode-btn active" id="mode-learn" onclick="setMode('learn')">
+      <span class="mode-icon">📖</span> Объяснение
+    </button>
+    <button class="mode-btn" id="mode-quiz" onclick="setMode('quiz')">
+      <span class="mode-icon">🧠</span> Квиз
+    </button>
+    <button class="mode-btn" id="mode-mock" onclick="setMode('mock')">
+      <span class="mode-icon">🎯</span> Mock Interview
+    </button>
+  </div>
+
+  <div class="curriculum" id="curriculum-tree"></div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="chat-header">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">☰</button>
+    <span class="header-topic" id="header-topic">Выбери тему →</span>
+    <span class="mode-badge badge-learn" id="mode-badge">Объяснение</span>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="welcome" id="welcome">
+      <div class="welcome-arrow">←</div>
+      <h2>Выбери тему слева</h2>
+      <p>Начни с первой недели — Контейнеры и Docker. Каждая тема объясняется с нуля, с аналогиями и примерами кода.</p>
+    </div>
+  </div>
+
+  <div class="quick-area" id="quick-area"></div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea
+        id="user-input"
+        placeholder="Напиши вопрос или ответ... (Enter — отправить, Shift+Enter — новая строка)"
+        rows="1"
+        onkeydown="onKey(event)"
+        oninput="resize(this)"
+      ></textarea>
+    </div>
+    <button class="send-btn" id="send-btn" onclick="send()" title="Отправить">↑</button>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let topic      = null;
+let mode       = 'learn';
+let messages   = [];
+let streaming  = false;
+let curriculum = [];
+let topics     = {};
+let progress   = new Set(JSON.parse(localStorage.getItem('mlops_progress') || '[]'));
+
+// ── Session (per browser tab via sessionStorage) ──
+function saveSession() {
+  sessionStorage.setItem('mlops_session', JSON.stringify({ topic, mode }));
+}
+function restoreSession() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem('mlops_session'));
+    if (!s || !s.topic || !topics[s.topic]) return;
+    // восстанавливаем режим без перезапуска чата
+    mode = s.mode || 'learn';
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`mode-${mode}`)?.classList.add('active');
+    const cfg = MODES[mode];
+    const badge = document.getElementById('mode-badge');
+    badge.textContent = cfg.label;
+    badge.className   = `mode-badge ${cfg.badge}`;
+    renderQuickActions();
+    selectTopic(s.topic);
+  } catch (_) {}
+}
+
+// ── Depth indicator ──
+const DEPTH_MODES = ['learn', 'quiz', 'mock'];
+const DEPTH_LABELS = { learn: 'Объяснение', quiz: 'Квиз', mock: 'Mock' };
+
+function getDepth(tid, m) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(histKey(tid, m)));
+    return saved ? Math.floor(saved.length / 2) : 0; // пар сообщений
+  } catch { return 0; }
+}
+
+function depthColor(count) {
+  if (count === 0) return 'var(--text-dimmer)';
+  if (count < 4)  return '#f59e0b';   // жёлтый — начал
+  if (count < 10) return '#f97316';   // оранжевый — в процессе
+  return '#22c55e';                   // зелёный — проработал
+}
+
+function depthDots(tid) {
+  return DEPTH_MODES.map(m => {
+    const count = getDepth(tid, m);
+    const color = depthColor(count);
+    const label = `${DEPTH_LABELS[m]}: ${count} обменов`;
+    return `<span class="depth-dot" style="background:${color}" title="${label}"></span>`;
+  }).join('');
+}
+
+// ── History persistence ──
+function histKey(tid, m) { return `mlops_chat_${tid}_${m}`; }
+function saveHistory(tid, m, msgs) {
+  localStorage.setItem(histKey(tid, m), JSON.stringify(msgs));
+}
+function loadHistory(tid, m) {
+  try { return JSON.parse(localStorage.getItem(histKey(tid, m))) || null; }
+  catch { return null; }
+}
+function clearHistory(tid, m) {
+  localStorage.removeItem(histKey(tid, m));
+}
+
+// Отрисовать все сообщения из массива messages
+function renderAllMessages() {
+  clearMessages();
+  // Первые два — внутренний trigger + первый ответ AI, показываем только с 3-го если trigger скрытый
+  // Но проще показать все: trigger (user) тоже видимый смысл имеет только если не авто-стартовый
+  // Пропускаем первое сообщение если оно — авто-триггер (роль user, начинается с "Начнём тему")
+  const skipFirst = messages.length > 0 && messages[0].role === 'user' &&
+    (messages[0].content.startsWith('Начнём') || messages[0].content.startsWith('Объясни тему'));
+  const start = skipFirst ? 1 : 0;
+  for (let i = start; i < messages.length; i++) {
+    const m = messages[i];
+    appendBubble(m.role === 'user' ? 'user' : 'ai', m.content);
+  }
+}
+
+// ── Theme ──
+function initTheme() {
+  const saved = localStorage.getItem('mlops_theme') || 'dark';
+  applyTheme(saved);
+}
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('theme-btn').textContent = t === 'dark' ? '🌙' : '☀️';
+  document.getElementById('hljs-css').href =
+    t === 'dark'
+      ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
+      : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+  localStorage.setItem('mlops_theme', t);
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
+
+// ── Modes ──
+const MODES = {
+  learn: { label: 'Объяснение', badge: 'badge-learn' },
+  quiz:  { label: 'Квиз',       badge: 'badge-quiz'  },
+  mock:  { label: 'Mock Interview', badge: 'badge-mock' },
+};
+const QUICK = {
+  learn: [
+    { label: '🔄 Объясни иначе',       msg: 'Объясни иначе — другими словами или аналогией.' },
+    { label: '💻 Пример кода',          msg: 'Покажи конкретный пример кода или конфига.' },
+    { label: '🎯 Главное для интервью', msg: 'Что самое важное запомнить для собеседования? Кратко.' },
+    { label: '🧠 Перейти к квизу',      action: () => setMode('quiz') },
+    { label: '🗑️ Сначала',              action: () => restartTopic() },
+  ],
+  quiz: [
+    { label: '💡 Подсказку',            msg: 'Дай минимальную подсказку, не раскрывая ответ.' },
+    { label: '✅ Правильный ответ',     msg: 'Объясни правильный ответ.' },
+    { label: '➡️ Следующий вопрос',     msg: 'Следующий вопрос.' },
+    { label: '📖 К объяснению',         action: () => setMode('learn') },
+    { label: '🗑️ Сначала',              action: () => restartTopic() },
+  ],
+  mock: [
+    { label: '💡 Намекни',              msg: 'Я застрял — дай подсказку без прямого ответа.' },
+    { label: '⏸️ Фидбек',               msg: 'Дай фидбек по моим ответам пока что.' },
+    { label: '➡️ Следующий вопрос',     msg: 'Следующий вопрос.' },
+    { label: '🗑️ Сначала',              action: () => restartTopic() },
+  ],
+};
+
+// ── Init ──
+async function init() {
+  initTheme();
+  const res  = await fetch('/api/curriculum');
+  const data = await res.json();
+  curriculum = data.curriculum;
+  topics     = data.topics;
+  renderSidebar();
+  restoreSession();
+}
+
+// ── Sidebar ──
+function renderSidebar() {
+  const el = document.getElementById('curriculum-tree');
+  let html = '';
+  for (const week of curriculum) {
+    html += `<div class="week-label">${week.title}</div>`;
+    for (const tid of week.topics) {
+      const t = topics[tid];
+      if (!t) continue;
+      const done   = progress.has(tid);
+      const active = topic === tid;
+      const icon   = done ? '✓' : t.emoji;
+      html += `<button class="topic-btn${done?' done':''}${active?' active':''}"
+                       onclick="selectTopic('${tid}')">
+                 <span class="t-icon">${icon}</span>
+                 <span class="t-title">${t.title}</span>
+                 <span class="topic-depth">${depthDots(tid)}</span>
+               </button>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+// ── Select topic ──
+function selectTopic(tid) {
+  topic    = tid;
+  messages = [];
+  clearMessages();
+  renderSidebar();
+  closeSidebar();
+  document.getElementById('header-topic').textContent = topics[tid].title;
+  renderQuickActions();
+
+  saveSession();
+
+  const saved = loadHistory(tid, mode);
+  if (saved && saved.length >= 2) {
+    messages = saved;
+    renderAllMessages();
+  } else {
+    const t = topics[tid];
+    const openers = {
+      learn: `Начнём тему "${t.title}". Объясни с нуля — я знаю Python и веб, но эту область не трогал.`,
+      quiz:  `Начнём квиз по теме "${t.title}". Задавай вопросы как на интервью.`,
+      mock:  'Начнём mock-интервью. Я готов.',
+    };
+    autoStart(openers[mode]);
+  }
+}
+
+// ── Restart (очистить историю и начать заново) ──
+function restartTopic() {
+  if (!topic) return;
+  clearHistory(topic, mode);
+  messages = [];
+  clearMessages();
+  const t = topics[topic];
+  const openers = {
+    learn: `Начнём тему "${t.title}" заново. Объясни с нуля.`,
+    quiz:  `Начнём квиз по теме "${t.title}" заново.`,
+    mock:  'Начнём mock-интервью заново. Я готов.',
+  };
+  autoStart(openers[mode]);
+}
+
+// ── Auto-start ──
+async function autoStart(triggerMsg) {
+  streaming = true;
+  setSend(false);
+  const bubble     = appendBubble('ai', null);
+  const triggerEntry = { role: 'user', content: triggerMsg };
+  try {
+    const res    = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [triggerEntry], topic_id: topic, mode }),
+    });
+    const aiText = await streamInto(res, bubble);
+    messages.push(triggerEntry);
+    messages.push({ role: 'assistant', content: aiText });
+    saveHistory(topic, mode, messages);
+    renderSidebar();
+  } catch (e) {
+    bubble.innerHTML = `<em style="color:#ef4444">Ошибка: ${e.message}</em>`;
+  }
+  streaming = false;
+  setSend(true);
+}
+
+// ── Mode switch ──
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`mode-${m}`).classList.add('active');
+  const cfg   = MODES[m];
+  const badge = document.getElementById('mode-badge');
+  badge.textContent = cfg.label;
+  badge.className   = `mode-badge ${cfg.badge}`;
+  renderQuickActions();
+  saveSession();
+  if (topic) {
+    messages = [];
+    clearMessages();
+    const saved = loadHistory(topic, m);
+    if (saved && saved.length >= 2) {
+      messages = saved;
+      renderAllMessages();
+    } else {
+      const t = topics[topic];
+      const openers = {
+        learn: `Объясни тему "${t.title}" с нуля.`,
+        quiz:  `Начнём квиз по теме "${t.title}".`,
+        mock:  'Начнём mock-интервью. Я готов.',
+      };
+      autoStart(openers[m]);
+    }
+  }
+}
+
+// ── Quick actions ──
+function renderQuickActions() {
+  const el = document.getElementById('quick-area');
+  el.innerHTML = '';
+  for (const a of (QUICK[mode] || [])) {
+    const btn = document.createElement('button');
+    btn.className   = 'qbtn';
+    btn.textContent = a.label;
+    btn.onclick     = () => { if (a.action) a.action(); else send(a.msg); };
+    el.appendChild(btn);
+  }
+}
+
+// ── Send ──
+async function send(text) {
+  if (streaming) return;
+  const inp = document.getElementById('user-input');
+  const msg = text ?? inp.value.trim();
+  if (!msg) return;
+  if (!text) { inp.value = ''; resize(inp); }
+  if (!topic) {
+    appendBubble('ai', 'Сначала выбери тему слева 👈');
+    return;
+  }
+  document.getElementById('welcome')?.remove();
+  appendBubble('user', msg);
+  messages.push({ role: 'user', content: msg });
+  streaming = true;
+  setSend(false);
+  const bubble = appendBubble('ai', null);
+  try {
+    const res    = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, topic_id: topic, mode }),
+    });
+    const aiText = await streamInto(res, bubble);
+    messages.push({ role: 'assistant', content: aiText });
+    saveHistory(topic, mode, messages);
+    renderSidebar();
+  } catch (e) {
+    bubble.innerHTML = `<em style="color:#ef4444">Ошибка: ${e.message}</em>`;
+  }
+  streaming = false;
+  setSend(true);
+}
+
+// ── Stream ──
+async function streamInto(response, bubble) {
+  const reader  = response.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '', buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const raw = line.slice(6).trim();
+      if (raw === '[DONE]') break;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.text) {
+          full += parsed.text;
+          bubble.innerHTML = renderMarkdown(full);
+          attachCodeButtons(bubble);
+          scrollBottom();
+        }
+      } catch (_) {}
+    }
+  }
+  // Тултипы по терминам — один раз в финале, не на каждом чанке
+  addTooltips(bubble);
+  return full;
+}
+
+// ── Фильтр CJK-иероглифов (баг Llama 8B) ──
+// Сохраняем часть ДО первого иероглифа если она >= 3 символов,
+// остальное (CJK + хвост) убираем.
+// "это最小шая" → "это"   "единица保证" → "единица"   "保证" → ""
+function stripCJK(text) {
+  return text
+    .replace(/([^\s]*?)([\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff]+\S*)/g,
+      (_, pre, cjkTail) => pre.length >= 3 ? pre : '')
+    .replace(/ {2,}/g, ' ');
+}
+
+// ── Markdown → HTML с кнопками на код-блоках ──
+function renderMarkdown(md) {
+  return marked.parse(stripCJK(md));
+}
+
+// ── Mobile sidebar ──
+function toggleSidebar() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('overlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('show');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+// ── Tooltip controller (universal: hover + tap) ──
+(function setupTooltip() {
+  const tip = document.getElementById('tooltip');
+  const isTouch = window.matchMedia('(hover: none)').matches;
+  let pinnedTerm = null; // на тач-устройствах: какой термин «прикреплён»
+
+  function showFor(term) {
+    if (!term.dataset.tooltip) return;
+    tip.textContent = term.dataset.tooltip;
+    tip.classList.add('show');
+    positionTip(term, tip);
+  }
+  function hide() {
+    tip.classList.remove('show');
+    pinnedTerm = null;
+  }
+
+  if (isTouch) {
+    // На тач: тап по термину — показать; тап вне термина — скрыть
+    document.addEventListener('click', (e) => {
+      const term = e.target.closest('.gloss-term');
+      if (term && term.dataset.tooltip) {
+        if (pinnedTerm === term) { hide(); return; }
+        pinnedTerm = term;
+        showFor(term);
+      } else {
+        hide();
+      }
+    });
+  } else {
+    // Десктоп: hover
+    document.addEventListener('mouseover', (e) => {
+      const term = e.target.closest('.gloss-term');
+      if (term) showFor(term);
+    });
+    document.addEventListener('mouseout', (e) => {
+      const term = e.target.closest('.gloss-term');
+      if (term) hide();
+    });
+  }
+
+  // Скролл — скрываем (позиция уже неактуальна)
+  document.addEventListener('scroll', hide, true);
+
+  function positionTip(term, tip) {
+    const r = term.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    const margin = 8;
+    let left = r.left + r.width / 2 - tw / 2;
+    let top  = r.top - th - margin;
+    if (left < margin) left = margin;
+    if (left + tw > window.innerWidth - margin) left = window.innerWidth - tw - margin;
+    if (top < margin) top = r.bottom + margin;
+    tip.style.left = left + 'px';
+    tip.style.top  = top + 'px';
+  }
+})();
+
+// ── Glossary tooltips ──
+let GLOSS_REGEX = null;
+function buildGlossRegex() {
+  if (GLOSS_REGEX || !window.GLOSSARY) return GLOSS_REGEX;
+  const terms = Object.keys(window.GLOSSARY).sort((a, b) => b.length - a.length);
+  const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // \b плохо работает с кириллицей, поэтому используем (?<![\wа-яёА-ЯЁ])X(?![\wа-яёА-ЯЁ])
+  const pattern = '(?<![\\wа-яёА-ЯЁ])(' + terms.map(escape).join('|') + ')(?![\\wа-яёА-ЯЁ])';
+  GLOSS_REGEX = new RegExp(pattern, 'g');
+  return GLOSS_REGEX;
+}
+
+function findDef(term) {
+  if (window.GLOSSARY[term]) return window.GLOSSARY[term];
+  // case-insensitive fallback
+  const lower = term.toLowerCase();
+  const key = Object.keys(window.GLOSSARY).find(k => k.toLowerCase() === lower);
+  return key ? window.GLOSSARY[key] : null;
+}
+
+function addTooltips(bubble) {
+  if (!window.GLOSSARY) return;
+  const re = buildGlossRegex();
+  if (!re) return;
+
+  // Собираем все текстовые узлы вне code/pre/уже обёрнутых терминов
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let p = node.parentElement;
+      while (p && p !== bubble) {
+        const tag = p.tagName;
+        if (tag === 'CODE' || tag === 'PRE' || tag === 'A' ||
+            p.classList.contains('gloss-term')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        p = p.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+
+  for (const tn of nodes) {
+    const text = tn.nodeValue;
+    re.lastIndex = 0;
+    if (!re.test(text)) continue;
+    re.lastIndex = 0;
+
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const span = document.createElement('span');
+      span.className = 'gloss-term';
+      span.textContent = m[0];
+      const def = findDef(m[0]);
+      if (def) span.dataset.tooltip = def;
+      frag.appendChild(span);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  }
+}
+
+function attachCodeButtons(bubble) {
+  // Оборачиваем каждый <pre> в .code-wrap и добавляем кнопку
+  bubble.querySelectorAll('pre').forEach(pre => {
+    if (pre.parentElement.classList.contains('code-wrap')) return; // уже обёрнут
+    const wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+
+    // Подсветка
+    pre.querySelectorAll('code').forEach(el => hljs.highlightElement(el));
+
+    // Кнопка разобрать
+    const btn = document.createElement('button');
+    btn.className   = 'code-explain-btn';
+    btn.textContent = '🔍 Разобрать';
+    btn.onclick     = () => {
+      const code = pre.querySelector('code')?.innerText || pre.innerText;
+      send(`Разбери эту команду/конфиг построчно — объясни каждую часть простыми словами:\n\`\`\`\n${code}\n\`\`\``);
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ── DOM helpers ──
+function appendBubble(role, content) {
+  const wrap = document.getElementById('messages');
+  document.getElementById('welcome')?.remove();
+  const row = document.createElement('div');
+  row.className = `msg${role === 'user' ? ' user' : ''}`;
+  const av = document.createElement('div');
+  av.className  = `avatar ${role === 'user' ? 'user' : 'ai'}`;
+  av.textContent = role === 'user' ? '👤' : '🤖';
+  const bub = document.createElement('div');
+  bub.className = 'bubble';
+  if (content === null) {
+    bub.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  } else if (role === 'user') {
+    bub.textContent = content;
+  } else {
+    bub.innerHTML = renderMarkdown(content);
+    attachCodeButtons(bub);
+    addTooltips(bub);
+  }
+  row.appendChild(av);
+  row.appendChild(bub);
+  wrap.appendChild(row);
+  scrollBottom();
+  return bub;
+}
+
+function clearMessages() { document.getElementById('messages').innerHTML = ''; }
+function scrollBottom()  { const el = document.getElementById('messages'); el.scrollTop = el.scrollHeight; }
+function setSend(on) {
+  document.getElementById('send-btn').disabled = !on;
+  document.querySelectorAll('.qbtn').forEach(b => b.disabled = !on);
+}
+function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+
+init();
+</script>
+</body>
+</html>
