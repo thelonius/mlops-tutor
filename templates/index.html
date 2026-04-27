@@ -366,7 +366,7 @@ body {
 .input-wrap:focus-within { border-color: #a78bfa; }
 textarea {
   flex: 1; background: none; border: none; outline: none;
-  color: var(--text); font-size: 14px; line-height: 1.5;
+  color: var(--text); font-size: 16px; line-height: 1.5;
   resize: none; min-height: 20px; max-height: 120px; font-family: inherit;
 }
 textarea::placeholder { color: var(--text-dim); }
@@ -439,8 +439,6 @@ textarea::placeholder { color: var(--text-dim); }
   .gloss-term { /* убираем эффект hover, тултипы по тапу */
     border-bottom-style: dotted;
   }
-  /* 16px предотвращает автозум iOS Safari при фокусе на input */
-  textarea { font-size: 16px; }
 }
 </style>
 </head>
