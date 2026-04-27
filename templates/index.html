@@ -2,7 +2,7 @@
 <html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>MLOps Tutor</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link id="hljs-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -1038,6 +1038,32 @@ function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); 
 function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
 
 init();
+
+// ── iOS/Android keyboard handling ──
+// При появлении клавиатуры viewport уменьшается — скроллим чат вниз
+// чтобы новые сообщения и поле ввода оставались видны
+(function setupKeyboardScroll() {
+  const input = document.getElementById('user-input');
+
+  input.addEventListener('focus', () => {
+    // Ждём анимации клавиатуры (~300мс на iOS)
+    setTimeout(() => scrollBottom(), 350);
+    setTimeout(() => scrollBottom(), 600);
+  });
+
+  // Visual Viewport API — точное обнаружение размера видимой области
+  if (window.visualViewport) {
+    let lastHeight = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+      const newHeight = window.visualViewport.height;
+      // Клавиатура появилась/исчезла → размер сменился существенно
+      if (Math.abs(newHeight - lastHeight) > 100) {
+        lastHeight = newHeight;
+        setTimeout(() => scrollBottom(), 50);
+      }
+    });
+  }
+})();
 </script>
 </body>
 </html>
