@@ -161,7 +161,10 @@ body {
 .depth-dot[title] { cursor: default; }
 
 /* ── Main ── */
-.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0; min-height: 0;
+}
 
 .chat-header {
   padding: 13px 20px;
@@ -181,7 +184,7 @@ body {
 
 /* ── Messages ── */
 .messages {
-  flex: 1; overflow-y: auto; padding: 20px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 20px;
   display: flex; flex-direction: column; gap: 16px;
 }
 .welcome {
@@ -1040,29 +1043,27 @@ function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.sc
 init();
 
 // ── iOS/Android keyboard handling ──
-// При появлении клавиатуры viewport уменьшается — скроллим чат вниз
-// чтобы новые сообщения и поле ввода оставались видны
-(function setupKeyboardScroll() {
-  const input = document.getElementById('user-input');
+// Жёстко синхронизируем высоту body с visualViewport.
+// dvh / interactive-widget работают не везде; visualViewport — почти везде.
+(function setupViewportSync() {
+  if (!window.visualViewport) return;
 
-  input.addEventListener('focus', () => {
-    // Ждём анимации клавиатуры (~300мс на iOS)
-    setTimeout(() => scrollBottom(), 350);
-    setTimeout(() => scrollBottom(), 600);
+  function syncHeight() {
+    document.body.style.height = window.visualViewport.height + 'px';
+  }
+  syncHeight();
+
+  let lastH = window.visualViewport.height;
+  window.visualViewport.addEventListener('resize', () => {
+    syncHeight();
+    const newH = window.visualViewport.height;
+    // Клавиатура появилась → последние сообщения в зоне видимости
+    if (lastH - newH > 100) setTimeout(scrollBottom, 50);
+    lastH = newH;
   });
 
-  // Visual Viewport API — точное обнаружение размера видимой области
-  if (window.visualViewport) {
-    let lastHeight = window.visualViewport.height;
-    window.visualViewport.addEventListener('resize', () => {
-      const newHeight = window.visualViewport.height;
-      // Клавиатура появилась/исчезла → размер сменился существенно
-      if (Math.abs(newHeight - lastHeight) > 100) {
-        lastHeight = newHeight;
-        setTimeout(() => scrollBottom(), 50);
-      }
-    });
-  }
+  // На iOS visualViewport может смещаться при показе клавиатуры
+  window.visualViewport.addEventListener('scroll', syncHeight);
 })();
 </script>
 </body>
