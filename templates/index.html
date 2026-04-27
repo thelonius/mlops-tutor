@@ -1082,6 +1082,23 @@ function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.sc
 init();
 
 // ── iOS/Android keyboard handling ──
+// Блокируем iOS-зум при фокусе на textarea.
+// font-size:16px недостаточно — Safari всё равно зумит при initial-scale=1.
+// Решение: на время фокуса добавляем maximum-scale=1 в viewport meta,
+// при blur убираем — пинч-зум в остальное время не страдает.
+(function setupIosZoomFix() {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  const base = meta.content.replace(/,?\s*maximum-scale=[^,]*/g, '').trim();
+  const inp = document.getElementById('user-input');
+  inp.addEventListener('focus', () => {
+    meta.content = base + ', maximum-scale=1';
+  });
+  inp.addEventListener('blur', () => {
+    meta.content = base;
+  });
+})();
+
 // Жёстко синхронизируем высоту body с visualViewport.
 // dvh / interactive-widget работают не везде; visualViewport — почти везде.
 (function setupViewportSync() {
