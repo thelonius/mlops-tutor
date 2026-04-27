@@ -83,7 +83,28 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.25s ease, min-width 0.25s ease, border-color 0.25s ease;
 }
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right-color: transparent;
+}
+
+/* Desktop sidebar toggle button */
+.sidebar-toggle {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.sidebar-toggle:hover { background: var(--hover-bg); color: var(--text); }
 
 .sidebar-header {
   padding: 14px 16px;
@@ -388,6 +409,7 @@ textarea::placeholder { color: var(--text-dim); }
 
 /* ── Mobile layout ── */
 @media (max-width: 768px) {
+  .sidebar-toggle { display: none; }
   .hamburger { display: flex; }
   .sidebar {
     position: fixed;
@@ -417,6 +439,8 @@ textarea::placeholder { color: var(--text-dim); }
   .gloss-term { /* убираем эффект hover, тултипы по тапу */
     border-bottom-style: dotted;
   }
+  /* 16px предотвращает автозум iOS Safari при фокусе на input */
+  textarea { font-size: 16px; }
 }
 </style>
 </head>
@@ -453,6 +477,7 @@ textarea::placeholder { color: var(--text-dim); }
 <!-- Main -->
 <div class="main">
   <div class="chat-header">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleDesktopSidebar()" title="Свернуть меню">◀</button>
     <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">☰</button>
     <span class="header-topic" id="header-topic">Выбери тему →</span>
     <span class="mode-badge badge-learn" id="mode-badge">Объяснение</span>
@@ -851,6 +876,22 @@ function closeSidebar() {
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('show');
 }
+
+// ── Desktop sidebar collapse ──
+function toggleDesktopSidebar() {
+  const sb = document.querySelector('.sidebar');
+  const btn = document.getElementById('sidebar-toggle');
+  const collapsed = sb.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '▶' : '◀';
+  localStorage.setItem('mlops_sidebar_collapsed', collapsed ? '1' : '');
+}
+(function restoreDesktopSidebar() {
+  if (localStorage.getItem('mlops_sidebar_collapsed') === '1') {
+    document.querySelector('.sidebar').classList.add('collapsed');
+    const btn = document.getElementById('sidebar-toggle');
+    if (btn) btn.textContent = '▶';
+  }
+})();
 
 // ── Tooltip controller (universal: hover + tap) ──
 (function setupTooltip() {
