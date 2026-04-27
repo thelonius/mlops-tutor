@@ -368,6 +368,7 @@ textarea {
   flex: 1; background: none; border: none; outline: none;
   color: var(--text); font-size: 16px; line-height: 1.5;
   resize: none; min-height: 20px; max-height: 120px; font-family: inherit;
+  touch-action: manipulation; /* Firefox: убирает tap-to-zoom на инпут */
 }
 textarea::placeholder { color: var(--text-dim); }
 
