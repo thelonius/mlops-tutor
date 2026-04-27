@@ -2,7 +2,7 @@
 <html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>MLOps Tutor</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link id="hljs-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -1081,29 +1081,17 @@ function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.sc
 
 init();
 
-// ── iOS/Android keyboard handling ──
-// Жёстко синхронизируем высоту body с visualViewport.
-// dvh / interactive-widget работают не везде; visualViewport — почти везде.
-(function setupViewportSync() {
-  if (!window.visualViewport) return;
-
-  function syncHeight() {
-    document.body.style.height = window.visualViewport.height + 'px';
-  }
-  syncHeight();
-
+// При появлении клавиатуры скроллим чат вниз.
+// Высоту body не трогаем — interactive-widget=resizes-content + 100dvh
+// сами разрулят layout без JS.
+if (window.visualViewport) {
   let lastH = window.visualViewport.height;
   window.visualViewport.addEventListener('resize', () => {
-    syncHeight();
     const newH = window.visualViewport.height;
-    // Клавиатура появилась → последние сообщения в зоне видимости
     if (lastH - newH > 100) setTimeout(scrollBottom, 50);
     lastH = newH;
   });
-
-  // На iOS visualViewport может смещаться при показе клавиатуры
-  window.visualViewport.addEventListener('scroll', syncHeight);
-})();
+}
 </script>
 </body>
 </html>
