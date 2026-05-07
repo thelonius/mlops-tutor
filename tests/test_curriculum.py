@@ -5,6 +5,7 @@ REQUIRED_TOPIC_FIELDS = ["title", "emoji", "what", "why", "interview_focus", "tr
 REQUIRED_TRACK_FIELDS = [
     "mentor_role", "target_position", "student_profile",
     "learn_examples_hint", "mock_identity", "mock_target",
+    "company", "company_details",
 ]
 
 
@@ -60,7 +61,7 @@ def test_mlops_prompts_mention_company():
 def test_ml_prompts_omit_company():
     ml_topics = [tid for tid, t in TOPICS.items() if t["track"] == "ml"]
     assert ml_topics, "No ML topics found — add ml topics first"
-    for tid in ml_topics[:3]:
+    for tid in ml_topics:  # check ALL ml topics, not just first 3
         for mode in ["learn", "quiz", "mock"]:
             result = build_system_prompt(tid, mode)
             assert "Wildberries" not in result, (
