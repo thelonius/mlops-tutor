@@ -89,3 +89,15 @@ def test_ml_sysdesign_has_five_topics():
     groups = {g["id"]: g for g in CURRICULUM}
     assert "ml_sysdesign" in groups
     assert len(groups["ml_sysdesign"]["topics"]) == 5
+
+
+def test_all_topic_emojis_are_unique():
+    emojis = [t["emoji"] for t in TOPICS.values()]
+    seen = set()
+    duplicates = []
+    for tid, topic in TOPICS.items():
+        emoji = topic["emoji"]
+        if emoji in seen:
+            duplicates.append(f"'{emoji}' in topic '{tid}'")
+        seen.add(emoji)
+    assert not duplicates, f"Duplicate emojis found: {duplicates}"

@@ -200,7 +200,7 @@ TOPICS = {
     },
     "ml_logreg": {
         "title": "Логистическая регрессия и калибровка",
-        "emoji": "🎯",
+        "emoji": "🎲",
         "track": "ml",
         "what": "sigmoid, log loss, порог классификации, Platt scaling, isotonic regression, calibration curve",
         "why": "Логрег — стандартный baseline на любой задаче классификации. Про калибровку спрашивают когда нужны вероятности (реклама, медицина, кредит)",
@@ -216,7 +216,7 @@ TOPICS = {
     },
     "ml_boosting": {
         "title": "Градиентный бустинг",
-        "emoji": "🚀",
+        "emoji": "🌳",
         "track": "ml",
         "what": "градиентный бустинг, слабые ученики, learning rate, XGBoost, LightGBM, CatBoost, leaf-wise vs level-wise, обработка категорий",
         "why": "XGBoost/LightGBM выигрывают большинство соревнований на табличных данных. Знание разницы между реализациями — маркер опытного ML-инженера",
@@ -224,11 +224,11 @@ TOPICS = {
     },
     "ml_metrics": {
         "title": "Метрики качества",
-        "emoji": "📊",
+        "emoji": "📏",
         "track": "ml",
         "what": "accuracy, precision, recall, F1, ROC-AUC, PR-AUC, confusion matrix, MAE, MSE, RMSE, MAPE, R², log loss, Brier score",
         "why": "Выбор метрики — это формулировка задачи. Неверная метрика = решение не той задачи. На собесе всегда спрашивают 'а что у вас метрика и почему'",
-        "interview_focus": "когда ROC-AUC врёт (сильный дисбаланс), PR-AUC vs ROC-AUC, почему accuracy бесполезен при дисбалансе, как связать бизнес-метрику с модельной",
+        "interview_focus": "когда ROC-AUC врёт (сильный дисбаланс), PR-AUC vs ROC-AUC, почему accuracy бесполезен при дисбалансе, когда RMSE лучше MAE (и наоборот), как связать бизнес-метрику с модельной",
     },
     "ml_bias_variance": {
         "title": "Bias-variance и переобучение",
@@ -256,11 +256,11 @@ TOPICS = {
     },
     "ml_imbalance": {
         "title": "Дисбаланс классов",
-        "emoji": "⚡",
+        "emoji": "🔀",
         "track": "ml",
         "what": "oversampling (SMOTE), undersampling, class_weight, threshold tuning, focal loss, PR-AUC как основная метрика",
         "why": "Антифрод, медицинская диагностика, кредитный скоринг — везде дисбаланс. Не умеешь работать с ним — не работаешь с реальными задачами",
-        "interview_focus": "почему accuracy бесполезен при 1:100, class_weight='balanced' vs SMOTE — когда что, как выбрать порог под бизнес-задачу, PR-AUC как основная метрика при дисбалансе",
+        "interview_focus": "почему accuracy бесполезен при 1:100, class_weight='balanced' vs SMOTE — когда что, focal loss vs class_weight (object detection, multi-label), как выбрать порог под бизнес-задачу, PR-AUC как основная метрика при дисбалансе",
     },
     "ml_features": {
         "title": "Фичеинжиниринг",
