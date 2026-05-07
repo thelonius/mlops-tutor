@@ -158,6 +158,12 @@ body {
 .cs-header { font-size: 15px; font-weight: 700; color: var(--heading);
              padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 4px; }
 .badge-cheatsheet { background: #22c55e20; color: #22c55e; }
+.tts-btn {
+  background: none; border: none; cursor: pointer; font-size: 14px;
+  opacity: 0.35; transition: opacity 0.15s; padding: 0 4px; flex-shrink: 0; line-height: 1;
+}
+.tts-btn:hover { opacity: 1; }
+.cs-q-row { display: flex; align-items: flex-start; gap: 4px; }
 
 .curriculum { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
 
@@ -458,6 +464,18 @@ textarea::placeholder { color: var(--text-dim); }
 .send-btn:hover    { background: #9061f9; }
 .send-btn:disabled { background: var(--send-disabled); cursor: not-allowed; }
 
+.mic-btn {
+  width: 38px; height: 38px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg-panel);
+  font-size: 17px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none; -webkit-user-select: none;
+}
+.mic-btn:hover   { border-color: #f472b6; }
+.mic-btn.recording { background: #ef444420; border-color: #ef4444; animation: mic-pulse 0.8s infinite; }
+@keyframes mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
@@ -588,6 +606,7 @@ textarea::placeholder { color: var(--text-dim); }
       ></textarea>
     </div>
     <button class="send-btn" id="send-btn" onclick="send()" title="Отправить">↑</button>
+    <button class="mic-btn" id="mic-btn" title="Держи для записи" onmousedown="micStart()" onmouseup="micStop()" ontouchstart="micStart(event)" ontouchend="micStop()">🎙</button>
   </div>
 </div>
 
@@ -908,7 +927,7 @@ function renderCheatsheet(tid) {
   const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
   view.innerHTML = `
     <div class="cs-header">${t.emoji} ${t.title}</div>
-    ${t.cheatsheet.map(pair => `
+    ${t.cheatsheet.map((pair) => `
       <div class="cs-card">
         <div class="cs-q" style="color:${color}">${pair.q}</div>
         <div class="cs-a">${pair.a}</div>
@@ -1075,6 +1094,7 @@ async function streamInto(response, bubble) {
   }
   // Тултипы по терминам — один раз в финале, не на каждом чанке
   addTooltips(bubble);
+  addTtsButton(bubble, full);
   return full;
 }
 
@@ -1293,6 +1313,7 @@ function appendBubble(role, content) {
     bub.innerHTML = renderMarkdown(content);
     attachCodeButtons(bub);
     addTooltips(bub);
+    addTtsButton(bub, content);
   }
   row.appendChild(av);
   row.appendChild(bub);
@@ -1309,6 +1330,100 @@ function setSend(on) {
 }
 function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
 function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+
+// ── TTS / edge-tts ──
+let ttsCtx    = null;
+let ttsSource = null;
+
+function addTtsButton(bubble, rawText) {
+  const btn = document.createElement('button');
+  btn.className = 'tts-btn';
+  btn.textContent = '🔊';
+  btn.title = 'Прочитать';
+  btn.style.cssText = 'display:block;margin-top:8px';
+  btn.onclick = () => speak(rawText, btn);
+  bubble.appendChild(btn);
+}
+
+async function speak(rawText, btn) {
+  if (ttsSource) {
+    ttsSource.stop();
+    ttsSource = null;
+    if (btn) btn.textContent = '🔊';
+    return;
+  }
+  // Create/resume AudioContext synchronously inside the click handler —
+  // this unlocks audio for subsequent async playback on this context.
+  if (!ttsCtx) ttsCtx = new AudioContext();
+  ttsCtx.resume();
+
+  const plain = rawText.replace(/[#*`_~\[\]]/g, '').replace(/\n+/g, ' ').trim();
+  if (btn) btn.textContent = '⏳';
+  try {
+    const res      = await fetch('/api/tts?text=' + encodeURIComponent(plain.slice(0, 1000)));
+    const arrayBuf = await res.arrayBuffer();
+    const audioBuf = await ttsCtx.decodeAudioData(arrayBuf);
+    ttsSource = ttsCtx.createBufferSource();
+    ttsSource.buffer = audioBuf;
+    ttsSource.connect(ttsCtx.destination);
+    ttsSource.onended = () => { ttsSource = null; if (btn) btn.textContent = '🔊'; };
+    ttsSource.start();
+    if (btn) btn.textContent = '⏹';
+  } catch (e) {
+    ttsSource = null;
+    if (btn) btn.textContent = '🔊';
+  }
+}
+
+// ── Mic / Groq Whisper ──
+let mediaRecorder = null;
+let audioChunks   = [];
+
+async function micStart(e) {
+  if (e) e.preventDefault();
+  if (mediaRecorder) return;
+  const btn = document.getElementById('mic-btn');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = ['audio/webm', 'audio/ogg', 'audio/mp4'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.start();
+    btn.classList.add('recording');
+    btn.textContent = '⏹';
+  } catch {
+    btn.textContent = '🚫';
+    setTimeout(() => { btn.textContent = '🎙'; }, 2000);
+  }
+}
+
+async function micStop() {
+  if (!mediaRecorder) return;
+  const btn = document.getElementById('mic-btn');
+  mediaRecorder.stop();
+  mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  mediaRecorder.onstop = async () => {
+    mediaRecorder = null;
+    btn.classList.remove('recording');
+    btn.textContent = '⏳';
+    const ext  = audioChunks[0]?.type.includes('ogg') ? 'ogg' : audioChunks[0]?.type.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+    const form = new FormData();
+    form.append('audio', blob, `rec.${ext}`);
+    try {
+      const res  = await fetch('/api/transcribe', { method: 'POST', body: form });
+      const data = await res.json();
+      if (data.text) {
+        const inp = document.getElementById('user-input');
+        inp.value = data.text;
+        resize(inp);
+        inp.focus();
+      }
+    } catch { /* тихо игнорируем */ }
+    btn.textContent = '🎙';
+  };
+}
 
 init();
 

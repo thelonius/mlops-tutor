@@ -4,6 +4,9 @@ import os
 from curriculum import CURRICULUM, TOPICS, build_system_prompt
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+import asyncio
+import tempfile
+import edge_tts
 from openai import OpenAI
 
 load_dotenv()
@@ -85,6 +88,43 @@ def chat():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+TTS_VOICE = "ru-RU-SvetlanaNeural"
+
+@app.route("/api/tts")
+def tts():
+    text = request.args.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "No text"}), 400
+
+    async def _collect():
+        buf = bytearray()
+        communicate = edge_tts.Communicate(text, TTS_VOICE)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buf.extend(chunk["data"])
+        return bytes(buf)
+
+    audio_bytes = asyncio.run(_collect())
+    return Response(audio_bytes, mimetype="audio/mpeg",
+                    headers={"Cache-Control": "no-cache"})
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    audio = request.files.get("audio")
+    if not audio:
+        return jsonify({"error": "No audio"}), 400
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+        audio.save(f.name)
+        with open(f.name, "rb") as af:
+            result = client.audio.transcriptions.create(
+                model="whisper-large-v3",
+                file=("audio.webm", af, "audio/webm"),
+                language="ru",
+            )
+    return jsonify({"text": result.text})
 
 
 if __name__ == "__main__":
