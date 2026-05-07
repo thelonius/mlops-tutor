@@ -217,7 +217,9 @@ CURRICULUM = [
 
 
 def build_system_prompt(topic_id: str, mode: str) -> str:
-    topic = TOPICS.get(topic_id, {})
+    topic = TOPICS.get(topic_id)
+    if topic is None:
+        raise KeyError(f"Unknown topic_id: {topic_id!r}")
     track_id = topic.get("track", "mlops")
     track = TRACKS.get(track_id, TRACKS["mlops"])
 
