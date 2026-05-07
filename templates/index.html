@@ -153,8 +153,15 @@ body {
 .week-divider { height: 1px; background: var(--border); margin: 8px 12px; }
 .cs-card { border-bottom: 1px solid var(--border); padding: 12px 0; }
 .cs-card:last-child { border-bottom: none; }
-.cs-q { font-weight: 600; margin-bottom: 4px; }
-.cs-a { color: var(--text); line-height: 1.6; }
+.cs-q { font-weight: 600; margin-bottom: 8px; }
+.cs-toggle {
+  font-size: 12px; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--hover-bg); color: var(--text-dim);
+  margin-bottom: 0;
+}
+.cs-toggle:hover { background: var(--border); }
+.cs-a { color: var(--text); line-height: 1.6; margin-top: 8px; display: none; }
+.cs-a.open { display: block; }
 .cs-header { font-size: 15px; font-weight: 700; color: var(--heading);
              padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 4px; }
 .badge-cheatsheet { background: #22c55e20; color: #22c55e; }
@@ -821,6 +828,11 @@ function renderCheatsheet(tid) {
     ${t.cheatsheet.map(pair => `
       <div class="cs-card">
         <div class="cs-q" style="color:${color}">❓ ${pair.q}</div>
+        <button class="cs-toggle" onclick="
+          const a = this.nextElementSibling;
+          const open = a.classList.toggle('open');
+          this.textContent = open ? 'Скрыть' : 'Показать ответ';
+        ">Показать ответ</button>
         <div class="cs-a">${pair.a}</div>
       </div>
     `).join('')}
