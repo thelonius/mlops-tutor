@@ -270,6 +270,46 @@ TOPICS = {
         "why": "На табличных данных 80% результата даёт инженерия фич, а не выбор алгоритма. Знание когда какое кодирование — базовая грамотность ML-инженера",
         "interview_focus": "почему target encoding без fold-encoding — утечка, когда StandardScaler обязателен (линейные модели, SVM, kNN), Robust scaler при выбросах, счётчики и редкие категории",
     },
+    "mlsd_framing": {
+        "title": "Постановка ML-задачи",
+        "emoji": "🗺️",
+        "track": "ml",
+        "what": "формулировка ML-задачи из бизнес-требований, выбор прокси-метрики, baseline без ML, постановка как задача классификации/регрессии/ранжирования",
+        "why": "Senior ML Engineer не получает ТЗ 'обучи модель', а получает 'уменьши чарн'. Умение перевести бизнес в ML — ключевое отличие от джуна",
+        "interview_focus": "как от 'увеличить выручку' прийти к конкретной ML-задаче, что такое proxy metric и когда она ломается, как определить baseline без ML, когда ML вообще не нужен",
+    },
+    "mlsd_skew": {
+        "title": "Train-serving skew и фичестор",
+        "emoji": "🏪",
+        "track": "ml",
+        "what": "train-serving skew, feature store, point-in-time correctness, online vs offline фичи, версионирование данных и моделей",
+        "why": "Расхождение между обучением и инференсом — одна из самых дорогих ошибок в ML. Фичестор решает эту проблему системно",
+        "interview_focus": "почему фичи на обучении не совпадают с prod (temporal leakage, разные пайплайны), point-in-time join, как устроен feature store (Feast концептуально), онлайн vs оффлайн хранилище",
+    },
+    "mlsd_ab": {
+        "title": "A/B-тесты для ML",
+        "emoji": "🧪",
+        "track": "ml",
+        "what": "статистические тесты (t-test, Mann-Whitney), мощность теста, p-value, размер выборки, novelty effect, sample ratio mismatch, AA-тест",
+        "why": "ML-модель без A/B — вера. A/B — единственный способ доказать что модель улучшила бизнес-метрику, а не только оффлайн-метрику",
+        "interview_focus": "как рассчитать размер выборки, почему p < 0.05 недостаточно, novelty effect и как его учитывать, sample ratio mismatch как красный флаг, зачем нужен AA-тест",
+    },
+    "mlsd_ranking": {
+        "title": "Ranking и рекомендации",
+        "emoji": "🥇",
+        "track": "ml",
+        "what": "candidate generation, ranking, двухэтапная архитектура, pointwise/pairwise/listwise, NDCG, Recall@K, MRR, exploration vs exploitation, cold start",
+        "why": "Рекомендательные системы и поиск — самые частые кейсы на ML System Design. Двухэтапная архитектура — стандарт индустрии",
+        "interview_focus": "почему два этапа (retrieval + ranking), как мерить качество ранжирования (NDCG vs MAP), cold start проблема и решения, exploration (ε-greedy, UCB, Thompson sampling)",
+    },
+    "mlsd_mock": {
+        "title": "ML System Design Mock",
+        "emoji": "🎤",
+        "track": "ml",
+        "what": "полная симуляция System Design кейса: постановка → данные → фичи → модель → метрики → деплой → мониторинг",
+        "why": "System Design раунд на senior — финальный фильтр. Нужно удерживать все слои: бизнес, данные, модель, инфра",
+        "interview_focus": "полная симуляция кейса: фид, поиск, антифрод, рекомендации или другой сценарий на выбор интервьюера",
+    },
 }
 
 CURRICULUM = [
@@ -292,6 +332,19 @@ CURRICULUM = [
         "id": "week4",
         "title": "Неделя 4: Интервью",
         "topics": ["system_design", "mock_interview"],
+    },
+    {
+        "id": "ml_classic",
+        "title": "ML: классика",
+        "topics": [
+            "ml_linear", "ml_logreg", "ml_trees", "ml_boosting", "ml_metrics",
+            "ml_bias_variance", "ml_validation", "ml_leakage", "ml_imbalance", "ml_features",
+        ],
+    },
+    {
+        "id": "ml_sysdesign",
+        "title": "ML: System Design",
+        "topics": ["mlsd_framing", "mlsd_skew", "mlsd_ab", "mlsd_ranking", "mlsd_mock"],
     },
 ]
 
