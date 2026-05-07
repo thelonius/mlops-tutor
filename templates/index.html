@@ -822,7 +822,7 @@ function renderCheatsheet(tid) {
     <div class="cs-header">${t.emoji} ${t.title}</div>
     ${t.cheatsheet.map(pair => `
       <div class="cs-card">
-        <div class="cs-q" style="color:${color}">❓ ${pair.q}</div>
+        <div class="cs-q" style="color:${color}">${pair.q}</div>
         <div class="cs-a">${pair.a}</div>
       </div>
     `).join('')}
