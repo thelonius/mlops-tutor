@@ -212,9 +212,72 @@ body {
   font-size: 11px; font-weight: 500;
   padding: 3px 10px; border-radius: 20px; white-space: nowrap;
 }
-.badge-learn { background: #a78bfa20; color: #a78bfa; }
-.badge-quiz  { background: #60a5fa20; color: #60a5fa; }
-.badge-mock  { background: #f59e0b20; color: #f59e0b; }
+.badge-learn      { background: #a78bfa20; color: #a78bfa; }
+.badge-quiz       { background: #60a5fa20; color: #60a5fa; }
+.badge-mock       { background: #f59e0b20; color: #f59e0b; }
+.badge-cheatsheet { background: #34d39920; color: #34d399; }
+.badge-mcquiz     { background: #f472b620; color: #f472b6; }
+
+/* ── MC Quiz ── */
+.mc-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 24px 16px; gap: 20px; overflow-y: auto; flex: 1;
+}
+.mc-progress {
+  font-size: 12px; color: var(--text-dim); align-self: stretch;
+  display: flex; justify-content: space-between;
+}
+.mc-progress-bar {
+  height: 3px; border-radius: 2px; background: var(--border);
+  align-self: stretch; overflow: hidden;
+}
+.mc-progress-bar-fill {
+  height: 100%; border-radius: 2px; background: #f472b6;
+  transition: width 0.3s ease;
+}
+.mc-question {
+  font-size: 16px; font-weight: 600; color: var(--heading);
+  text-align: center; max-width: 640px; line-height: 1.5;
+}
+.mc-options {
+  display: flex; flex-direction: column; gap: 10px;
+  width: 100%; max-width: 640px;
+}
+.mc-btn {
+  padding: 12px 18px; border-radius: 10px; text-align: left;
+  border: 1px solid var(--border); background: var(--bg-panel);
+  color: var(--text); font-size: 14px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  line-height: 1.4;
+}
+.mc-btn:hover:not(:disabled) { border-color: #f472b6; background: #f472b608; }
+.mc-btn.correct  { border-color: #22c55e; background: #22c55e12; color: #22c55e; }
+.mc-btn.wrong    { border-color: #ef4444; background: #ef444412; color: #ef4444; }
+.mc-btn:disabled { cursor: default; }
+.mc-explain {
+  max-width: 640px; width: 100%; font-size: 13px;
+  color: var(--text-muted); background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 16px; line-height: 1.6;
+}
+.mc-next-btn {
+  padding: 10px 28px; border-radius: 10px; border: none;
+  background: #f472b6; color: white; font-size: 14px;
+  font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.mc-next-btn:hover { background: #ec4899; }
+.mc-score {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; padding: 40px 20px; text-align: center;
+}
+.mc-score-num { font-size: 56px; font-weight: 700; color: #f472b6; }
+.mc-score-label { font-size: 16px; color: var(--text-muted); }
+.mc-restart-btn {
+  padding: 10px 28px; border-radius: 10px; border: none;
+  background: #f472b6; color: white; font-size: 14px;
+  font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.mc-restart-btn:hover { background: #ec4899; }
 
 /* ── Messages ── */
 .messages {
@@ -484,6 +547,9 @@ textarea::placeholder { color: var(--text-dim); }
     <button class="mode-btn" id="mode-cheatsheet" onclick="setMode('cheatsheet')">
       <span class="mode-icon">📋</span> Чит-шит
     </button>
+    <button class="mode-btn" id="mode-mcquiz" onclick="setMode('mcquiz')">
+      <span class="mode-icon">🎯</span> Тест
+    </button>
   </div>
 
   <div class="curriculum" id="curriculum-tree"></div>
@@ -507,10 +573,11 @@ textarea::placeholder { color: var(--text-dim); }
   </div>
 
   <div id="cheatsheet-view" style="display:none; overflow-y:auto; padding:16px; flex:1;"></div>
+  <div id="mcquiz-view" style="display:none; flex:1; overflow-y:auto;"></div>
 
   <div class="quick-area" id="quick-area"></div>
 
-  <div class="input-area">
+  <div class="input-area" id="input-row">
     <div class="input-wrap">
       <textarea
         id="user-input"
@@ -542,7 +609,6 @@ function restoreSession() {
   try {
     const s = JSON.parse(sessionStorage.getItem('mlops_session'));
     if (!s || !s.topic || !topics[s.topic]) return;
-    // восстанавливаем режим без перезапуска чата
     mode = s.mode || 'learn';
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(`mode-${mode}`)?.classList.add('active');
@@ -550,6 +616,11 @@ function restoreSession() {
     const badge = document.getElementById('mode-badge');
     badge.textContent = cfg.label;
     badge.className   = `mode-badge ${cfg.badge}`;
+    const isStatic = mode === 'cheatsheet' || mode === 'mcquiz';
+    document.getElementById('input-row')?.style && (document.getElementById('input-row').style.display = isStatic ? 'none' : '');
+    document.getElementById('quick-area').style.display  = isStatic ? 'none' : '';
+    document.getElementById('cheatsheet-view').style.display = mode === 'cheatsheet' ? 'flex' : 'none';
+    document.getElementById('mcquiz-view').style.display     = mode === 'mcquiz'     ? 'flex' : 'none';
     renderQuickActions();
     selectTopic(s.topic);
   } catch (_) {}
@@ -635,6 +706,7 @@ const MODES = {
   quiz:       { label: 'Квиз',          badge: 'badge-quiz'  },
   mock:       { label: 'Mock Interview', badge: 'badge-mock' },
   cheatsheet: { label: 'Чит-шит',       badge: 'badge-cheatsheet' },
+  mcquiz:     { label: 'Тест',          badge: 'badge-mcquiz' },
 };
 const QUICK = {
   learn: [
@@ -720,10 +792,8 @@ function selectTopic(tid) {
 
   saveSession();
 
-  if (mode === 'cheatsheet') {
-    renderCheatsheet(tid);
-    return;
-  }
+  if (mode === 'cheatsheet') { renderCheatsheet(tid); return; }
+  if (mode === 'mcquiz')     { renderMCQuiz(tid);     return; }
 
   const saved = loadHistory(tid, mode);
   if (saved && saved.length >= 2) {
@@ -782,18 +852,19 @@ async function autoStart(triggerMsg) {
 // ── Mode switch ──
 function setMode(m) {
   mode = m;
-  const isCheatsheet = m === 'cheatsheet';
-  const chatMessages  = document.getElementById('messages');
-  const inputRow      = document.getElementById('input-row');
-  const quickArea     = document.getElementById('quick-area');
+  const isStatic = m === 'cheatsheet' || m === 'mcquiz';
+  const chatMessages   = document.getElementById('messages');
+  const inputRow       = document.getElementById('input-row');
+  const quickArea      = document.getElementById('quick-area');
   const cheatsheetView = document.getElementById('cheatsheet-view');
-  if (chatMessages) chatMessages.style.display = isCheatsheet ? 'none' : '';
-  if (inputRow) inputRow.style.display = isCheatsheet ? 'none' : '';
-  if (quickArea) quickArea.style.display = isCheatsheet ? 'none' : '';
-  if (cheatsheetView) {
-    cheatsheetView.style.display = isCheatsheet ? 'flex' : 'none';
-    cheatsheetView.style.flexDirection = 'column';
-  }
+  const mcquizView     = document.getElementById('mcquiz-view');
+  if (chatMessages)   chatMessages.style.display   = isStatic ? 'none' : '';
+  if (inputRow)       inputRow.style.display       = isStatic ? 'none' : '';
+  if (quickArea)      quickArea.style.display      = isStatic ? 'none' : '';
+  if (cheatsheetView) cheatsheetView.style.display = m === 'cheatsheet' ? 'flex' : 'none';
+  if (mcquizView)     mcquizView.style.display     = m === 'mcquiz'     ? 'flex' : 'none';
+  if (cheatsheetView) cheatsheetView.style.flexDirection = 'column';
+  if (mcquizView)     mcquizView.style.flexDirection     = 'column';
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('mode-' + m);
   if (btn) btn.classList.add('active');
@@ -805,11 +876,9 @@ function setMode(m) {
   }
   renderQuickActions();
   saveSession();
-  if (isCheatsheet && topic) {
-    renderCheatsheet(topic);
-    return;
-  }
-  if (!isCheatsheet && topic) {
+  if (m === 'cheatsheet' && topic) { renderCheatsheet(topic); return; }
+  if (m === 'mcquiz'     && topic) { renderMCQuiz(topic);     return; }
+  if (!isStatic && topic) {
     messages = [];
     clearMessages();
     const saved = loadHistory(topic, m);
@@ -846,6 +915,89 @@ function renderCheatsheet(tid) {
       </div>
     `).join('')}
   `;
+}
+
+// ── MC Quiz ──
+function renderMCQuiz(tid) {
+  const t = topics[tid];
+  if (!t || !t.cheatsheet || t.cheatsheet.length < 4) return;
+  const view = document.getElementById('mcquiz-view');
+  if (!view) return;
+  view.style.display = 'flex';
+  view.style.flexDirection = 'column';
+
+  const pairs = [...t.cheatsheet].sort(() => Math.random() - 0.5);
+  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
+  let idx = 0, score = 0;
+
+  function showQuestion() {
+    if (idx >= pairs.length) { showScore(); return; }
+    const pair = pairs[idx];
+    const others = pairs.filter((_, i) => i !== idx);
+    const wrong = others.sort(() => Math.random() - 0.5).slice(0, 3).map(p => p.a);
+    const options = [pair.a, ...wrong].sort(() => Math.random() - 0.5);
+    const pct = Math.round((idx / pairs.length) * 100);
+
+    view.innerHTML = `
+      <div class="mc-wrap">
+        <div class="mc-progress">
+          <span>${idx + 1} / ${pairs.length}</span>
+          <span style="color:${color}">${score} правильных</span>
+        </div>
+        <div class="mc-progress-bar">
+          <div class="mc-progress-bar-fill" style="width:${pct}%; background:${color}"></div>
+        </div>
+        <div class="mc-question" style="color:${color}">${pair.q}</div>
+        <div class="mc-options">
+          ${options.map(opt => `<button class="mc-btn" onclick="mcAnswer(this,'${escQ(opt)}','${escQ(pair.a)}')">${opt}</button>`).join('')}
+        </div>
+        <div class="mc-explain" id="mc-explain" style="display:none">${pair.a}</div>
+        <button class="mc-next-btn" id="mc-next" style="display:none;background:${color}" onclick="mcNext()">Следующий →</button>
+      </div>
+    `;
+  }
+
+  function showScore() {
+    const emoji = score === pairs.length ? '🏆' : score >= pairs.length * 0.7 ? '💪' : '📚';
+    view.innerHTML = `
+      <div class="mc-wrap">
+        <div class="mc-score">
+          <div style="font-size:48px">${emoji}</div>
+          <div class="mc-score-num" style="color:${color}">${score}/${pairs.length}</div>
+          <div class="mc-score-label">${scoreLabel(score, pairs.length)}</div>
+          <button class="mc-restart-btn" style="background:${color}" onclick="renderMCQuiz('${tid}')">Пройти заново</button>
+          <button class="mc-restart-btn" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="setMode('cheatsheet')">Открыть чит-шит</button>
+        </div>
+      </div>
+    `;
+  }
+
+  window.mcAnswer = function(btn, chosen, correct) {
+    document.querySelectorAll('.mc-btn').forEach(b => b.disabled = true);
+    if (chosen === correct) {
+      btn.classList.add('correct');
+      score++;
+    } else {
+      btn.classList.add('wrong');
+      document.querySelectorAll('.mc-btn').forEach(b => {
+        if (b.textContent === correct) b.classList.add('correct');
+      });
+    }
+    document.getElementById('mc-explain').style.display = 'block';
+    document.getElementById('mc-next').style.display = 'block';
+  };
+
+  window.mcNext = function() { idx++; showQuestion(); };
+
+  showQuestion();
+}
+
+function escQ(s) { return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+function scoreLabel(s, t) {
+  if (s === t) return 'Идеально! Тема отработана.';
+  if (s >= t * 0.8) return 'Отлично! Остались мелкие пробелы.';
+  if (s >= t * 0.6) return 'Неплохо, но стоит повторить.';
+  return 'Нужно ещё поработать над темой.';
 }
 
 // ── Quick actions ──
