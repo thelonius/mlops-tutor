@@ -1,7 +1,7 @@
 import pytest
 from curriculum import TOPICS, CURRICULUM, TRACKS, build_system_prompt
 
-REQUIRED_TOPIC_FIELDS = ["title", "emoji", "what", "why", "interview_focus", "track"]
+REQUIRED_TOPIC_FIELDS = ["title", "emoji", "what", "why", "interview_focus", "track", "cheatsheet"]
 REQUIRED_TRACK_FIELDS = [
     "mentor_role", "target_position", "student_profile",
     "learn_examples_hint", "mock_identity", "mock_target",
@@ -38,6 +38,22 @@ def test_curriculum_references_valid_topics():
             )
 
 
+def test_all_topics_are_in_curriculum():
+    curriculum_ids = set()
+    for group in CURRICULUM:
+        curriculum_ids.update(group["topics"])
+    for tid in TOPICS:
+        assert tid in curriculum_ids, f"Topic '{tid}' not found in any CURRICULUM group"
+
+
+def test_no_duplicate_topics_in_curriculum():
+    seen = []
+    for group in CURRICULUM:
+        for tid in group["topics"]:
+            assert tid not in seen, f"Topic '{tid}' appears more than once in CURRICULUM"
+            seen.append(tid)
+
+
 def test_build_system_prompt_returns_string_for_all_modes():
     for tid in TOPICS:
         for mode in ["learn", "quiz", "mock"]:
@@ -48,6 +64,11 @@ def test_build_system_prompt_returns_string_for_all_modes():
             assert len(result) > 100, (
                 f"build_system_prompt('{tid}', '{mode}') returned suspiciously short string"
             )
+
+
+def test_build_system_prompt_raises_for_unknown_topic():
+    with pytest.raises(KeyError):
+        build_system_prompt("nonexistent_topic_xyz", "learn")
 
 
 def test_mlops_prompts_mention_company():
@@ -61,7 +82,7 @@ def test_mlops_prompts_mention_company():
 def test_ml_prompts_omit_company():
     ml_topics = [tid for tid, t in TOPICS.items() if t["track"] == "ml"]
     assert ml_topics, "No ML topics found — add ml topics first"
-    for tid in ml_topics:  # check ALL ml topics, not just first 3
+    for tid in ml_topics:
         for mode in ["learn", "quiz", "mock"]:
             result = build_system_prompt(tid, mode)
             assert "Wildberries" not in result, (
@@ -92,7 +113,6 @@ def test_ml_sysdesign_has_five_topics():
 
 
 def test_all_topic_emojis_are_unique():
-    emojis = [t["emoji"] for t in TOPICS.values()]
     seen = set()
     duplicates = []
     for tid, topic in TOPICS.items():
@@ -101,3 +121,27 @@ def test_all_topic_emojis_are_unique():
             duplicates.append(f"'{emoji}' in topic '{tid}'")
         seen.add(emoji)
     assert not duplicates, f"Duplicate emojis found: {duplicates}"
+
+
+def test_all_topics_have_cheatsheet():
+    for tid, topic in TOPICS.items():
+        cs = topic.get("cheatsheet", [])
+        assert isinstance(cs, list), f"Topic '{tid}' cheatsheet is not a list"
+        assert 8 <= len(cs) <= 10, (
+            f"Topic '{tid}' cheatsheet has {len(cs)} items, expected 8–10"
+        )
+
+
+def test_cheatsheet_pairs_have_q_and_a():
+    for tid, topic in TOPICS.items():
+        for i, pair in enumerate(topic.get("cheatsheet", [])):
+            assert "q" in pair, f"Topic '{tid}' cheatsheet[{i}] missing 'q'"
+            assert "a" in pair, f"Topic '{tid}' cheatsheet[{i}] missing 'a'"
+            assert pair["q"], f"Topic '{tid}' cheatsheet[{i}]['q'] is empty"
+            assert pair["a"], f"Topic '{tid}' cheatsheet[{i}]['a'] is empty"
+
+
+def test_mock_interview_topic_removed():
+    assert "mock_interview" not in TOPICS, (
+        "Topic 'mock_interview' should be removed (redundant with Mock Interview mode)"
+    )

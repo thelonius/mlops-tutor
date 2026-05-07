@@ -2,7 +2,7 @@
 <html lang="ru" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>MLOps Tutor</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link id="hljs-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -83,7 +83,28 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.25s ease, min-width 0.25s ease, border-color 0.25s ease;
 }
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right-color: transparent;
+}
+
+/* Desktop sidebar toggle button */
+.sidebar-toggle {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.sidebar-toggle:hover { background: var(--hover-bg); color: var(--text); }
 
 .sidebar-header {
   padding: 14px 16px;
@@ -129,6 +150,14 @@ body {
 .mode-btn:hover  { background: var(--hover-bg); color: var(--text); }
 .mode-btn.active { background: #a78bfa20; color: #a78bfa; }
 .mode-icon { font-size: 15px; }
+.week-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+.cs-card { border-bottom: 1px solid var(--border); padding: 12px 0; }
+.cs-card:last-child { border-bottom: none; }
+.cs-q { font-weight: 600; margin-bottom: 4px; }
+.cs-a { color: var(--text); line-height: 1.6; }
+.cs-header { font-size: 15px; font-weight: 700; color: var(--heading);
+             padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 4px; }
+.badge-cheatsheet { background: #22c55e20; color: #22c55e; }
 
 .curriculum { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
 
@@ -161,7 +190,10 @@ body {
 .depth-dot[title] { cursor: default; }
 
 /* ── Main ── */
-.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0; min-height: 0;
+}
 
 .chat-header {
   padding: 13px 20px;
@@ -181,7 +213,7 @@ body {
 
 /* ── Messages ── */
 .messages {
-  flex: 1; overflow-y: auto; padding: 20px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 20px;
   display: flex; flex-direction: column; gap: 16px;
 }
 .welcome {
@@ -342,8 +374,9 @@ body {
 .input-wrap:focus-within { border-color: #a78bfa; }
 textarea {
   flex: 1; background: none; border: none; outline: none;
-  color: var(--text); font-size: 14px; line-height: 1.5;
+  color: var(--text); font-size: 16px; line-height: 1.5;
   resize: none; min-height: 20px; max-height: 120px; font-family: inherit;
+  touch-action: manipulation; /* Firefox: убирает tap-to-zoom на инпут */
 }
 textarea::placeholder { color: var(--text-dim); }
 
@@ -385,6 +418,7 @@ textarea::placeholder { color: var(--text-dim); }
 
 /* ── Mobile layout ── */
 @media (max-width: 768px) {
+  .sidebar-toggle { display: none; }
   .hamburger { display: flex; }
   .sidebar {
     position: fixed;
@@ -442,6 +476,9 @@ textarea::placeholder { color: var(--text-dim); }
     <button class="mode-btn" id="mode-mock" onclick="setMode('mock')">
       <span class="mode-icon">🎯</span> Mock Interview
     </button>
+    <button class="mode-btn" id="mode-cheatsheet" onclick="setMode('cheatsheet')">
+      <span class="mode-icon">📋</span> Чит-шит
+    </button>
   </div>
 
   <div class="curriculum" id="curriculum-tree"></div>
@@ -450,6 +487,7 @@ textarea::placeholder { color: var(--text-dim); }
 <!-- Main -->
 <div class="main">
   <div class="chat-header">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleDesktopSidebar()" title="Свернуть меню">◀</button>
     <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">☰</button>
     <span class="header-topic" id="header-topic">Выбери тему →</span>
     <span class="mode-badge badge-learn" id="mode-badge">Объяснение</span>
@@ -462,6 +500,8 @@ textarea::placeholder { color: var(--text-dim); }
       <p>Начни с первой недели — Контейнеры и Docker. Каждая тема объясняется с нуля, с аналогиями и примерами кода.</p>
     </div>
   </div>
+
+  <div id="cheatsheet-view" style="display:none; overflow-y:auto; padding:16px; flex:1;"></div>
 
   <div class="quick-area" id="quick-area"></div>
 
@@ -586,9 +626,10 @@ function toggleTheme() {
 
 // ── Modes ──
 const MODES = {
-  learn: { label: 'Объяснение', badge: 'badge-learn' },
-  quiz:  { label: 'Квиз',       badge: 'badge-quiz'  },
-  mock:  { label: 'Mock Interview', badge: 'badge-mock' },
+  learn:      { label: 'Объяснение',    badge: 'badge-learn' },
+  quiz:       { label: 'Квиз',          badge: 'badge-quiz'  },
+  mock:       { label: 'Mock Interview', badge: 'badge-mock' },
+  cheatsheet: { label: 'Чит-шит',       badge: 'badge-cheatsheet' },
 };
 const QUICK = {
   learn: [
@@ -628,8 +669,9 @@ async function init() {
 function renderSidebar() {
   const el = document.getElementById('curriculum-tree');
   let html = '';
-  for (const week of curriculum) {
-    html += `<div class="week-label">${week.title}</div>`;
+  for (let i = 0; i < curriculum.length; i++) {
+    const week = curriculum[i];
+    if (i > 0) html += `<div class="week-divider"></div>`;
     for (const tid of week.topics) {
       const t = topics[tid];
       if (!t) continue;
@@ -658,6 +700,11 @@ function selectTopic(tid) {
   renderQuickActions();
 
   saveSession();
+
+  if (mode === 'cheatsheet') {
+    renderCheatsheet(tid);
+    return;
+  }
 
   const saved = loadHistory(tid, mode);
   if (saved && saved.length >= 2) {
@@ -716,15 +763,34 @@ async function autoStart(triggerMsg) {
 // ── Mode switch ──
 function setMode(m) {
   mode = m;
+  const isCheatsheet = m === 'cheatsheet';
+  const chatMessages  = document.getElementById('messages');
+  const inputRow      = document.getElementById('input-row');
+  const quickArea     = document.getElementById('quick-area');
+  const cheatsheetView = document.getElementById('cheatsheet-view');
+  if (chatMessages) chatMessages.style.display = isCheatsheet ? 'none' : '';
+  if (inputRow) inputRow.style.display = isCheatsheet ? 'none' : '';
+  if (quickArea) quickArea.style.display = isCheatsheet ? 'none' : '';
+  if (cheatsheetView) {
+    cheatsheetView.style.display = isCheatsheet ? 'flex' : 'none';
+    cheatsheetView.style.flexDirection = 'column';
+  }
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`mode-${m}`).classList.add('active');
+  const btn = document.getElementById('mode-' + m);
+  if (btn) btn.classList.add('active');
   const cfg   = MODES[m];
   const badge = document.getElementById('mode-badge');
-  badge.textContent = cfg.label;
-  badge.className   = `mode-badge ${cfg.badge}`;
+  if (cfg) {
+    badge.textContent = cfg.label;
+    badge.className   = `mode-badge ${cfg.badge}`;
+  }
   renderQuickActions();
   saveSession();
-  if (topic) {
+  if (isCheatsheet && topic) {
+    renderCheatsheet(topic);
+    return;
+  }
+  if (!isCheatsheet && topic) {
     messages = [];
     clearMessages();
     const saved = loadHistory(topic, m);
@@ -741,6 +807,24 @@ function setMode(m) {
       autoStart(openers[m]);
     }
   }
+}
+
+// ── Cheatsheet ──
+function renderCheatsheet(tid) {
+  const t = topics[tid];
+  if (!t || !t.cheatsheet) return;
+  const view = document.getElementById('cheatsheet-view');
+  if (!view) return;
+  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
+  view.innerHTML = `
+    <div class="cs-header">${t.emoji} ${t.title}</div>
+    ${t.cheatsheet.map(pair => `
+      <div class="cs-card">
+        <div class="cs-q" style="color:${color}">❓ ${pair.q}</div>
+        <div class="cs-a">${pair.a}</div>
+      </div>
+    `).join('')}
+  `;
 }
 
 // ── Quick actions ──
@@ -848,6 +932,22 @@ function closeSidebar() {
   document.querySelector('.sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('show');
 }
+
+// ── Desktop sidebar collapse ──
+function toggleDesktopSidebar() {
+  const sb = document.querySelector('.sidebar');
+  const btn = document.getElementById('sidebar-toggle');
+  const collapsed = sb.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '▶' : '◀';
+  localStorage.setItem('mlops_sidebar_collapsed', collapsed ? '1' : '');
+}
+(function restoreDesktopSidebar() {
+  if (localStorage.getItem('mlops_sidebar_collapsed') === '1') {
+    document.querySelector('.sidebar').classList.add('collapsed');
+    const btn = document.getElementById('sidebar-toggle');
+    if (btn) btn.textContent = '▶';
+  }
+})();
 
 // ── Tooltip controller (universal: hover + tap) ──
 (function setupTooltip() {
@@ -1038,6 +1138,18 @@ function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); 
 function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
 
 init();
+
+// При появлении клавиатуры скроллим чат вниз.
+// Высоту body не трогаем — interactive-widget=resizes-content + 100dvh
+// сами разрулят layout без JS.
+if (window.visualViewport) {
+  let lastH = window.visualViewport.height;
+  window.visualViewport.addEventListener('resize', () => {
+    const newH = window.visualViewport.height;
+    if (lastH - newH > 100) setTimeout(scrollBottom, 50);
+    lastH = newH;
+  });
+}
 </script>
 </body>
 </html>
