@@ -150,6 +150,14 @@ body {
 .mode-btn:hover  { background: var(--hover-bg); color: var(--text); }
 .mode-btn.active { background: #a78bfa20; color: #a78bfa; }
 .mode-icon { font-size: 15px; }
+.week-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+.cs-card { border-bottom: 1px solid var(--border); padding: 12px 0; }
+.cs-card:last-child { border-bottom: none; }
+.cs-q { font-weight: 600; margin-bottom: 4px; }
+.cs-a { color: var(--text); line-height: 1.6; }
+.cs-header { font-size: 15px; font-weight: 700; color: var(--heading);
+             padding-bottom: 12px; border-bottom: 2px solid var(--border); margin-bottom: 4px; }
+.badge-cheatsheet { background: #22c55e20; color: #22c55e; }
 
 .curriculum { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
 
@@ -202,6 +210,45 @@ body {
 .badge-learn { background: #a78bfa20; color: #a78bfa; }
 .badge-quiz  { background: #60a5fa20; color: #60a5fa; }
 .badge-mock  { background: #f59e0b20; color: #f59e0b; }
+
+.model-picker {
+  font-size: 11px; font-weight: 500;
+  padding: 4px 22px 4px 10px; border-radius: 14px;
+  background: var(--hover-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M5 6L0 0h10z'/%3E%3C/svg%3E") no-repeat right 8px center;
+  color: var(--text); border: 1px solid var(--border);
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+  max-width: 180px; text-overflow: ellipsis;
+}
+.model-picker:hover { background-color: var(--border); }
+.model-picker.manual { color: #f59e0b; border-color: #f59e0b40; }
+
+.bubble .model-chip {
+  display: inline-block; margin-top: 6px;
+  font-size: 10px; color: var(--text-dim);
+  background: var(--hover-bg);
+  padding: 2px 7px; border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.2px;
+}
+.bubble .model-chip:empty { display: none; }
+
+.toast-stack {
+  position: absolute; top: 60px; right: 16px; z-index: 50;
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none; max-width: calc(100% - 32px);
+}
+.toast {
+  background: #1f2937e8; color: #fef3c7;
+  padding: 8px 12px; border-radius: 8px;
+  font-size: 12px; line-height: 1.4;
+  border-left: 3px solid #f59e0b;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  pointer-events: auto;
+  animation: toast-in 0.2s ease-out;
+}
+.toast.fade-out { animation: toast-out 0.4s ease-in forwards; }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to   { opacity: 0; transform: translateY(-6px); } }
 
 /* ── Messages ── */
 .messages {
@@ -468,6 +515,9 @@ textarea::placeholder { color: var(--text-dim); }
     <button class="mode-btn" id="mode-mock" onclick="setMode('mock')">
       <span class="mode-icon">🎯</span> Mock Interview
     </button>
+    <button class="mode-btn" id="mode-cheatsheet" onclick="setMode('cheatsheet')">
+      <span class="mode-icon">📋</span> Чит-шит
+    </button>
   </div>
 
   <div class="curriculum" id="curriculum-tree"></div>
@@ -479,8 +529,10 @@ textarea::placeholder { color: var(--text-dim); }
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleDesktopSidebar()" title="Свернуть меню">◀</button>
     <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">☰</button>
     <span class="header-topic" id="header-topic">Выбери тему →</span>
+    <select class="model-picker" id="model-picker" onchange="setModel(this.value)" title="Модель"></select>
     <span class="mode-badge badge-learn" id="mode-badge">Объяснение</span>
   </div>
+  <div class="toast-stack" id="toast-stack"></div>
 
   <div class="messages" id="messages">
     <div class="welcome" id="welcome">
@@ -489,6 +541,8 @@ textarea::placeholder { color: var(--text-dim); }
       <p>Начни с первой недели — Контейнеры и Docker. Каждая тема объясняется с нуля, с аналогиями и примерами кода.</p>
     </div>
   </div>
+
+  <div id="cheatsheet-view" style="display:none; overflow-y:auto; padding:16px; flex:1;"></div>
 
   <div class="quick-area" id="quick-area"></div>
 
@@ -515,6 +569,51 @@ let streaming  = false;
 let curriculum = [];
 let topics     = {};
 let progress   = new Set(JSON.parse(localStorage.getItem('mlops_progress') || '[]'));
+let model      = localStorage.getItem('mlops_model') || 'auto';
+let modelLabels = {};
+
+// ── Toast ──
+function toast(msg, ttl = 5000) {
+  const stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  stack.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }, ttl);
+}
+
+// ── Model picker ──
+async function loadModels() {
+  const sel = document.getElementById('model-picker');
+  if (!sel) return;
+  try {
+    const res  = await fetch('/api/models');
+    const data = await res.json();
+    sel.innerHTML = '';
+    modelLabels = {};
+    for (const m of data.models) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      sel.appendChild(opt);
+      if (m.id !== 'auto') modelLabels[m.id] = m.label;
+    }
+    sel.value = model;
+    sel.classList.toggle('manual', model !== 'auto');
+  } catch (e) {
+    console.error('Не загрузились модели:', e);
+  }
+}
+function setModel(m) {
+  model = m;
+  localStorage.setItem('mlops_model', m);
+  const sel = document.getElementById('model-picker');
+  if (sel) sel.classList.toggle('manual', m !== 'auto');
+}
 
 // ── Session (per browser tab via sessionStorage) ──
 function saveSession() {
@@ -613,9 +712,10 @@ function toggleTheme() {
 
 // ── Modes ──
 const MODES = {
-  learn: { label: 'Объяснение', badge: 'badge-learn' },
-  quiz:  { label: 'Квиз',       badge: 'badge-quiz'  },
-  mock:  { label: 'Mock Interview', badge: 'badge-mock' },
+  learn:      { label: 'Объяснение',    badge: 'badge-learn' },
+  quiz:       { label: 'Квиз',          badge: 'badge-quiz'  },
+  mock:       { label: 'Mock Interview', badge: 'badge-mock' },
+  cheatsheet: { label: 'Чит-шит',       badge: 'badge-cheatsheet' },
 };
 const QUICK = {
   learn: [
@@ -643,6 +743,7 @@ const QUICK = {
 // ── Init ──
 async function init() {
   initTheme();
+  loadModels();
   const res  = await fetch('/api/curriculum');
   const data = await res.json();
   curriculum = data.curriculum;
@@ -655,8 +756,9 @@ async function init() {
 function renderSidebar() {
   const el = document.getElementById('curriculum-tree');
   let html = '';
-  for (const week of curriculum) {
-    html += `<div class="week-label">${week.title}</div>`;
+  for (let i = 0; i < curriculum.length; i++) {
+    const week = curriculum[i];
+    if (i > 0) html += `<div class="week-divider"></div>`;
     for (const tid of week.topics) {
       const t = topics[tid];
       if (!t) continue;
@@ -685,6 +787,11 @@ function selectTopic(tid) {
   renderQuickActions();
 
   saveSession();
+
+  if (mode === 'cheatsheet') {
+    renderCheatsheet(tid);
+    return;
+  }
 
   const saved = loadHistory(tid, mode);
   if (saved && saved.length >= 2) {
@@ -726,7 +833,7 @@ async function autoStart(triggerMsg) {
     const res    = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [triggerEntry], topic_id: topic, mode }),
+      body: JSON.stringify({ messages: [triggerEntry], topic_id: topic, mode, model }),
     });
     const aiText = await streamInto(res, bubble);
     messages.push(triggerEntry);
@@ -743,15 +850,38 @@ async function autoStart(triggerMsg) {
 // ── Mode switch ──
 function setMode(m) {
   mode = m;
+  const isCheatsheet = m === 'cheatsheet';
+  // show/hide chat vs cheatsheet
+  const chatMessages = document.getElementById('messages');
+  const inputRow = document.getElementById('input-row');
+  const quickArea = document.getElementById('quick-area');
+  const cheatsheetView = document.getElementById('cheatsheet-view');
+  if (chatMessages) chatMessages.style.display = isCheatsheet ? 'none' : '';
+  if (inputRow) inputRow.style.display = isCheatsheet ? 'none' : '';
+  if (quickArea) quickArea.style.display = isCheatsheet ? 'none' : '';
+  if (cheatsheetView) {
+    cheatsheetView.style.display = isCheatsheet ? 'flex' : 'none';
+    cheatsheetView.style.flexDirection = 'column';
+  }
+  // update active button
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`mode-${m}`).classList.add('active');
-  const cfg   = MODES[m];
+  const btn = document.getElementById('mode-' + m);
+  if (btn) btn.classList.add('active');
+  // update badge
+  const cfg = MODES[m];
   const badge = document.getElementById('mode-badge');
-  badge.textContent = cfg.label;
-  badge.className   = `mode-badge ${cfg.badge}`;
+  if (cfg) {
+    badge.textContent = cfg.label;
+    badge.className   = `mode-badge ${cfg.badge}`;
+  }
   renderQuickActions();
   saveSession();
-  if (topic) {
+  // render cheatsheet if topic already selected
+  if (isCheatsheet && topic) {
+    renderCheatsheet(topic);
+    return;
+  }
+  if (!isCheatsheet && topic) {
     messages = [];
     clearMessages();
     const saved = loadHistory(topic, m);
@@ -768,6 +898,24 @@ function setMode(m) {
       autoStart(openers[m]);
     }
   }
+}
+
+// ── Cheatsheet ──
+function renderCheatsheet(tid) {
+  const t = topics[tid];
+  if (!t || !t.cheatsheet) return;
+  const view = document.getElementById('cheatsheet-view');
+  if (!view) return;
+  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
+  view.innerHTML = `
+    <div class="cs-header">${t.emoji} ${t.title}</div>
+    ${t.cheatsheet.map(pair => `
+      <div class="cs-card">
+        <div class="cs-q" style="color:${color}">❓ ${pair.q}</div>
+        <div class="cs-a">${pair.a}</div>
+      </div>
+    `).join('')}
+  `;
 }
 
 // ── Quick actions ──
@@ -804,7 +952,7 @@ async function send(text) {
     const res    = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, topic_id: topic, mode }),
+      body: JSON.stringify({ messages, topic_id: topic, mode, model }),
     });
     const aiText = await streamInto(res, bubble);
     messages.push({ role: 'assistant', content: aiText });
@@ -821,7 +969,19 @@ async function send(text) {
 async function streamInto(response, bubble) {
   const reader  = response.body.getReader();
   const decoder = new TextDecoder();
+  const content = bubble.querySelector('.content') || bubble;
+  const chip    = bubble.querySelector('.model-chip');
   let full = '', buffer = '';
+  let modelId = null, modelStart = 0;
+
+  function setChip(id, withDuration) {
+    if (!chip) return;
+    const label = modelLabels[id] || id;
+    chip.textContent = withDuration
+      ? `${label} · ${((Date.now() - modelStart) / 1000).toFixed(1)}s`
+      : label;
+  }
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -834,17 +994,28 @@ async function streamInto(response, bubble) {
       if (raw === '[DONE]') break;
       try {
         const parsed = JSON.parse(raw);
+        if (parsed.model) {
+          modelId    = parsed.model;
+          modelStart = Date.now();
+          setChip(modelId, false);
+        }
         if (parsed.text) {
           full += parsed.text;
-          bubble.innerHTML = renderMarkdown(full);
-          attachCodeButtons(bubble);
+          content.innerHTML = renderMarkdown(full);
+          attachCodeButtons(content);
           scrollBottom();
+        }
+        if (parsed.notice) {
+          toast(parsed.notice, 6000);
+        }
+        if (parsed.error) {
+          toast('Ошибка: ' + parsed.error, 8000);
         }
       } catch (_) {}
     }
   }
-  // Тултипы по терминам — один раз в финале, не на каждом чанке
-  addTooltips(bubble);
+  if (modelId) setChip(modelId, true);
+  addTooltips(content);
   return full;
 }
 
@@ -1055,14 +1226,24 @@ function appendBubble(role, content) {
   av.textContent = role === 'user' ? '👤' : '🤖';
   const bub = document.createElement('div');
   bub.className = 'bubble';
-  if (content === null) {
-    bub.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
-  } else if (role === 'user') {
-    bub.textContent = content;
+  if (role === 'user') {
+    bub.textContent = content ?? '';
   } else {
-    bub.innerHTML = renderMarkdown(content);
-    attachCodeButtons(bub);
-    addTooltips(bub);
+    const c = document.createElement('div');
+    c.className = 'content';
+    if (content === null) {
+      c.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+    } else {
+      c.innerHTML = renderMarkdown(content);
+    }
+    bub.appendChild(c);
+    const chip = document.createElement('div');
+    chip.className = 'model-chip';
+    bub.appendChild(chip);
+    if (content !== null) {
+      attachCodeButtons(c);
+      addTooltips(c);
+    }
   }
   row.appendChild(av);
   row.appendChild(bub);

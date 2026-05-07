@@ -27,3 +27,6 @@ env/
 # Flask
 instance/
 .webassets-cache
+
+# Superpowers brainstorm sessions
+.superpowers/
