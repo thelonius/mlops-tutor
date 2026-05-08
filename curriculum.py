@@ -1370,26 +1370,31 @@ TOPICS = {
 CURRICULUM = [
     {
         "id": "week1",
+        "section": "MLOps",
         "title": "Неделя 1: Основы",
         "topics": ["containers", "k8s_basics", "k8s_storage", "k8s_gpu"],
     },
     {
         "id": "week2",
+        "section": "MLOps",
         "title": "Неделя 2: Инференс",
         "topics": ["model_formats", "triton_basics", "triton_advanced"],
     },
     {
         "id": "week3",
+        "section": "MLOps",
         "title": "Неделя 3: Пайплайны",
         "topics": ["clearml", "cicd", "monitoring"],
     },
     {
         "id": "week4",
+        "section": "MLOps",
         "title": "Неделя 4: Интервью",
         "topics": ["system_design"],
     },
     {
         "id": "ml_classic",
+        "section": "ML",
         "title": "ML: классика",
         "topics": [
             "ml_linear",
@@ -1406,11 +1411,13 @@ CURRICULUM = [
     },
     {
         "id": "ml_sysdesign",
+        "section": "ML",
         "title": "ML: System Design",
         "topics": ["mlsd_framing", "mlsd_skew", "mlsd_ab", "mlsd_ranking"],
     },
     {
         "id": "system_design",
+        "section": "System Design",
         "title": "Блок: System Design (общий)",
         "topics": [
             "sd_fundamentals",
@@ -1424,6 +1431,7 @@ CURRICULUM = [
     },
     {
         "id": "python",
+        "section": "Python",
         "title": "Блок: Python для интервью (FastAPI/Pydantic)",
         "topics": [
             "py_data_types",
@@ -1440,6 +1448,7 @@ CURRICULUM = [
     },
     {
         "id": "algorithms",
+        "section": "Алгоритмы",
         "title": "Блок: Алгоритмы и структуры данных",
         "topics": [
             "algo_basics",
@@ -1461,20 +1470,48 @@ CURRICULUM = [
     },
     {
         "id": "llm_serving",
+        "section": "LLM",
         "title": "LLM Serving",
         "topics": ["vllm", "ollama", "llama_cpp"],
     },
     {
         "id": "llm_engineering",
+        "section": "LLM",
         "title": "LLM Engineering",
         "topics": ["rag", "langchain", "langgraph"],
     },
     {
         "id": "llm_models",
+        "section": "LLM",
         "title": "Open-Source LLM Модели",
         "topics": ["whisper", "mistral", "qwen"],
     },
 ]
+
+# Обратный маппинг topic_id → section (для выбора mock-контекста)
+TOPIC_SECTION: dict[str, str] = {
+    tid: group.get("section", "")
+    for group in CURRICULUM
+    for tid in group["topics"]
+}
+
+LLM_MOCK_PROMPT_TEMPLATE = """\
+Ты — Senior ML Engineer, специализирующийся на LLM-системах и AI-продуктах. \
+Проводишь техническое собеседование на позицию ML Engineer / LLM Engineer в AI-продуктовой компании.
+
+Фокус этой сессии: {interview_focus}
+
+КАК ТЫ ВЕДЁШЬ ИНТЕРВЬЮ:
+- Профессионально, как реальный интервьюер — не наставник
+- Начни с пары вопросов про опыт: какие LLM-стек использовал, что деплоил в продакшн
+- Потом технические вопросы по теме: архитектурные решения, trade-offs, конкретные инструменты
+- Если ответ поверхностный — копай: "а как это работает под капотом", "почему не X вместо Y"
+- Иногда дай практический кейс: "спроектируй RAG пайплайн для такой-то задачи"
+- В конце — задай вопрос на систему: как масштабировать, как мониторить, как тестировать
+- После каждого ответа кратко реагируй и задавай следующий вопрос
+
+Пиши ТОЛЬКО на русском и английском языках. Никогда не используй китайские, японские или корейские символы.
+Начни с приветствия и первого вопроса про опыт."""
 
 
 def build_system_prompt(topic_id: str, mode: str) -> str:
@@ -1520,6 +1557,9 @@ def build_system_prompt(topic_id: str, mode: str) -> str:
     if mode == "quiz":
         return QUIZ_PROMPT_TEMPLATE.format(**fields)
     if mode == "mock":
+        section = TOPIC_SECTION.get(topic_id, "")
+        if section == "LLM":
+            return LLM_MOCK_PROMPT_TEMPLATE.format(interview_focus=focus)
         return MOCK_PROMPT_TEMPLATE.format(**fields)
 
     return f"Ты ML/MLOps наставник. Тема: {title}. Помогай готовиться к интервью. Пиши по-русски."
