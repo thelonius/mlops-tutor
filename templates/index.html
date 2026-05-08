@@ -871,6 +871,7 @@ function selectTopic(tid) {
   if (saved && saved.length >= 2) {
     messages = saved;
     renderAllMessages();
+    renderQuickActions();
   } else {
     const t = topics[tid];
     const openers = {
