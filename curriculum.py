@@ -1365,24 +1365,6 @@ TOPICS = {
             {"q": "Как выбрать размер Qwen для задачи?", "a": "7B: быстрый inference, edge/CPU. 14B: хороший баланс quality/speed на 1xA100. 32B: сложные reasoning задачи. 72B: максимальное качество, production с несколькими GPU. Для code: Qwen2.5-Coder-32B в большинстве случаев."},
         ],
     },
-    "mlsd_mock": {
-        "title": "ML System Design Mock",
-        "emoji": "🎤",
-        "track": "ml",
-        "what": "полная симуляция System Design кейса: постановка → данные → фичи → модель → метрики → деплой → мониторинг",
-        "why": "System Design раунд на senior — финальный фильтр. Нужно удерживать все слои: бизнес, данные, модель, инфра",
-        "interview_focus": "полная симуляция кейса: фид, поиск, антифрод, рекомендации или другой сценарий на выбор интервьюера",
-        "cheatsheet": [
-            {"q": "Как структурировать ответ на ML System Design за 45 минут?", "a": "5 мин: clarifications + бизнес-метрика. 5 мин: данные + лейблы. 5 мин: фичи. 10 мин: модель + обоснование. 10 мин: serving + инфраструктура. 10 мин: мониторинг + итерация. Всегда начинай с цели, не с архитектуры."},
-            {"q": "Как отвечать на 'спроектируй рекомендательную систему'?", "a": "1. Clarify: DAU, latency budget, типы item, explicit/implicit feedback. 2. Two-stage: retrieval (two-tower, ANN) + ranking (LightGBM/NN). 3. Фичи: user history, item content, collaborative signals. 4. Serving: batch + real-time mix. 5. Метрики: CTR, time spent, diversity."},
-            {"q": "Как отвечать на 'спроектируй антифрод-систему'?", "a": "1. Типы фрода: account takeover, payment fraud, fake reviews. 2. Two-stage: rule-based blocklist + ML scoring. 3. Фичи: velocity, device fingerprint, behavioural patterns. 4. Trade-off: precision vs recall (false positive = блокировка реального юзера). 5. Human review queue."},
-            {"q": "Как говорить о trade-offs в ML SD интервью?", "a": "На каждое решение назови: (1) почему это, (2) что теряем, (3) как можно улучшить позже. Пример: 'Использую LightGBM вместо NN — быстрее до продакшна, хуже обрабатывает unstructured data, потом можно добавить embedding features'."},
-            {"q": "Какие clarifying questions задавать в начале?", "a": "DAU/MAU. Latency requirement (< 100ms? < 1s?). Scale (миллионы или тысячи item?). Cold start (новые пользователи часто?). Типы сигналов (explicit ratings или только implicit clicks?). Какие метрики бизнес считает важными? Запрещённые методы (GDPR, privacy)?"},
-            {"q": "Как обосновать выбор ML-модели?", "a": "Называй конкретную модель + причину: 'LightGBM — табличные данные, интерпретируемость важна, быстрый inference'. 'Two-tower NN — нужен retrieval из миллионов item, embedding similarity'. 'BERT — текстовые фичи, важна семантика'. Никогда просто 'нейросеть'."},
-            {"q": "Как описать мониторинг ML-системы?", "a": "Три уровня: (1) инфра — latency p99, error rate, CPU/GPU. (2) Данные — feature drift (PSI, KS), null rate, schema validation. (3) Модель — prediction distribution, business метрика (CTR, выручка), performance segmentation по когортам. Alerting на аномалии."},
-            {"q": "Как отвечать если не знаешь что-то в деталях?", "a": "Назови принцип и скажи что детали уточнил бы: 'я бы использовал vector DB для ANN поиска — конкретная реализация зависит от масштаба, смотрел бы FAISS vs Pinecone'. Показывает знание концепций и инженерную зрелость. Молчание хуже честного незнания."},
-        ],
-    },
 }
 
 CURRICULUM = [
@@ -1425,7 +1407,7 @@ CURRICULUM = [
     {
         "id": "ml_sysdesign",
         "title": "ML: System Design",
-        "topics": ["mlsd_framing", "mlsd_skew", "mlsd_ab", "mlsd_ranking", "mlsd_mock"],
+        "topics": ["mlsd_framing", "mlsd_skew", "mlsd_ab", "mlsd_ranking"],
     },
     {
         "id": "system_design",

@@ -106,10 +106,10 @@ def test_ml_classic_has_ten_topics():
     assert len(groups["ml_classic"]["topics"]) == 10
 
 
-def test_ml_sysdesign_has_five_topics():
+def test_ml_sysdesign_has_four_topics():
     groups = {g["id"]: g for g in CURRICULUM}
     assert "ml_sysdesign" in groups
-    assert len(groups["ml_sysdesign"]["topics"]) == 5
+    assert len(groups["ml_sysdesign"]["topics"]) == 4
 
 
 def test_all_topic_emojis_are_unique():
