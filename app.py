@@ -45,6 +45,7 @@ def chat():
     messages = data.get("messages", [])
     topic_id = data.get("topic_id", "")
     mode = data.get("mode", "learn")
+    preferred = data.get("model", MODELS[0])
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
@@ -56,8 +57,12 @@ def chat():
         for m in messages
     ]
 
+    # Стартуем с выбранной пользователем модели, остальные — fallback
+    start = MODELS.index(preferred) if preferred in MODELS else 0
+    model_chain = MODELS[start:] + MODELS[:start]
+
     def generate():
-        for i, model in enumerate(MODELS):
+        for i, model in enumerate(model_chain):
             try:
                 stream = client.chat.completions.create(
                     model=model,
