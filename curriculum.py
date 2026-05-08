@@ -191,6 +191,107 @@ TOPICS = {
             {"q": "Когда TorchScript лучше ONNX?", "a": "Когда модель содержит Python-управляющие конструкции (if/for), которые torch.onnx.export не может корректно развернуть. torch.jit.script сохраняет логику ветвления."},
             {"q": "Что проверить после экспорта в ONNX?", "a": "Запустить onnx.checker.check_model(model) и сравнить выходы onnxruntime с PyTorch на одних входных данных. Расхождение больше 1e-4 — повод проверить операторы."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Перед деплоем модель сериализуют в формат, не зависящий от Python: **ONNX** (универсальный), **TorchScript** (только PyTorch), **TensorRT** (максимальная скорость на NVIDIA). Чаще всего: PyTorch → ONNX → TensorRT для прода на GPU."},
+            {
+                "type": "table",
+                "title": "Сравнение форматов",
+                "headers": ["Формат", "Платформа", "Скорость", "Перенос", "Когда"],
+                "rows": [
+                    ["**ONNX**",         "CPU + GPU (любой вендор)",   "ok",            "**высокий**",           "обмен между фреймворками"],
+                    ["**TorchScript**",  "только PyTorch / libtorch",   "ok",            "только PyTorch",        "сложный control flow в модели"],
+                    ["**TensorRT**",     "**только NVIDIA GPU**",       "**5–10× быстрее**", "под конкретный GPU",   "макс. throughput на проде"],
+                    ["**SavedModel**",   "TensorFlow",                  "ok",            "TF/TFLite",             "TF-стек, mobile"],
+                    ["`.pt` / `.pth`",   "PyTorch + Python",            "медленно",       "плохо",                 "только разработка"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "ONNX vs TensorRT",
+                "items": [
+                    {"title": "ONNX",
+                     "points": [
+                         "Кросс-платформенный (CPU/GPU/edge)",
+                         "Один файл, разные runtime-ы",
+                         "`onnxruntime` с CUDA/TensorRT EP",
+                         "Универсальное решение",
+                     ]},
+                    {"title": "TensorRT",
+                     "points": [
+                         "Только NVIDIA GPU",
+                         "Compile под **конкретный GPU + batch**",
+                         "Layer fusion, INT8/FP16",
+                         "Макс. throughput на проде",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Экспорт PyTorch → ONNX с dynamic batch",
+                "code": (
+                    "import torch\n\n"
+                    "model.eval()\n"
+                    "dummy = torch.randn(1, 3, 224, 224)\n\n"
+                    "torch.onnx.export(\n"
+                    "    model, dummy, 'model.onnx',\n"
+                    "    opset_version=17,\n"
+                    "    input_names=['input'], output_names=['logits'],\n"
+                    "    dynamic_axes={\n"
+                    "        'input':  {0: 'batch'},\n"
+                    "        'logits': {0: 'batch'},\n"
+                    "    },\n"
+                    ")\n\n"
+                    "# Валидация\n"
+                    "import onnx, onnxruntime as ort, numpy as np\n"
+                    "onnx.checker.check_model(onnx.load('model.onnx'))\n"
+                    "sess = ort.InferenceSession('model.onnx', providers=['CUDAExecutionProvider'])\n"
+                    "out = sess.run(None, {'input': dummy.numpy()})"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "ONNX → TensorRT engine",
+                "code": (
+                    "trtexec \\\n"
+                    "  --onnx=model.onnx \\\n"
+                    "  --saveEngine=model.plan \\\n"
+                    "  --fp16 \\\n"
+                    "  --minShapes=input:1x3x224x224 \\\n"
+                    "  --optShapes=input:8x3x224x224 \\\n"
+                    "  --maxShapes=input:32x3x224x224"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Ключевые опции экспорта",
+                "items": [
+                    {"k": "`opset_version`",   "v": "17+ — современные операторы. Triton/ORT поддерживают разные."},
+                    {"k": "`dynamic_axes`",    "v": "переменный batch size, длина seq — иначе Triton не сможет батчить"},
+                    {"k": "`input_names` / `output_names`", "v": "должны совпадать с `config.pbtxt` Triton"},
+                    {"k": "`do_constant_folding=True`",     "v": "constant folding — упрощает граф"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Что выбрать",
+                "branches": [
+                    {"condition": "PyTorch → продакшн на NVIDIA GPU",  "outcome": "PyTorch → ONNX → TensorRT"},
+                    {"condition": "PyTorch с if/for внутри forward",   "outcome": "**TorchScript** (script, не trace)"},
+                    {"condition": "Кросс-платформа, CPU + GPU",          "outcome": "ONNX + onnxruntime"},
+                    {"condition": "TensorFlow стек",                     "outcome": "SavedModel / TFLite"},
+                    {"condition": "Edge / mobile",                       "outcome": "ONNX → CoreML / TFLite"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`dynamic_axes` обязательно для Triton.** Без переменного batch dim Triton не сможет делать dynamic batching — каждый запрос пойдёт отдельно. Throughput упадёт в разы."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Trace vs script.** `torch.jit.trace` записывает один проход — теряет if/for. `torch.jit.script` парсит код и сохраняет ветвления. Для моделей с условиями — только script."},
+            {"type": "callout", "kind": "warning",
+             "content": "**TensorRT engine привязан к GPU.** Скомпилированный на A100 файл не запустится на T4. Нужно перекомпилировать под целевой GPU."},
+        ],
     },
     "triton_basics": {
         "title": "Triton: основы и config.pbtxt",
@@ -210,6 +311,120 @@ TOPICS = {
             {"q": "Как проверить, что модель загружена?", "a": "GET /v2/models/<name>/ready или triton_client.is_model_ready(name). Статус READY означает, что модель принимает запросы."},
             {"q": "Что такое Python backend в Triton?", "a": "Позволяет написать модель как Python-класс с методами initialize, execute, finalize. Используется для препроцессинга, постпроцессинга или моделей без нативного бэкенда."},
             {"q": "Как версионировать модели без даунтайма?", "a": "Добавить новую версию в репозиторий — Triton обнаружит изменение через polling и загрузит новую версию, оставив старую доступной до переключения."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Triton Inference Server** — serving для разных бэкендов: ONNX, TensorRT, PyTorch, TensorFlow, Python custom. Конфиг модели — `config.pbtxt`. Структура папки — `<model>/<version>/model.<ext>`. Сервер сам делает батчинг и multi-instance."},
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Структура model repository",
+                "code": (
+                    "models/\n"
+                    "├── classifier/\n"
+                    "│   ├── config.pbtxt\n"
+                    "│   ├── 1/                      # версия\n"
+                    "│   │   └── model.onnx\n"
+                    "│   └── 2/                      # новая версия\n"
+                    "│       └── model.onnx\n"
+                    "└── preprocess/                 # Python backend\n"
+                    "    ├── config.pbtxt\n"
+                    "    └── 1/\n"
+                    "        └── model.py"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Минимальный config.pbtxt для ONNX",
+                "code": (
+                    'name: "classifier"\n'
+                    'backend: "onnxruntime"\n'
+                    'max_batch_size: 32\n\n'
+                    'input [{\n'
+                    '  name: "input"\n'
+                    '  data_type: TYPE_FP32\n'
+                    '  dims: [ 3, 224, 224 ]    # без batch dim — он max_batch_size\n'
+                    '}]\n\n'
+                    'output [{\n'
+                    '  name: "logits"\n'
+                    '  data_type: TYPE_FP32\n'
+                    '  dims: [ 1000 ]\n'
+                    '}]\n\n'
+                    'instance_group [{\n'
+                    '  kind: KIND_GPU\n'
+                    '  count: 2                  # 2 копии модели на GPU\n'
+                    '}]\n\n'
+                    'version_policy { latest { num_versions: 1 } }'
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Поля config.pbtxt",
+                "headers": ["Поле", "Назначение", "Пример"],
+                "rows": [
+                    ["`name`",            "имя модели (= имя папки)",                  '`"classifier"`'],
+                    ["`backend`",         "движок исполнения",                          "`onnxruntime`, `tensorrt`, `pytorch`, `python`"],
+                    ["`max_batch_size`",  "максимум для dynamic batching",              "32"],
+                    ["`input` / `output`", "форма тензоров (без batch dim)",            "`dims: [3, 224, 224]`"],
+                    ["`dims: [-1]`",      "динамическая ось (требует ONNX dynamic_axes)", "`dims: [-1, 768]`"],
+                    ["`instance_group`",  "сколько копий на CPU/GPU",                    "`kind: KIND_GPU, count: 2`"],
+                    ["`dynamic_batching`", "склеивание одиночных запросов в батч",       "`max_queue_delay_microseconds: 100`"],
+                    ["`version_policy`",  "какие версии загружать",                       "`latest`, `all`, `specific: [1,3]`"],
+                    ["`response_cache`",  "кеш одинаковых запросов",                      "`enable: true`"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Backends — что под капотом",
+                "items": [
+                    {"k": "`onnxruntime`", "v": "ONNX-модели через ORT (CPU/GPU)"},
+                    {"k": "`tensorrt`",    "v": "скомпилированные `.plan` (только NVIDIA GPU, **самый быстрый**)"},
+                    {"k": "`pytorch`",     "v": "TorchScript `.pt`"},
+                    {"k": "`tensorflow`",  "v": "SavedModel"},
+                    {"k": "`python`",      "v": "произвольный Python-класс — для preprocess/postprocess или ансамблей"},
+                    {"k": "`vllm`",         "v": "LLM-инференс с PagedAttention"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Python backend для препроцессинга",
+                "code": (
+                    "import triton_python_backend_utils as pb_utils\n"
+                    "import numpy as np\n\n"
+                    "class TritonPythonModel:\n"
+                    "    def initialize(self, args):\n"
+                    "        self.mean = np.array([0.485, 0.456, 0.406])\n"
+                    "        self.std  = np.array([0.229, 0.224, 0.225])\n\n"
+                    "    def execute(self, requests):\n"
+                    "        responses = []\n"
+                    "        for r in requests:\n"
+                    "            img = pb_utils.get_input_tensor_by_name(r, 'image').as_numpy()\n"
+                    "            x = (img / 255.0 - self.mean) / self.std\n"
+                    "            out = pb_utils.Tensor('input', x.astype(np.float32))\n"
+                    "            responses.append(pb_utils.InferenceResponse([out]))\n"
+                    "        return responses"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Команды и эндпоинты",
+                "items": [
+                    {"k": "`tritonserver --model-repository=/models`", "v": "запуск"},
+                    {"k": "`POST /v2/models/<name>/infer`",            "v": "HTTP-инференс"},
+                    {"k": "`GET /v2/models/<name>/ready`",              "v": "готова ли модель"},
+                    {"k": "`GET /v2/repository/index`",                  "v": "список моделей"},
+                    {"k": "`POST /v2/repository/models/<name>/load`",   "v": "догрузить новую модель"},
+                    {"k": "`GET /metrics`",                              "v": "Prometheus-метрики (порт 8002)"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`max_batch_size: 0` ≠ нет батчинга.** Это значит «модель сама управляет batch dim, не добавляй его». Для динамического батчинга нужно положительное `max_batch_size` и dynamic batch dim в модели."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Имена `input` / `output` должны совпадать.** Что записано в ONNX/TorchScript — то же должно быть в `config.pbtxt`. Расхождение → модель не загружается без понятной ошибки."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`instance_group` — это копии модели в памяти, не процессы.** На GPU c 24GB и моделью 4GB можно поднять `count: 4` — Triton будет параллельно обрабатывать запросы на одной GPU."},
         ],
     },
     "triton_advanced": {
@@ -463,6 +678,93 @@ TOPICS = {
             {"q": "Когда CatBoost лучше LightGBM?", "a": "При большом числе категориальных признаков и без желания тратить время на ручное кодирование. LightGBM быстрее при числовых фичах и больших датасетах."},
             {"q": "Что такое monotone constraints в бустинге?", "a": "Ограничение, что предсказание монотонно растёт (или убывает) с ростом признака. Важно в кредитном скоринге: вероятность дефолта должна расти с возрастом долга."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Бустинг строит деревья **последовательно**, каждое исправляет ошибки предыдущих. Стандарт для табличных данных. Три основные реализации: XGBoost, LightGBM, CatBoost. Качество близкое, разница — в скорости, обработке категорий и удобстве."},
+            {
+                "type": "compare",
+                "title": "Bagging vs Boosting",
+                "items": [
+                    {"title": "Bagging (Random Forest)",
+                     "points": [
+                         "Деревья **параллельно**, независимо",
+                         "Усреднение или голосование",
+                         "Снижает **variance**",
+                         "Глубокие деревья — норма",
+                     ]},
+                    {"title": "Boosting (XGB/LGBM/CatBoost)",
+                     "points": [
+                         "Деревья **последовательно**",
+                         "Каждое учится на ошибках предыдущих",
+                         "Снижает **bias** (и variance)",
+                         "Слабые деревья (depth 4-8)",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "XGBoost / LightGBM / CatBoost",
+                "headers": ["Свойство", "XGBoost", "LightGBM", "CatBoost"],
+                "rows": [
+                    ["Рост дерева",     "level-wise",         "**leaf-wise** (быстрее)",  "**oblivious** (симметричное)"],
+                    ["Скорость",        "ok",                 "**самый быстрый**",         "медленнее на числовых"],
+                    ["Категории",       "вручную (one-hot)",  "вручную (или int code)",   "**из коробки** (ordered TE)"],
+                    ["Память",          "ok",                 "**экономнее** (binning)",   "ok"],
+                    ["GPU",             "✓",                  "✓",                          "✓"],
+                    ["Переобучение",    "стабилен",           "склонен на малых данных",   "стабилен"],
+                    ["Когда брать",     "default, надёжно",   "много данных, числовые",    "много категориальных"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Ключевые гиперпараметры",
+                "items": [
+                    {"k": "`learning_rate` (eta)",  "v": "0.01–0.1. Меньше → больше деревьев, лучше обобщение."},
+                    {"k": "`n_estimators`",          "v": "обычно подбирается через **early stopping**, не вручную"},
+                    {"k": "`max_depth`",             "v": "4–8. Глубже = риск overfit"},
+                    {"k": "`num_leaves` (LGBM)",     "v": "2^max_depth. Контролирует размер leaf-wise дерева"},
+                    {"k": "`subsample`",             "v": "0.8 — bagging на уровне строк"},
+                    {"k": "`colsample_bytree`",      "v": "0.8 — random subset фич на каждое дерево"},
+                    {"k": "`reg_lambda`, `reg_alpha`", "v": "L2/L1 регуляризация на веса листьев"},
+                    {"k": "`monotone_constraints`",  "v": "+1/0/−1 на фичу — монотонность (скоринг)"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "LightGBM с early stopping",
+                "code": (
+                    "import lightgbm as lgb\n"
+                    "from sklearn.model_selection import train_test_split\n\n"
+                    "X_tr, X_va, y_tr, y_va = train_test_split(X, y, stratify=y, random_state=42)\n\n"
+                    "model = lgb.LGBMClassifier(\n"
+                    "    learning_rate=0.05,\n"
+                    "    n_estimators=2000,         # потолок, остановит сам\n"
+                    "    max_depth=-1, num_leaves=63,\n"
+                    "    subsample=0.8, colsample_bytree=0.8,\n"
+                    "    reg_lambda=1.0,\n"
+                    ")\n"
+                    "model.fit(X_tr, y_tr,\n"
+                    "    eval_set=[(X_va, y_va)],\n"
+                    "    callbacks=[lgb.early_stopping(100)])"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Что взять",
+                "branches": [
+                    {"condition": "много категориальных фич",     "outcome": "CatBoost (ordered TE из коробки)"},
+                    {"condition": "большой числовой датасет",    "outcome": "LightGBM (быстрый, экономный)"},
+                    {"condition": "малый датасет",                "outcome": "XGBoost / CatBoost (LGBM может overfit)"},
+                    {"condition": "monotone constraints",        "outcome": "XGBoost / LightGBM"},
+                    {"condition": "не уверен — default",          "outcome": "**XGBoost** + early stopping"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**learning_rate × n_estimators.** Маленький `lr` (0.01) + early stopping почти всегда даёт лучшее качество, чем `lr=0.1` с фиксированным числом деревьев. Просто медленнее обучается."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Категории в XGBoost.** Поддержка появилась с 1.5+, но «настоящая» (с ordered TE) — только в CatBoost. Если категориальных много, разница в качестве заметная."},
+        ],
     },
     "ml_metrics": {
         "title": "Метрики качества",
@@ -706,6 +1008,81 @@ TOPICS = {
             {"q": "Как preprocessing leakage проявляется на практике?", "a": "scaler.fit_transform(X_all) перед split. Imputer fitted на X_all. FeatureSelector evaluated on X_all. Все эти операции используют информацию val/test при подготовке train."},
             {"q": "Как правильно выстроить пайплайн без утечек?", "a": "sklearn Pipeline: все трансформеры fit только на train, автоматически применяются к val/test через cross_val_score. Pipeline + GridSearchCV гарантируют корректный порядок."},
             {"q": "Почему label encoding от порядка категорий — скрытая утечка?", "a": "Если порядок категорий в LabelEncoder определяется по всему датасету (включая тест), энкодинг теста может отличаться при переобучении на реальных данных. Нужно fit только на train."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Утечка = модель видит при обучении то, чего не должна. Признак: **AUC > 0.99 на сложной задаче**. Лечится не моделью, а проверкой пайплайна: что было известно в момент предсказания, а что нет."},
+            {
+                "type": "table",
+                "title": "Типы утечек",
+                "headers": ["Тип", "Что произошло", "Пример"],
+                "rows": [
+                    ["**Target leakage**",        "фича создана **после** таргета",                "`is_hospitalized` для диагноза"],
+                    ["**Temporal leakage**",      "будущее попало в train",                          "`fit_transform` до time-split"],
+                    ["**Preprocessing leakage**", "статистики посчитаны на всём датасете",          "`scaler.fit_transform(X_all)` до CV"],
+                    ["**Group leakage**",         "одна сущность в train и val",                    "пользователь в обоих фолдах"],
+                    ["**Target encoding leakage**", "mean(y) по всей выборке",                       "TE без out-of-fold"],
+                    ["**Data snooping**",          "мульти-тестирование на val",                     "200 экспериментов → val уже не val"],
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Запрещённые паттерны",
+                "kind": "dont",
+                "items": [
+                    "`scaler.fit_transform(X_all)` **до** train/val split",
+                    "`SMOTE` на val/test",
+                    "`fit_transform` на всём датасете перед `cross_val_score`",
+                    "`shuffle=True` в KFold на временных рядах",
+                    "Target encoding по всей выборке без out-of-fold",
+                    "Reuse тестовой выборки между экспериментами",
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Правильные практики",
+                "kind": "do",
+                "items": [
+                    "Все трансформеры в `Pipeline` — fit только на train-фолде",
+                    "Time-aware split для temporal данных",
+                    "GroupKFold когда есть сущность во многих примерах",
+                    "Test-set отложить, посмотреть один раз в конце",
+                    "Target encoding с out-of-fold (`KFoldTargetEncoder`)",
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Безопасный пайплайн через sklearn Pipeline",
+                "code": (
+                    "from sklearn.pipeline import Pipeline\n"
+                    "from sklearn.preprocessing import StandardScaler\n"
+                    "from sklearn.impute import SimpleImputer\n"
+                    "from sklearn.linear_model import LogisticRegression\n"
+                    "from sklearn.model_selection import cross_val_score\n\n"
+                    "# fit каждого трансформера происходит ВНУТРИ каждого CV-фолда\n"
+                    "pipe = Pipeline([\n"
+                    "    ('imputer', SimpleImputer(strategy='median')),\n"
+                    "    ('scaler',  StandardScaler()),\n"
+                    "    ('clf',     LogisticRegression()),\n"
+                    "])\n\n"
+                    "scores = cross_val_score(pipe, X, y, cv=5, scoring='roc_auc')"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Подозрительно высокие метрики — что делать",
+                "branches": [
+                    {"condition": "AUC > 0.99 на сложной задаче",   "outcome": "проверь target leakage — что фича знает о таргете"},
+                    {"condition": "одна фича c importance ≫ остальных", "outcome": "выкинь её → если метрика рухнула, она утекает"},
+                    {"condition": "оффлайн отлично, прод плох",      "outcome": "fit_transform на X_all? фичи доступны в prod-time?"},
+                    {"condition": "повторяемость низкая между prod-запусками", "outcome": "смотри FeatureStore: что было известно в момент предсказания"},
+                ],
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Target leakage труднее всего поймать.** Часто фича создана аналитиком из той же таблицы, где лежит таргет. На train работает, в проде её просто нет (или она другая). Правило: feature должен быть **доступен** в момент предсказания — не позже."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Data snooping тоже утечка.** Если ты 50 раз смотрел на val при тюнинге — ты к нему overfit-ишь. Решение: **nested CV** или **отдельный test set**, который трогаем только раз."},
         ],
     },
     "ml_imbalance": {
@@ -1473,6 +1850,86 @@ TOPICS = {
             {"q": "Как версионировать данные для ML?", "a": "DVC для датасетов (Git-like для файлов + remote storage). MLflow/ClearML для артефактов эксперимента. Важно: тренировочный датасет должен быть reproducible — каждый запуск с одним dataset_id должен давать одинаковый результат."},
             {"q": "Что такое feature pipeline и как его тестировать?", "a": "Pipeline, превращающий сырые данные в фичи для модели. Тестировать: unit-тесты на трансформации, integration-тесты на реальных данных, мониторинг на nulls/outliers/distribution shift в продакшне."},
             {"q": "Как избежать temporal leakage при target encoding?", "a": "Использовать out-of-fold encoding: для каждого fold вычислять encoding только по другим fold-ам. Иначе target encoding вычисленный на всём датасете протекает будущую информацию в тренинг."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Train-serving skew** — фича на обучении посчитана не так, как в проде. Классический сценарий «оффлайн отлично, прод плох». Решение системное — **feature store** с одинаковой логикой и **point-in-time** join."},
+            {
+                "type": "compare",
+                "title": "Offline vs Online хранилище фич",
+                "items": [
+                    {"title": "Offline",
+                     "points": [
+                         "Parquet / Hive / S3",
+                         "Batch-вычисления",
+                         "Богатые агрегации за дни/недели",
+                         "Для обучения и backfill",
+                     ]},
+                    {"title": "Online",
+                     "points": [
+                         "Redis / DynamoDB / KeyDB",
+                         "Low-latency (мс)",
+                         "Точечный lookup по ключу",
+                         "Для инференса в реальном времени",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Источники skew",
+                "headers": ["Источник", "Что произошло", "Лечение"],
+                "rows": [
+                    ["**Разные пайплайны**",     "train в pandas, prod на Java",        "одна точка истины (feature store)"],
+                    ["**Logic skew**",            "немного разные формулы",              "переиспользуемые SQL/UDF"],
+                    ["**Temporal leakage**",     "будущая инфо в train фичах",          "**point-in-time** join"],
+                    ["**Distribution skew**",    "prod-данные изменились",               "мониторинг (PSI/KS), ретрейн"],
+                    ["**Schema skew**",          "новая категория, NaN",                "schema validation + alert"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Point-in-time join — что это",
+                "items": [
+                    {"k": "**Обычный join**",      "v": "берёт текущее значение фичи (как в момент train)"},
+                    {"k": "**PIT join**",          "v": "берёт значение фичи **на момент label** (как было бы в проде)"},
+                    {"k": "**Зачем**",              "v": "избавиться от утечки будущего в исторических данных"},
+                    {"k": "**Реализация**",         "v": "Feast / Tecton / Hopsworks делают это из коробки"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Feast: получение фич с PIT join",
+                "code": (
+                    "from feast import FeatureStore\n"
+                    "import pandas as pd\n\n"
+                    "store = FeatureStore(repo_path='./feature_repo')\n\n"
+                    "# entity_df: для каждого пользователя — момент события (label timestamp)\n"
+                    "entity_df = pd.DataFrame({\n"
+                    "    'user_id': [1, 2, 3],\n"
+                    "    'event_timestamp': [t1, t2, t3],\n"
+                    "})\n\n"
+                    "# Feast достаёт значения фич ТОЛЬКО как они были на event_timestamp\n"
+                    "training_df = store.get_historical_features(\n"
+                    "    entity_df=entity_df,\n"
+                    "    features=['user_stats:purchases_30d', 'user_stats:clicks_7d'],\n"
+                    ").to_df()"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Подозрение на skew — что делать",
+                "branches": [
+                    {"condition": "оффлайн отлично, prod плох",   "outcome": "лог фич в проде → сравни с обучающими (PSI/KS на каждую фичу)"},
+                    {"condition": "skew на одной фиче",            "outcome": "пайплайн её вычисления — две точки истины?"},
+                    {"condition": "skew на многих фичах",          "outcome": "источник данных upstream сломан"},
+                    {"condition": "skew нет, но prod деградирует",  "outcome": "concept drift: переобучение, monitoring labels"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Feature store ≠ просто база.** Главная ценность — **гарантия одинаковости** фич offline (для обучения) и online (для инференса) + **point-in-time** корректность исторических join-ов."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Логируй фичи в проде.** Не только predictions, но и **input features**. Только так можно потом проверить distribution shift и точно отделить data drift от skew."},
         ],
     },
     "mlsd_ab": {

@@ -210,4 +210,49 @@ window.GLOSSARY = {
   "OEC": "Overall Evaluation Criterion — главная метрика A/B-теста.",
   "MDE": "Minimum Detectable Effect — минимальный эффект, который тест способен обнаружить.",
   "CUPED": "Controlled-experiment Using Pre-Experiment Data — снижение variance в A/B через ковариаты.",
+
+  // ── Бустинг — гиперпараметры ──
+  "learning_rate": "Скорость обучения. Меньше = больше деревьев нужно, лучше обобщение. Обычно 0.01-0.1.",
+  "n_estimators": "Число деревьев в ансамбле. Подбирается через early stopping.",
+  "max_depth": "Максимальная глубина дерева. 4-8 для бустинга, 10+ для Random Forest.",
+  "num_leaves": "Число листьев в дереве (LightGBM). Обычно 2^max_depth.",
+  "subsample": "Доля строк в каждой итерации. 0.8 — bagging-эффект, снижает overfit.",
+  "colsample_bytree": "Доля признаков на дерево. 0.8 — random subspace.",
+  "monotone_constraints": "Ограничение монотонности предсказания по фиче. Скоринг.",
+  "ordered TE": "Ordered Target Encoding — CatBoost считает статистику только по предыдущим примерам в случайной перестановке. Без утечки.",
+  "leaf-wise": "Стратегия роста дерева в LightGBM: лист с максимальным снижением loss-а.",
+  "level-wise": "Стратегия роста дерева в XGBoost: разбиваем все узлы одного уровня.",
+  "GOSS": "Gradient-based One-Side Sampling — LightGBM отбирает примеры с большим градиентом.",
+  "histogram-based": "LightGBM/XGBoost дискретизируют признаки в бины — быстрее сортировки.",
+
+  // ── Feature store ──
+  "Feast": "Open-source feature store. Хранит фичи offline + online, делает point-in-time join.",
+  "Tecton": "Managed feature store. Платный аналог Feast.",
+  "Hopsworks": "Платформа с встроенным feature store.",
+  "point-in-time join": "Историческая выборка фич — берутся значения, как они были на момент label timestamp. Без утечки будущего.",
+  "PIT join": "Point-in-time join.",
+  "train-serving skew": "Расхождение фич между обучением и продом. Главная причина «оффлайн отлично, прод плох».",
+  "skew": "Train-serving skew — расхождение фич между train и production.",
+  "online store": "Хранилище фич для инференса с low-latency (Redis/DynamoDB/KeyDB).",
+  "offline store": "Хранилище фич для обучения и backfill (Parquet/Hive/S3).",
+
+  // ── Triton конфиг ──
+  "max_batch_size": "Максимум для dynamic batching. 0 = модель сама управляет batch dim.",
+  "version_policy": "Какие версии модели Triton загружает: latest / all / specific.",
+  "Python backend": "В Triton: бэкенд для произвольного Python-кода. Для preprocess/postprocess или ансамблей.",
+  "model.plan": "Скомпилированный TensorRT engine — привязан к конкретному GPU.",
+  "savedmodel": "Формат TensorFlow для сохранения модели целиком (граф + веса + сигнатуры).",
+  "SavedModel": "Формат TensorFlow для сохранения модели целиком.",
+  "opset": "Версия набора операторов ONNX.",
+  "opset_version": "Версия набора операторов ONNX.",
+  "dynamic_axes": "В torch.onnx.export — какие оси переменные (batch, seq_len). Без них Triton не сможет батчить.",
+  "trtexec": "CLI-утилита TensorRT для конвертации ONNX → engine и бенчмаркинга.",
+  "torch.jit.trace": "Сериализация PyTorch через запись одного прохода. Теряет if/for.",
+  "torch.jit.script": "Сериализация PyTorch через парсинг кода. Сохраняет ветвления.",
+
+  // ── Утечки ──
+  "target leakage": "Фича создана после таргета или содержит информацию о нём. Главная причина «AUC > 0.99 на сложной задаче».",
+  "temporal leakage": "Будущая информация попала в train (например fit_transform до time-split).",
+  "preprocessing leakage": "Скейлер/импьютер fit-нут на всём датасете до CV.",
+  "data snooping": "Множественное тестирование на одном val-set — постепенно overfit-ишь к нему.",
 };
