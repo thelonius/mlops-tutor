@@ -21,10 +21,11 @@ app = Flask(__name__)
 # Цепочка моделей: при 429 на одной — переключаемся на следующую.
 # Маленькую llama-3.1-8b держим в самом конце — у неё баг с CJK.
 MODELS = [
-    "llama-3.3-70b-versatile",                 # лучшее качество, 100K токенов/день
-    "openai/gpt-oss-120b",                     # 120B fallback, отдельная квота
+    "llama-3.3-70b-versatile",                    # основная, 100K токенов/день
+    "qwen/qwen3-32b",                             # Qwen3 32B — хорошее качество, своя квота
+    "openai/gpt-oss-120b",                        # 120B, отдельная квота
     "meta-llama/llama-4-scout-17b-16e-instruct",  # ещё запас
-    "llama-3.1-8b-instant",                    # самый последний — может выдавать иероглифы
+    "llama-3.1-8b-instant",                       # последний — может давать иероглифы
 ]
 
 
@@ -68,9 +69,33 @@ def chat():
                 if i > 0:
                     note = f"_(резервная модель: {model})_\n\n"
                     yield f"data: {json.dumps({'text': note})}\n\n"
+                in_think = False
+                think_buf = ""
                 for chunk in stream:
                     text = chunk.choices[0].delta.content
-                    if text:
+                    if not text:
+                        continue
+                    if in_think:
+                        think_buf += text
+                        if "</think>" in think_buf:
+                            in_think = False
+                            after = think_buf.split("</think>", 1)[1]
+                            think_buf = ""
+                            if after:
+                                yield f"data: {json.dumps({'text': after})}\n\n"
+                    elif "<think>" in text:
+                        before, rest = text.split("<think>", 1)
+                        if before:
+                            yield f"data: {json.dumps({'text': before})}\n\n"
+                        in_think = True
+                        think_buf = rest
+                        if "</think>" in think_buf:
+                            in_think = False
+                            after = think_buf.split("</think>", 1)[1]
+                            think_buf = ""
+                            if after:
+                                yield f"data: {json.dumps({'text': after})}\n\n"
+                    else:
                         yield f"data: {json.dumps({'text': text})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
@@ -92,9 +117,9 @@ def chat():
 
 TTS_VOICE = "ru-RU-SvetlanaNeural"
 
-@app.route("/api/tts")
+@app.route("/api/tts", methods=["POST"])
 def tts():
-    text = request.args.get("text", "").strip()
+    text = (request.json or {}).get("text", "").strip()
     if not text:
         return jsonify({"error": "No text"}), 400
 
