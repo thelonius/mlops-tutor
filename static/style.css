@@ -161,6 +161,112 @@ body {
 .tts-btn.tts-playing { background: #a78bfa20; color: #a78bfa; border-color: #a78bfa40; }
 .cs-q-row { display: flex; align-items: flex-start; gap: 4px; }
 
+/* ── Cheatsheet blocks ── */
+.cs-block { margin-top: 14px; flex-shrink: 0; }
+.cs-block:first-of-type { margin-top: 8px; }
+.cs-block-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
+}
+.cs-block-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-style: italic; }
+
+.cs-tldr {
+  background: #a78bfa10;
+  border-left: 3px solid #a78bfa;
+  padding: 10px 14px; border-radius: 4px;
+  font-size: 13.5px; line-height: 1.6;
+}
+.cs-tldr p { margin: 0; }
+.cs-tldr p + p { margin-top: 6px; }
+
+.cs-code pre {
+  background: var(--code-bg); border: 1px solid var(--code-border);
+  border-radius: 8px; padding: 12px; overflow-x: auto; margin: 0;
+}
+.cs-code code { font-size: 12.5px; font-family: 'JetBrains Mono','Fira Code',monospace; }
+.cs-code-caption { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+
+.cs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cs-table th, .cs-table td {
+  text-align: left; padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cs-table th {
+  font-weight: 600; color: var(--text-dim);
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  background: var(--hover-bg-soft);
+}
+.cs-table tbody tr:hover { background: var(--hover-bg-soft); }
+.cs-table code { font-size: 11.5px; padding: 1px 4px; }
+
+.cs-compare-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.cs-compare-col {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; min-width: 0;
+}
+.cs-compare-title {
+  font-size: 13px; font-weight: 700;
+  margin-bottom: 6px; color: var(--heading);
+}
+.cs-compare-col ul { padding-left: 18px; margin: 0; }
+.cs-compare-col li { font-size: 12.5px; line-height: 1.6; margin: 3px 0; }
+
+.cs-list ul, .cs-list ol { padding-left: 22px; margin: 0; }
+.cs-list li { font-size: 13px; line-height: 1.7; margin: 2px 0; }
+.cs-list-do    li::marker { content: '✓ '; color: #22c55e; font-weight: 700; }
+.cs-list-dont  li::marker { content: '✗ '; color: #ef4444; font-weight: 700; }
+.cs-list-do, .cs-list-dont { list-style: none; }
+.cs-list-do ul, .cs-list-dont ul { padding-left: 4px; list-style: none; }
+.cs-list-do li, .cs-list-dont li { padding-left: 18px; position: relative; }
+.cs-list-do li::before { content: '✓'; color: #22c55e; font-weight: 700; position: absolute; left: 0; }
+.cs-list-dont li::before { content: '✗'; color: #ef4444; font-weight: 700; position: absolute; left: 0; }
+
+.cs-callout {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 14px; border-radius: 6px;
+  font-size: 13px; line-height: 1.6;
+}
+.cs-callout-icon { font-size: 16px; flex-shrink: 0; line-height: 1.3; }
+.cs-callout-body p { margin: 0; }
+.cs-callout-body p + p { margin-top: 4px; }
+.cs-callout-warning { background: #f59e0b10; border-left: 3px solid #f59e0b; }
+.cs-callout-tip     { background: #60a5fa10; border-left: 3px solid #60a5fa; }
+.cs-callout-fact    { background: #a78bfa10; border-left: 3px solid #a78bfa; }
+.cs-callout-gotcha  { background: #ef444410; border-left: 3px solid #ef4444; }
+
+.cs-flow {
+  font-family: 'JetBrains Mono','Fira Code',monospace;
+  font-size: 12.5px; line-height: 1.8;
+  background: var(--code-bg); border: 1px solid var(--code-border);
+  border-radius: 8px; padding: 10px 14px;
+}
+.cs-flow-branch { white-space: pre; }
+.cs-flow-cond  { color: var(--heading); font-weight: 600; }
+.cs-flow-arrow { color: var(--text-dim); margin: 0 6px; }
+.cs-flow-out   { color: #a78bfa; }
+
+.cs-matrix { border-collapse: collapse; font-size: 13px; margin: 4px 0; }
+.cs-matrix th, .cs-matrix td {
+  text-align: center; padding: 10px 16px;
+  border: 1px solid var(--border);
+}
+.cs-matrix th { font-weight: 600; color: var(--text-dim); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.cs-matrix-good { background: #22c55e15; color: #22c55e; font-weight: 700; }
+.cs-matrix-bad  { background: #ef444415; color: #ef4444; font-weight: 700; }
+
+.cs-kv dl { margin: 0; }
+.cs-kv-row {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 12px; padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cs-kv-row:last-child { border-bottom: none; }
+.cs-kv dt { font-weight: 600; color: var(--heading); font-size: 13px; }
+.cs-kv dd { margin: 0; color: var(--text); font-size: 13px; line-height: 1.6; }
+
 .curriculum { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
 
 .section-header {
@@ -535,6 +641,10 @@ textarea::placeholder { color: var(--text-dim); }
   .qbtn { font-size: 11.5px; padding: 4px 10px; }
   .bubble { font-size: 14px; padding: 10px 13px; }
   .avatar { width: 28px; height: 28px; }
+  .cs-table-wrap, .cs-matrix-wrap { overflow-x: auto; }
+  .cs-table th, .cs-table td { padding: 6px 8px; font-size: 12px; }
+  .cs-matrix th, .cs-matrix td { padding: 8px 12px; font-size: 12px; }
+  .cs-compare-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Touch-устройства: всегда показываем кнопку "Разобрать" ── */

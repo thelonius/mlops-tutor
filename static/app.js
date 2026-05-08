@@ -365,21 +365,141 @@ function setMode(m) {
 // ── Cheatsheet ──
 function renderCheatsheet(tid) {
   const t = topics[tid];
-  if (!t || !t.cheatsheet) return;
+  if (!t) return;
   const view = document.getElementById('cheatsheet-view');
   if (!view) return;
   view.style.display = 'flex';
   view.style.flexDirection = 'column';
-  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
-  view.innerHTML = `
-    <div class="cs-header">${t.emoji} ${t.title}</div>
-    ${t.cheatsheet.map((pair) => `
+
+  let body = '';
+  if (Array.isArray(t.cheatsheet_blocks) && t.cheatsheet_blocks.length) {
+    body = t.cheatsheet_blocks.map(renderCsBlock).join('');
+  } else if (Array.isArray(t.cheatsheet)) {
+    const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
+    body = t.cheatsheet.map((pair) => `
       <div class="cs-card">
         <div class="cs-q" style="color:${color}">${pair.q}</div>
         <div class="cs-a">${pair.a}</div>
       </div>
-    `).join('')}
-  `;
+    `).join('');
+  }
+
+  view.innerHTML = `<div class="cs-header">${t.emoji} ${t.title}</div>${body}`;
+
+  if (window.hljs) {
+    view.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  }
+}
+
+// ── Cheatsheet block rendering ──
+function renderCsBlock(b) {
+  switch (b.type) {
+    case 'tldr':    return renderCsTldr(b);
+    case 'code':    return renderCsCode(b);
+    case 'table':   return renderCsTable(b);
+    case 'compare': return renderCsCompare(b);
+    case 'list':    return renderCsList(b);
+    case 'callout': return renderCsCallout(b);
+    case 'flow':    return renderCsFlow(b);
+    case 'matrix':  return renderCsMatrix(b);
+    case 'kv':      return renderCsKv(b);
+    default:        return '';
+  }
+}
+
+function csInline(s) {
+  if (typeof s !== 'string') return '';
+  try { return marked.parseInline(stripCJK(s)); }
+  catch { return csEscape(s); }
+}
+
+function csEscape(s) {
+  const d = document.createElement('div');
+  d.textContent = s ?? '';
+  return d.innerHTML;
+}
+
+function csTitle(b) {
+  return b.title ? `<div class="cs-block-title">${csInline(b.title)}</div>` : '';
+}
+
+function renderCsTldr(b) {
+  return `<div class="cs-block cs-tldr">${renderMarkdown(b.content || '')}</div>`;
+}
+
+function renderCsCode(b) {
+  const cap  = b.caption ? `<div class="cs-code-caption">${csInline(b.caption)}</div>` : '';
+  const lang = b.lang || 'plaintext';
+  return `<div class="cs-block cs-code">${cap}<pre><code class="language-${csEscape(lang)}">${csEscape(b.code || '')}</code></pre></div>`;
+}
+
+function renderCsTable(b) {
+  const head = (b.headers || []).map(h => `<th>${csInline(h)}</th>`).join('');
+  const rows = (b.rows || []).map(r =>
+    `<tr>${(r || []).map(c => `<td>${csInline(c)}</td>`).join('')}</tr>`
+  ).join('');
+  const note = b.note ? `<div class="cs-block-note">${csInline(b.note)}</div>` : '';
+  return `<div class="cs-block cs-table-wrap">${csTitle(b)}<table class="cs-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>${note}</div>`;
+}
+
+function renderCsCompare(b) {
+  const items = b.items || [];
+  const cols = items.map(it => {
+    const points = (it.points || []).map(p => `<li>${csInline(p)}</li>`).join('');
+    const titleStyle = it.color ? ` style="color:${csEscape(it.color)}"` : '';
+    return `<div class="cs-compare-col"><div class="cs-compare-title"${titleStyle}>${csInline(it.title || '')}</div><ul>${points}</ul></div>`;
+  }).join('');
+  return `<div class="cs-block cs-compare">${csTitle(b)}<div class="cs-compare-grid">${cols}</div></div>`;
+}
+
+function renderCsList(b) {
+  const kind = b.kind || 'plain';
+  const tag  = kind === 'steps' ? 'ol' : 'ul';
+  const items = (b.items || []).map(it => `<li>${csInline(it)}</li>`).join('');
+  return `<div class="cs-block cs-list cs-list-${csEscape(kind)}">${csTitle(b)}<${tag}>${items}</${tag}></div>`;
+}
+
+function renderCsCallout(b) {
+  const kind = b.kind || 'tip';
+  const icons = {warning: '⚠️', tip: '💡', fact: '📌', gotcha: '🪤'};
+  const icon = icons[kind] || '📌';
+  return `<div class="cs-block cs-callout cs-callout-${csEscape(kind)}"><span class="cs-callout-icon">${icon}</span><div class="cs-callout-body">${renderMarkdown(b.content || '')}</div></div>`;
+}
+
+function renderCsFlow(b) {
+  const renderBr = (br, depth = 0) => {
+    const cond = br.condition ? `<span class="cs-flow-cond">${csInline(br.condition)}</span>` : '';
+    const arrow = br.outcome ? `<span class="cs-flow-arrow">→</span>` : '';
+    const out = br.outcome ? `<span class="cs-flow-out">${csInline(br.outcome)}</span>` : '';
+    const kids = (br.children || []).map(c => renderBr(c, depth + 1)).join('');
+    return `<div class="cs-flow-branch" style="margin-left:${depth * 18}px">${cond}${arrow}${out}</div>${kids}`;
+  };
+  const branches = (b.branches || []).map(br => renderBr(br)).join('');
+  return `<div class="cs-block cs-flow">${csTitle(b)}${branches}</div>`;
+}
+
+function renderCsMatrix(b) {
+  const cols = b.cols || [];
+  const rows = b.rows || [];
+  const cells = b.cells || [];
+  const meta = b.cellMeta || [];
+  const headRow = `<tr><th></th>${cols.map(c => `<th>${csInline(c)}</th>`).join('')}</tr>`;
+  const bodyRows = rows.map((rowLabel, i) => {
+    const cs = (cells[i] || []).map((cell, j) => {
+      const m = meta[i]?.[j];
+      const cls = m?.class ? ` class="cs-matrix-${csEscape(m.class)}"` : '';
+      return `<td${cls}>${csInline(cell)}</td>`;
+    }).join('');
+    return `<tr><th>${csInline(rowLabel)}</th>${cs}</tr>`;
+  }).join('');
+  return `<div class="cs-block cs-matrix-wrap">${csTitle(b)}<table class="cs-matrix">${headRow}${bodyRows}</table></div>`;
+}
+
+function renderCsKv(b) {
+  const items = (b.items || []).map(it =>
+    `<div class="cs-kv-row"><dt>${csInline(it.k || '')}</dt><dd>${csInline(it.v || '')}</dd></div>`
+  ).join('');
+  return `<div class="cs-block cs-kv">${csTitle(b)}<dl>${items}</dl></div>`;
 }
 
 // ── MC Quiz ──
