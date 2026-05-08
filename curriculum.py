@@ -1531,28 +1531,14 @@ CURRICULUM = [
     },
     # ── MLOps ──
     {
-        "id": "mlops_containers",
+        "id": "mlops",
         "section": "MLOps",
-        "title": "Контейнеры и K8s",
-        "topics": ["containers", "k8s_basics", "k8s_storage", "k8s_gpu"],
-    },
-    {
-        "id": "mlops_inference",
-        "section": "MLOps",
-        "title": "Модели и Inference",
-        "topics": ["model_formats", "triton_basics", "triton_advanced"],
-    },
-    {
-        "id": "mlops_practice",
-        "section": "MLOps",
-        "title": "ClearML, CI/CD, Мониторинг",
-        "topics": ["clearml", "cicd", "monitoring"],
-    },
-    {
-        "id": "mlops_sysdesign",
-        "section": "MLOps",
-        "title": "System Design",
-        "topics": ["system_design"],
+        "title": "MLOps",
+        "topics": [
+            "containers", "k8s_basics", "k8s_storage", "k8s_gpu",
+            "model_formats", "triton_basics", "triton_advanced",
+            "clearml", "cicd", "monitoring", "system_design",
+        ],
     },
     # ── ML ──
     {
