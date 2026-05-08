@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 
@@ -9,6 +10,8 @@ import tempfile
 import edge_tts
 from openai import OpenAI
 
+import shares
+
 load_dotenv()
 
 client = OpenAI(
@@ -17,6 +20,16 @@ client = OpenAI(
 )
 
 app = Flask(__name__)
+shares.init_db(os.getenv("SHARES_DB_PATH", "data/shares.db"))
+
+
+def _b64url_decode(s: str) -> bytes:
+    s = s + "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s)
+
+
+def _b64url_encode(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
 
 # Цепочка моделей: при 429 на одной — переключаемся на следующую.
 # Маленькую llama-3.1-8b держим в самом конце — у неё баг с CJK.
@@ -155,6 +168,38 @@ def transcribe():
                 language="ru",
             )
     return jsonify({"text": result.text})
+
+
+# ── Шеринг сессий ──
+@app.route("/api/share", methods=["POST"])
+def share_create():
+    data = request.json or {}
+    ct_b64 = data.get("ciphertext_b64", "")
+    iv_b64 = data.get("iv_b64", "")
+    if not ct_b64 or not iv_b64:
+        return jsonify({"error": "missing ciphertext_b64 or iv_b64"}), 400
+    try:
+        ct = _b64url_decode(ct_b64)
+        iv = _b64url_decode(iv_b64)
+    except Exception:
+        return jsonify({"error": "invalid base64"}), 400
+    try:
+        sid = shares.create_share(ct, iv)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 413
+    return jsonify({"id": sid})
+
+
+@app.route("/api/share/<sid>", methods=["GET"])
+def share_get(sid):
+    row = shares.get_share(sid)
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    ct, iv = row
+    return jsonify({
+        "ciphertext_b64": _b64url_encode(ct),
+        "iv_b64": _b64url_encode(iv),
+    })
 
 
 if __name__ == "__main__":
