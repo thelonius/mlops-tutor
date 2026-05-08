@@ -1277,13 +1277,14 @@ TOPICS = {
 
     # ── Проекты в портфолио: PropTech RAG ──
     "proj_proptech_pitch": {
-        "title": "PropTech RAG: подача на собесе",
+        "title": "proptech-semantic-search: pitch на собесе",
         "emoji": "🎤",
         "track": "ml",
-        "what": "структура ответа на 'tell me about a recent sophisticated project', драматургия pitch'a, честная подача scaffolding-статуса проекта proptech-semantic-search",
+        "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation) система lifestyle-поиска недвижимости (FastAPI, Qdrant, мульти-провайдер LLM). Тема: структура ответа на 'tell me about a recent sophisticated project', драматургия pitch'a, честная подача scaffolding-статуса. Здесь RAG означает Retrieval-Augmented Generation, не Red/Amber/Green project status",
         "why": "На ML Engineer-собесе классический вопрос про самый недавний сложный проект формирует первое впечатление. Сильный pitch проектируется заранее, а не импровизируется",
         "interview_focus": "30/60/180-секундные версии ответа, выбор главного design choice для подсветки, как избежать овер-продажи незавершённого проекта, ответы на 'почему именно это сложно' и 'если бы делал заново'",
         "cheatsheet": [
+            {"q": "Что это за проект и причём тут RAG?", "a": "proptech-semantic-search — мой open-source референс под вакансию AI Engineer в Spacenplace (lifestyle-based property search). RAG = Retrieval-Augmented Generation: запрос на естественном языке → LLM парсит intent в structured filters → векторный поиск по объектам недвижимости (Qdrant) → LLM-реранкер с reasons → ответ. Это не Red/Amber/Green project status из проектного менеджмента — другая аббревиатура."},
             {"q": "Какая структура pitch'a про recent sophisticated project?", "a": "Контекст и мотивация (20 сек) → что построил (40 сек) → главный design choice с обоснованием (60 сек) → ключевой trade-off (30 сек) → честный статус и next milestone (20 сек). Итого ~3 минуты. Версия на 60 секунд: контекст + design choice + статус. Версия на 30 секунд: одно предложение про что и одно про главный non-obvious выбор."},
             {"q": "Как обозначить scaffolding-статус и не обесценить проект?", "a": "Прямо: 'observability и multi-provider abstraction работают end-to-end, retrieval pipeline — следующий milestone, прописанный по часам в roadmap'. Не 'почти готово', не 'осталось чуть-чуть'. Список того, что точно работает, и список того, что заглушка, готовы заранее."},
             {"q": "Почему именно proptech-semantic-search, а не другой проект?", "a": "Самый ML-плотный из недавних, прицельно собран под job-spec Spacenplace (RAG, vector search, FastAPI async, cost optimisation). На собесе можно говорить с конкретного кода и реальной архитектуры, а не из общих принципов."},
@@ -1295,10 +1296,10 @@ TOPICS = {
         ],
     },
     "proj_proptech_retrieval": {
-        "title": "PropTech: ретривал и эмбеддинги",
+        "title": "proptech-semantic-search: vector store и эмбеддинги",
         "emoji": "🔍",
         "track": "ml",
-        "what": "выбор vector store (Qdrant), text + image embeddings (nomic-embed-text + CLIP), multi-vector индекс, гибридный поиск с фильтрами, чанкинг для property-документов",
+        "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: выбор vector store (Qdrant), text + image embeddings (nomic-embed-text + CLIP), multi-vector индекс, гибридный поиск с фильтрами, чанкинг property-документов",
         "why": "Это самая частая зона follow-up'ов на RAG-собесе: 'почему этот vector store', 'какой эмбеддер', 'как ты чанкуешь'. Без чётких ответов pitch разваливается на первом же уточнении",
         "interview_focus": "обоснование Qdrant против FAISS/pgvector/Pinecone, выбор nomic-embed-text и CLIP, multi-vector подход, fusion text/image/filters, sharding и scaling Qdrant, HNSW параметры",
         "cheatsheet": [
@@ -1313,10 +1314,10 @@ TOPICS = {
         ],
     },
     "proj_proptech_pipeline": {
-        "title": "PropTech: pipeline и LLM-провайдеры",
+        "title": "proptech-semantic-search: RAG pipeline и LLM-провайдеры",
         "emoji": "🪡",
         "track": "ml",
-        "what": "трёхэтапный RAG-pipeline (intent parse → retrieve → rerank), structured output через Pydantic JSON mode, провайдер-абстракция через OpenAI-совместимый SDK для Ollama/OpenAI/NIM, batched LLM-reranker с reasons",
+        "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: трёхэтапный pipeline (intent parse → retrieve → rerank), structured output через Pydantic JSON mode, провайдер-абстракция через OpenAI-совместимый SDK для Ollama/OpenAI/NIM, batched LLM-reranker с reasons",
         "why": "Архитектура pipeline'а — это где интервьюер проверяет, понимаешь ли ты production-RAG в деталях. Ответы вроде 'мы используем LangChain' звучат как красные флаги",
         "interview_focus": "почему intent parsing отдельной стадией, JSON mode и Pydantic-схемы, abstraction поверх трёх LLM-провайдеров, обоснование LLM-reranker против cross-encoder, батчинг, отказы провайдеров",
         "cheatsheet": [
@@ -1331,10 +1332,10 @@ TOPICS = {
         ],
     },
     "proj_proptech_observability": {
-        "title": "PropTech: cost observability",
+        "title": "proptech-semantic-search: cost observability",
         "emoji": "📊",
         "track": "ml",
-        "what": "cost tracking как first-class concern, per-request ledger, Prometheus counters, X-Cost-USD response header, cube provider × model × stage, latency budget и Jaeger tracing",
+        "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: cost tracking как first-class concern, per-request ledger, Prometheus counters, X-Cost-USD response header, cube provider × model × stage, latency budget и Jaeger tracing",
         "why": "Cost observability — главная фича проекта и самый часто проверяемый кусок на интервью. Если про неё нечего сказать, pitch теряет центральный design choice",
         "interview_focus": "почему cost — не latency — главная метрика, архитектура cost ledger в middleware, какие Prometheus-метрики, как считать unit-economics, latency budget по этапам, роль Jaeger",
         "cheatsheet": [
@@ -1349,10 +1350,10 @@ TOPICS = {
         ],
     },
     "proj_proptech_quality": {
-        "title": "PropTech: качество, eval, безопасность",
+        "title": "proptech-semantic-search: eval и безопасность",
         "emoji": "✅",
         "track": "ml",
-        "what": "методология оценки RAG без размеченного golden set, LLM-as-judge bootstrap, метрики P@5/R@10/MRR/NDCG, prompt injection защита, Redis cache strategy, рефлексия 'если бы делал заново'",
+        "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: методология оценки RAG-системы без размеченного golden set, LLM-as-judge bootstrap, метрики P@5/R@10/MRR/NDCG, prompt injection защита, Redis cache strategy, рефлексия 'если бы делал заново'",
         "why": "Eval — самая болезненная зона RAG-проектов. Интервьюер часто давит здесь: 'как ты вообще знаешь, что оно работает?'. Нужен честный план, не надувной",
         "interview_focus": "как построить golden set без разметчиков (LLM-as-judge + manual review), какую метрику когда использовать, prompt injection и JSON mode safety, Redis cache TTL и invalidation, production gaps",
         "cheatsheet": [
@@ -1373,7 +1374,7 @@ CURRICULUM = [
     {
         "id": "projects_proptech",
         "section": "Проекты",
-        "title": "PropTech RAG (Spacenplace)",
+        "title": "proptech-semantic-search (Spacenplace)",
         "topics": [
             "proj_proptech_pitch",
             "proj_proptech_retrieval",
