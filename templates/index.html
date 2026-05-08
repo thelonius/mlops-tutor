@@ -8,6 +8,7 @@
 <link id="hljs-css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/glossary.js"></script>
+<script src="/static/share.js"></script>
 <style>
 /* ── CSS variables ── */
 html[data-theme="dark"] {
@@ -765,7 +766,52 @@ async function init() {
   curriculum = data.curriculum;
   topics     = data.topics;
   renderSidebar();
+  if (await tryLoadFromShare()) return;
   restoreSession();
+}
+
+// Гидрация стейта из shared-ссылки. Возвращает true, если применили.
+async function tryLoadFromShare() {
+  const params = new URLSearchParams(location.search);
+  if (!params.get('s')) return false;
+  try {
+    const state = await window.shareApi.loadShare();
+    if (!state || !state.topic_id || !topics[state.topic_id]) {
+      toast('Ссылка повреждена');
+      history.replaceState(null, '', '/');
+      return false;
+    }
+    topic    = state.topic_id;
+    mode     = state.mode || 'learn';
+    messages = Array.isArray(state.messages) ? state.messages : [];
+
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`mode-${mode}`)?.classList.add('active');
+    const cfg = MODES[mode];
+    if (cfg) {
+      const badge = document.getElementById('mode-badge');
+      badge.textContent = cfg.label;
+      badge.className   = `mode-badge ${cfg.badge}`;
+    }
+    document.getElementById('header-topic').textContent = topics[topic].title;
+
+    renderSidebar();
+    renderQuickActions();
+    renderAllMessages();
+
+    saveHistory(topic, mode, messages);
+    saveSession();
+    history.replaceState(null, '', '/');
+    toast('Сессия загружена');
+    return true;
+  } catch (e) {
+    const msg = e && e.message === 'expired'
+      ? 'Ссылка истекла'
+      : 'Не получилось открыть ссылку';
+    toast(msg);
+    history.replaceState(null, '', '/');
+    return false;
+  }
 }
 
 // ── Sidebar ──
@@ -868,6 +914,7 @@ async function autoStart(triggerMsg) {
     messages.push({ role: 'assistant', content: aiText });
     saveHistory(topic, mode, messages);
     renderSidebar();
+    renderQuickActions();
   } catch (e) {
     bubble.innerHTML = `<em style="color:#ef4444">Ошибка: ${e.message}</em>`;
   }
@@ -1037,6 +1084,46 @@ function renderQuickActions() {
     btn.onclick     = () => { if (a.action) a.action(); else send(a.msg); };
     el.appendChild(btn);
   }
+  const isStatic = mode === 'cheatsheet' || mode === 'mcquiz';
+  if (!isStatic && messages.length > 0) {
+    const share = document.createElement('button');
+    share.className = 'qbtn';
+    share.style.marginLeft = 'auto';
+    share.textContent = '🔗 Поделиться';
+    share.onclick = onShareClick;
+    el.appendChild(share);
+  }
+}
+
+// ── Sharing ──
+async function onShareClick() {
+  if (!topic || !messages.length) return;
+  try {
+    const url = await window.shareApi.createShare({
+      v: 1,
+      topic_id: topic,
+      mode,
+      messages,
+    });
+    await navigator.clipboard.writeText(url);
+    toast('Ссылка скопирована');
+  } catch (e) {
+    toast('Не получилось: ' + (e.message || 'ошибка'));
+  }
+}
+
+function toast(text) {
+  let el = document.getElementById('share-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'share-toast';
+    el.style.cssText = 'position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:8px; background:#1f2937; color:#fff; font-size:14px; z-index:1000; opacity:0; transition:opacity 0.2s; pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
 }
 
 // ── Send ──
@@ -1066,6 +1153,7 @@ async function send(text) {
     messages.push({ role: 'assistant', content: aiText });
     saveHistory(topic, mode, messages);
     renderSidebar();
+    renderQuickActions();
   } catch (e) {
     bubble.innerHTML = `<em style="color:#ef4444">Ошибка: ${e.message}</em>`;
   }
