@@ -1277,7 +1277,7 @@ TOPICS = {
 
     # ── Проекты в портфолио: PropTech RAG ──
     "proj_proptech_pitch": {
-        "title": "proptech-semantic-search: pitch на собесе",
+        "title": "Pitch проекта на собесе",
         "emoji": "🎤",
         "track": "ml",
         "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation) система lifestyle-поиска недвижимости (FastAPI, Qdrant, мульти-провайдер LLM). Тема: структура ответа на 'tell me about a recent sophisticated project', драматургия pitch'a, честная подача scaffolding-статуса. Здесь RAG означает Retrieval-Augmented Generation, не Red/Amber/Green project status",
@@ -1296,7 +1296,7 @@ TOPICS = {
         ],
     },
     "proj_proptech_retrieval": {
-        "title": "proptech-semantic-search: vector store и эмбеддинги",
+        "title": "Vector store и эмбеддинги",
         "emoji": "🔍",
         "track": "ml",
         "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: выбор vector store (Qdrant), text + image embeddings (nomic-embed-text + CLIP), multi-vector индекс, гибридный поиск с фильтрами, чанкинг property-документов",
@@ -1314,7 +1314,7 @@ TOPICS = {
         ],
     },
     "proj_proptech_pipeline": {
-        "title": "proptech-semantic-search: RAG pipeline и LLM-провайдеры",
+        "title": "RAG pipeline и LLM-провайдеры",
         "emoji": "🪡",
         "track": "ml",
         "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: трёхэтапный pipeline (intent parse → retrieve → rerank), structured output через Pydantic JSON mode, провайдер-абстракция через OpenAI-совместимый SDK для Ollama/OpenAI/NIM, batched LLM-reranker с reasons",
@@ -1332,7 +1332,7 @@ TOPICS = {
         ],
     },
     "proj_proptech_observability": {
-        "title": "proptech-semantic-search: cost observability",
+        "title": "Cost observability",
         "emoji": "📊",
         "track": "ml",
         "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: cost tracking как first-class concern, per-request ledger, Prometheus counters, X-Cost-USD response header, cube provider × model × stage, latency budget и Jaeger tracing",
@@ -1350,7 +1350,7 @@ TOPICS = {
         ],
     },
     "proj_proptech_quality": {
-        "title": "proptech-semantic-search: eval и безопасность",
+        "title": "Eval и безопасность",
         "emoji": "✅",
         "track": "ml",
         "what": "Проект proptech-semantic-search — RAG (Retrieval-Augmented Generation, не Red/Amber/Green) для поиска недвижимости. Тема: методология оценки RAG-системы без размеченного golden set, LLM-as-judge bootstrap, метрики P@5/R@10/MRR/NDCG, prompt injection защита, Redis cache strategy, рефлексия 'если бы делал заново'",
