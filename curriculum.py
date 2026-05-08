@@ -152,6 +152,102 @@ TOPICS = {
             {"q": "Как примонтировать PVC к поду?", "a": "В spec.volumes указать claimName, в spec.containers.volumeMounts — mountPath. Под получит доступ к файлам по этому пути."},
             {"q": "Что такое volumeClaimTemplates в StatefulSet?", "a": "StatefulSet создаёт отдельный PVC для каждого пода автоматически. Каждый реплика имеет свой изолированный том с именем вида <name>-<pod-index>."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**PV** — кусок реального хранилища (NFS, диск, S3). **PVC** — заявка пода на хранилище определённого размера и `accessMode`. **StorageClass** — шаблон для автоматического создания PV при появлении PVC."},
+            {
+                "type": "compare",
+                "title": "PV / PVC / StorageClass",
+                "items": [
+                    {"title": "PersistentVolume",
+                     "points": [
+                         "Реальный ресурс хранилища",
+                         "Создаётся админом или динамически",
+                         "Привязан к кластеру, а не namespace",
+                         "Жизнь дольше пода",
+                     ]},
+                    {"title": "PersistentVolumeClaim",
+                     "points": [
+                         "Заявка пода на хранилище",
+                         "Размер + accessMode + storageClass",
+                         "Связывается с подходящим PV",
+                         "Под маунтит по `claimName`",
+                     ]},
+                    {"title": "StorageClass",
+                     "points": [
+                         "Шаблон для **динамической** провизии",
+                         "Provisioner (`ebs.csi`, `nfs`, etc.)",
+                         "Параметры: тип диска, IOPS, replication",
+                         "PVC ссылается на StorageClass — PV создаётся сам",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Access modes",
+                "headers": ["Mode", "Что значит", "Когда"],
+                "rows": [
+                    ["**ReadWriteOnce** (RWO)",  "запись с **одной** ноды",        "обычный диск (EBS, GCP PD), per-pod state"],
+                    ["**ReadWriteMany** (RWX)",  "запись с **нескольких** нод",    "shared датасет для training-подов (NFS, EFS, CephFS)"],
+                    ["**ReadOnlyMany** (ROX)",   "чтение с нескольких нод",          "статические данные, модели"],
+                    ["**ReadWriteOncePod** (RWOP)", "только один под (с 1.27)",      "строгая single-writer гарантия"],
+                ],
+                "note": "EBS/GCP PD — RWO, нельзя расшарить. Для shared training-данных нужен NFS, EFS, CephFS или S3-CSI.",
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "PVC + Pod, маунтящий его",
+                "code": (
+                    "apiVersion: v1\n"
+                    "kind: PersistentVolumeClaim\n"
+                    "metadata: { name: dataset }\n"
+                    "spec:\n"
+                    "  accessModes: [ReadWriteMany]\n"
+                    "  storageClassName: nfs\n"
+                    "  resources:\n"
+                    "    requests: { storage: 500Gi }\n"
+                    "---\n"
+                    "apiVersion: v1\n"
+                    "kind: Pod\n"
+                    "metadata: { name: trainer }\n"
+                    "spec:\n"
+                    "  containers:\n"
+                    "  - name: train\n"
+                    "    image: pytorch:2.1\n"
+                    "    volumeMounts:\n"
+                    "    - { name: data, mountPath: /data }\n"
+                    "  volumes:\n"
+                    "  - name: data\n"
+                    "    persistentVolumeClaim: { claimName: dataset }"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Reclaim Policy",
+                "items": [
+                    {"k": "**Retain**",  "v": "PVC удалили — PV и данные **остаются** (нужно вручную чистить)"},
+                    {"k": "**Delete**",   "v": "PVC удалили — **PV и данные удаляются** (default для dynamic)"},
+                    {"k": "**Recycle**",  "v": "deprecated, не использовать"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Что брать для ML-данных",
+                "branches": [
+                    {"condition": "shared датасет, **много** training-подов", "outcome": "RWX: NFS, EFS, CephFS"},
+                    {"condition": "single-pod state (Postgres, Redis)",        "outcome": "RWO: EBS, GCP PD"},
+                    {"condition": "артефакты, бэкапы, чекпоинты",               "outcome": "**S3** (не PVC) — дешевле, без POSIX"},
+                    {"condition": "StatefulSet с N репликами",                  "outcome": "`volumeClaimTemplates` — каждому свой PVC"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**S3 для ML обычно лучше PVC.** Не нужен POSIX, без лимитов масштабирования, дешевле SSD. `s3fs` или `boto3` напрямую. PVC берут, когда нужны file-like API (PyTorch DataLoader, etc.)."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**EBS/GCP PD = RWO.** Не получится расшарить один диск между нодами. Для shared training-данных нужен NFS-провайдер или S3."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Default reclaimPolicy = Delete** для динамических PV. Удалил namespace → потерял данные. Для ценного — `Retain`."},
+        ],
     },
     "k8s_gpu": {
         "title": "GPU в Kubernetes",
@@ -445,6 +541,104 @@ TOPICS = {
             {"q": "Что такое sequence batching?", "a": "Режим для stateful-моделей (RNN, LSTM), где запросы одной последовательности всегда попадают к одному экземпляру модели. Требует sequence_id в заголовке запроса."},
             {"q": "Какие метрики Triton отдаёт Prometheus?", "a": "nv_inference_request_success, nv_inference_queue_duration_us, nv_gpu_utilization и другие. Эндпоинт /metrics доступен по умолчанию на порту 8002."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Throughput vs latency** — главный trade-off в serving. Три рукоятки в Triton: **dynamic batching** (склейка одиночных запросов), **instance_group** (параллельные копии модели на GPU), **sequence batching** (для RNN/LSTM). Тюнинг — через **perf_analyzer**."},
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Dynamic batching — config.pbtxt",
+                "code": (
+                    'name: "classifier"\n'
+                    'backend: "onnxruntime"\n'
+                    'max_batch_size: 32\n\n'
+                    'dynamic_batching {\n'
+                    '  max_queue_delay_microseconds: 100   # ждём ≤ 100мкс на дозапрос\n'
+                    '  preferred_batch_size: [4, 8, 16]    # стараемся один из этих\n'
+                    '}\n\n'
+                    'instance_group [{\n'
+                    '  kind: KIND_GPU\n'
+                    '  count: 2                            # 2 копии модели\n'
+                    '}]'
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Рукоятки тюнинга",
+                "headers": ["Опция", "Что меняет", "Trade-off"],
+                "rows": [
+                    ["`max_queue_delay_microseconds`",  "сколько ждём на дозапрос",        "↑ throughput, ↑ latency p50"],
+                    ["`preferred_batch_size`",            "целевой размер батча",            "оптимум по GPU memory + утилизация"],
+                    ["`max_batch_size`",                  "потолок батча",                    "ограничен VRAM"],
+                    ["`instance_group count`",            "сколько копий на GPU",             "↑ throughput, ↑ VRAM"],
+                    ["`response_cache enable`",            "кеш одинаковых запросов",          "помогает только при повторяющихся inputs"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "perf_analyzer — бенчмарк под нагрузкой",
+                "code": (
+                    "perf_analyzer \\\n"
+                    "  -m classifier \\\n"
+                    "  --concurrency-range 1:16:1 \\\n"
+                    "  --measurement-interval 5000 \\\n"
+                    "  --shape input:3,224,224\n\n"
+                    "# Output: для каждого concurrency level →\n"
+                    "#   throughput (inferences/sec), latency p50/p95/p99,\n"
+                    "#   GPU utilization, queue duration"
+                ),
+            },
+            {
+                "type": "compare",
+                "title": "Ensemble vs BLS",
+                "items": [
+                    {"title": "Ensemble (статический граф)",
+                     "points": [
+                         "Описан в config.pbtxt",
+                         "Граф моделей с маппингом тензоров",
+                         "Без сетевых hop-ов между шагами",
+                         "Без ветвлений и циклов",
+                     ]},
+                    {"title": "BLS (Python backend)",
+                     "points": [
+                         "Python-код вызывает модели",
+                         "**Поддерживает if/for/while**",
+                         "Можно динамически выбирать модель",
+                         "Чуть медленнее (Python overhead)",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Метрики Prometheus от Triton (`/metrics`)",
+                "items": [
+                    {"k": "`nv_inference_request_success`", "v": "счётчик успешных inference"},
+                    {"k": "`nv_inference_queue_duration_us`", "v": "время ожидания в очереди (главная метрика батчинга)"},
+                    {"k": "`nv_inference_compute_input_duration_us`", "v": "копирование входов на GPU"},
+                    {"k": "`nv_inference_compute_infer_duration_us`", "v": "собственно inference на GPU"},
+                    {"k": "`nv_gpu_utilization`",          "v": "утилизация GPU"},
+                    {"k": "`nv_gpu_memory_used_bytes`",     "v": "потребление VRAM"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Тюнинг по симптомам",
+                "branches": [
+                    {"condition": "GPU util **низкая**, throughput низкий",     "outcome": "↑ `instance_group count` или включить dynamic batching"},
+                    {"condition": "queue_duration высокий, GPU занят",            "outcome": "↑ `instance_group` (если влезет в VRAM)"},
+                    {"condition": "queue_duration **низкий**, GPU **простаивает**", "outcome": "↑ `max_queue_delay` — батчить агрессивнее"},
+                    {"condition": "throughput хорош, latency p99 ужасный",        "outcome": "↓ `max_queue_delay` или ↓ `preferred_batch_size`"},
+                    {"condition": "stateful-модель (RNN/LSTM)",                    "outcome": "**sequence batching** + `sequence_id` в запросе"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`max_queue_delay` — главный рычаг.** 100мкс почти не заметны клиенту, но GPU успевает накопить полный батч → утилизация 90%+ вместо 30%."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`instance_group count > 1` ≠ multi-GPU.** Это **N копий** модели на одной GPU. На GPU c 24GB и моделью 4GB можно поднять `count: 4`. Если модель 12GB — только `count: 2`."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Sequence batching требует sticky-роутинга.** Запросы одного `sequence_id` должны попадать к одному и тому же instance, иначе hidden state потеряется."},
+        ],
     },
     "clearml": {
         "title": "ClearML: эксперименты и пайплайны",
@@ -623,6 +817,84 @@ TOPICS = {
             {"q": "Почему L1 даёт разреженность геометрически?", "a": "Допустимое множество L1 — ромб с острыми углами на осях координат. Контуры функции потерь чаще касаются ромба в угловых точках, где некоторые координаты равны нулю."},
             {"q": "Что такое regularization path?", "a": "Зависимость коэффициентов модели от силы регуляризации λ. При λ→∞ все веса стремятся к нулю. Lasso-path показывает порядок обнуления признаков."},
             {"q": "Как выбрать оптимальный α (λ)?", "a": "Кросс-валидацией: LassoCV или RidgeCV перебирают сетку значений и выбирают α с минимальной ошибкой на валидации. Обычно логарифмическая сетка от 1e-4 до 1e2."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Linear regression**: `y = Xw + b`, минимизируем MSE. Регуляризация добавляет штраф на веса: **L1** (Lasso) даёт разреженность, **L2** (Ridge) стабилизирует. **ElasticNet** = L1 + L2. Перед любой регуляризацией — обязательная стандартизация."},
+            {
+                "type": "compare",
+                "title": "L1 vs L2 vs ElasticNet",
+                "items": [
+                    {"title": "L1 (Lasso)",
+                     "points": [
+                         "Штраф `α · Σ|w|`",
+                         "**Зануляет** веса (sparse)",
+                         "Feature selection из коробки",
+                         "Хаотично выбирает один из коррелирующих",
+                     ]},
+                    {"title": "L2 (Ridge)",
+                     "points": [
+                         "Штраф `α · Σw²`",
+                         "Сжимает веса равномерно",
+                         "Стабилизирует при мультиколлинеарности",
+                         "Веса малые, но **не нулевые**",
+                     ]},
+                    {"title": "ElasticNet",
+                     "points": [
+                         "Штраф `α(ρ·L1 + (1−ρ)·L2)`",
+                         "Sparse + стабильность",
+                         "Корелирующие фичи остаются вместе",
+                         "Нужно тюнить два параметра (`α`, `ρ`)",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Когда что брать",
+                "headers": ["Ситуация", "Что брать", "Почему"],
+                "rows": [
+                    ["Много фич, большинство шум",          "**L1**",          "обнулит, останутся релевантные"],
+                    ["Мультиколлинеарность",                  "**L2**",          "стабилизирует решение"],
+                    ["Корелирующие фичи + sparse",            "**ElasticNet**",  "не выбрасывает фичи группы"],
+                    ["Мало фич, нет шума",                     "**LinearRegression**", "регуляризация не нужна"],
+                    ["Outliers в y",                            "**HuberRegressor**", "MSE → выбросы рулят"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Безопасный пайплайн: scaler ВНУТРИ Pipeline",
+                "code": (
+                    "from sklearn.pipeline import Pipeline\n"
+                    "from sklearn.preprocessing import StandardScaler\n"
+                    "from sklearn.linear_model import RidgeCV, LassoCV, ElasticNetCV\n\n"
+                    "import numpy as np\n"
+                    "alphas = np.logspace(-4, 2, 50)\n\n"
+                    "pipe = Pipeline([\n"
+                    "    ('scaler', StandardScaler()),     # ОБЯЗАТЕЛЬНО до регуляризации\n"
+                    "    ('clf',    RidgeCV(alphas=alphas, cv=5)),\n"
+                    "])\n"
+                    "pipe.fit(X_tr, y_tr)\n"
+                    "print(pipe[-1].alpha_)              # лучший α\n"
+                    "print(pipe[-1].coef_)               # коэффициенты"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Геометрия (зачем учить)",
+                "items": [
+                    {"k": "**L1 ромб**", "v": "острые углы на осях → контуры loss чаще касаются угла → веса = 0"},
+                    {"k": "**L2 круг**",  "v": "гладкая поверхность → касание в любой точке → веса малые, но не нулевые"},
+                    {"k": "**ElasticNet**", "v": "ромб со скруглёнными углами"},
+                    {"k": "**Regularization path**", "v": "график w(α) при росте регуляризации — Lasso показывает порядок обнуления фич"},
+                ],
+            },
+            {"type": "callout", "kind": "warning",
+             "content": "**Без стандартизации регуляризация бессмысленна.** Признак с масштабом 0-1000000 будет штрафоваться так же, как 0-1, но на деле его коэффициент обязан быть в миллионы раз меньше. `StandardScaler` обязателен."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`α` (`λ`) подбирается через CV.** `RidgeCV`/`LassoCV`/`ElasticNetCV` делают это в одну строку. Логарифмическая сетка `np.logspace(-4, 2, 50)` обычно достаточна."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Условный номер `XᵀX`.** При мультиколлинеарности он огромный → решение нестабильно. Ridge добавляет `λI` к диагонали → число обусловленности падает → коэффициенты воспроизводимы."},
         ],
     },
     "ml_logreg": {
@@ -1173,6 +1445,108 @@ TOPICS = {
             {"q": "Как обрабатывать NaN в числовых признаках?", "a": "Медианная импутация — безопасна при асимметричных распределениях. Mean — при нормальных. Для деревьев часто достаточно специального значения (-999). Добавить бинарный флаг 'was_nan' — информативен сам по себе."},
             {"q": "Что такое взаимодействие признаков?", "a": "Явные комбинации: x1 × x2, x1 / x2, x1 - x2. Полезны для линейных моделей, которые не могут выучить нелинейные зависимости. Деревья выучивают взаимодействия автоматически."},
             {"q": "Когда MinMaxScaler лучше StandardScaler?", "a": "Когда нужен фиксированный диапазон [0, 1]: нейросети с сигмоидной активацией, алгоритмы, чувствительные к диапазону значений. Чувствителен к выбросам — хуже при наличии аномалий."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "На табличных данных **80% результата** даёт инженерия фич, не выбор алгоритма. Три кита: **encoding** категорий, **scaling** числовых, **обработка NaN**. И всегда — fit только на train-фолде."},
+            {
+                "type": "table",
+                "title": "Encoding категорий",
+                "headers": ["Метод", "Когда", "Плюсы", "Минусы"],
+                "rows": [
+                    ["**One-hot**",      "номинальные, мало уникальных",      "честно, безопасно",         "взрыв размерности при >50 категорий"],
+                    ["**Ordinal**",      "есть **порядок** (low/med/high)",   "1 колонка",                  "ломает не-порядковые"],
+                    ["**Target encoding**", "много категорий, target есть",   "плотно, информативно",       "**требует out-of-fold**, иначе утечка"],
+                    ["**Frequency**",    "много категорий, нет target",       "просто",                      "теряет идентичность"],
+                    ["**Embedding**",    "очень много категорий + DL",         "выученное представление",    "только в нейросетях"],
+                    ["**CatBoost ordered TE**", "много категорий, бустинг",   "**из коробки** без утечки",  "только CatBoost"],
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Scaling числовых",
+                "headers": ["Скейлер", "Формула", "Когда"],
+                "rows": [
+                    ["**StandardScaler**", "`(x − μ) / σ`",       "линейные, SVM, kNN, нейросети, PCA"],
+                    ["**RobustScaler**",    "`(x − median) / IQR`", "**есть выбросы** в числовых"],
+                    ["**MinMaxScaler**",    "`(x − min) / (max − min)` → [0, 1]", "нейросети с sigmoid, фикс. диапазон"],
+                    ["**MaxAbsScaler**",     "`x / max(|x|)` → [−1, 1]",          "разреженные данные (sparse), text"],
+                    ["**Без скейлинга**",    "—",                                  "деревья, бустинг, **Random Forest**"],
+                ],
+                "note": "Деревьям масштаб не важен — они оперируют порогами по фиче. Линейным/SVM/kNN — критичен.",
+            },
+            {
+                "type": "list",
+                "title": "Обработка NaN",
+                "kind": "do",
+                "items": [
+                    "**Медиана** для числовых при асимметричных распределениях",
+                    "**Mean** при нормальных",
+                    "**Mode** для категориальных",
+                    "Бинарный флаг `was_nan` — сам по себе информативен",
+                    "Для деревьев: `-999` или `np.nan` (XGBoost/LightGBM/CatBoost понимают)",
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Редкие категории",
+                "items": [
+                    {"title": "Простой подход",
+                     "points": [
+                         "Порог по частоте (< N появлений)",
+                         "Слить в `other`",
+                         "После — обычное one-hot или TE",
+                     ]},
+                    {"title": "TE со сглаживанием",
+                     "points": [
+                         "`enc = (n·mean_cat + α·global_mean) / (n + α)`",
+                         "При малом n — ближе к global_mean",
+                         "При большом n — к mean категории",
+                         "α (smoothing) — обычно 10-100",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "ColumnTransformer для смешанных типов",
+                "code": (
+                    "from sklearn.pipeline import Pipeline\n"
+                    "from sklearn.compose import ColumnTransformer\n"
+                    "from sklearn.preprocessing import OneHotEncoder, StandardScaler\n"
+                    "from sklearn.impute import SimpleImputer\n\n"
+                    "num = ['age', 'income', 'tenure']\n"
+                    "cat = ['country', 'plan']\n\n"
+                    "preproc = ColumnTransformer([\n"
+                    "    ('num', Pipeline([\n"
+                    "        ('imp',  SimpleImputer(strategy='median')),\n"
+                    "        ('sc',   StandardScaler()),\n"
+                    "    ]), num),\n"
+                    "    ('cat', Pipeline([\n"
+                    "        ('imp',  SimpleImputer(strategy='most_frequent')),\n"
+                    "        ('ohe',  OneHotEncoder(handle_unknown='ignore', min_frequency=20)),\n"
+                    "    ]), cat),\n"
+                    "])\n\n"
+                    "pipe = Pipeline([('pre', preproc), ('clf', LogisticRegression())])"
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Взаимодействия фич",
+                "kind": "do",
+                "items": [
+                    "Линейным моделям нужны **явно**: `x1*x2`, `x1/x2`, `x1-x2`",
+                    "Деревья выучивают сами — не нужны явные комбинации",
+                    "Для табличных нейросетей — TabNet, FT-Transformer выучивают тоже сами",
+                    "Хорошие интеракции: ratio (rev/users), log-преобразование цен, time-since-event",
+                ],
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Target encoding без out-of-fold = утечка.** Каждый пример видит свой собственный target в фиче. Использовать `KFoldTargetEncoder` или сразу CatBoost (там ordered TE из коробки)."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`OneHotEncoder(handle_unknown='ignore')`.** При появлении новой категории на val/test — выдаст нули, а не упадёт. На проде это спасает от 500-х."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`ColumnTransformer` + `Pipeline`** — стандартный способ держать пайплайн чистым. Все fit-ы происходят внутри CV-фолда → нет preprocessing leakage."},
         ],
     },
     "sd_fundamentals": {
@@ -1948,6 +2322,96 @@ TOPICS = {
             {"q": "Когда использовать t-test vs Mann-Whitney?", "a": "t-test: данные нормально распределены или выборка большая (CLT). Mann-Whitney: нет нормальности, есть выбросы (например, выручка с хвостами). На практике для конверсии — z-test для proportion, для выручки часто Mann-Whitney или bootstrapped CI."},
             {"q": "Что такое multiple testing problem?", "a": "При 20 одновременных тестах с α=0.05 ожидается ~1 ложно-значимый результат. Решения: Bonferroni correction (строже), Benjamini-Hochberg FDR (умереннее). На практике: держать мало первичных метрик, остальные — дополнительные."},
             {"q": "Как проверить статистическую значимость конверсии?", "a": "z-test для пропорций: z = (p1-p2) / sqrt(p*(1-p)*(1/n1+1/n2)), где p — pooled proportion. В Python: statsmodels.stats.proportion.proportions_ztest. Confidence interval для разности — через bootstrapping."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "ML-модель без A/B — вера. A/B доказывает, что модель улучшила **бизнес-метрику** (а не только оффлайн). Главные ошибки: маленькая выборка → пропуск эффекта; sample ratio mismatch → баг в сплиттинге; множественное тестирование → ложные «победы»."},
+            {
+                "type": "kv",
+                "title": "Базовая терминология",
+                "items": [
+                    {"k": "**OEC**",          "v": "Overall Evaluation Criterion — главная метрика теста"},
+                    {"k": "**MDE**",          "v": "Minimum Detectable Effect — минимум, который тест способен поймать"},
+                    {"k": "**α** (Type I)",   "v": "ложноположительное — обычно 0.05"},
+                    {"k": "**β / power**",     "v": "ложноотрицательное / 1 − β. Power обычно 0.8 (миним.) или 0.9"},
+                    {"k": "**p-value**",       "v": "вероятность увидеть наблюдаемый эффект при H₀. Не «вероятность того, что H₀ верна»."},
+                    {"k": "**SRM**",           "v": "Sample Ratio Mismatch — расхождение между ожидаемой и реальной долями групп"},
+                    {"k": "**CUPED**",         "v": "уменьшение variance через ковариаты предтеста — сжимает MDE на 30-50%"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Какой тест брать",
+                "headers": ["Метрика", "Тест", "Когда"],
+                "rows": [
+                    ["Конверсия (binary)",        "**z-test пропорций**", "большая выборка (n·p > 30)"],
+                    ["Конверсия, малая выборка",  "**Fisher exact**",      "при n < 30"],
+                    ["Среднее (revenue, AOV)",     "**t-test**",            "нормально или выборка большая (CLT)"],
+                    ["Среднее с тяжёлыми хвостами", "**Mann-Whitney** или bootstrapped CI", "выручка, latency"],
+                    ["Несколько групп",            "**ANOVA** или попарно с поправкой", "A/B/C/D тесты"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Размер выборки + z-test пропорций",
+                "code": (
+                    "import numpy as np\n"
+                    "from statsmodels.stats.power import zt_ind_solve_power\n"
+                    "from statsmodels.stats.proportion import proportions_ztest\n\n"
+                    "# Размер выборки на одну группу\n"
+                    "p_baseline = 0.10\n"
+                    "mde        = 0.005           # абсолютный эффект (10% → 10.5%)\n"
+                    "effect     = mde / np.sqrt(p_baseline * (1 - p_baseline))\n"
+                    "n_per_group = zt_ind_solve_power(effect_size=effect, alpha=0.05, power=0.8)\n\n"
+                    "# z-test после теста\n"
+                    "successes = np.array([520, 580])    # control / treatment\n"
+                    "trials    = np.array([5000, 5000])\n"
+                    "z, p = proportions_ztest(successes, trials)\n"
+                    "print(f'p-value: {p:.4f}')"
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Pre-flight checklist",
+                "kind": "do",
+                "items": [
+                    "**Power-анализ ДО теста** — посчитай n под MDE и σ²",
+                    "**AA-тест** на системе рандомизации (p-value должен быть равномерным)",
+                    "Зафиксировать **первичную метрику** заранее, не подменять по ходу",
+                    "**SRM-чек** на старте (chi-square на 50/50): расхождение → стоп, баг в сплиттинге",
+                    "Обработать **bot/internal traffic** — фрод и тесты искажают метрики",
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Подводные камни",
+                "kind": "dont",
+                "items": [
+                    "**Peeking** — каждый день смотришь и останавливаешь — ↑ Type I error в 5-10 раз",
+                    "Подгон `p < 0.05` через выбор метрики постфактум",
+                    "Множественное тестирование без коррекции (Bonferroni / Benjamini-Hochberg)",
+                    "Игнорировать **novelty effect** — первая неделя не репрезентативна",
+                    "Тест < 1 недели — не закрыты недельные паттерны",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Что делать с подозрениями",
+                "branches": [
+                    {"condition": "AA-тест даёт значимости",            "outcome": "**баг в сплиттинге** — найди и исправь до старта"},
+                    {"condition": "SRM > 1% (50/50 → 53/47)",            "outcome": "тест **невалиден** — chi-square red flag"},
+                    {"condition": "p < 0.05 на 1-й день",                "outcome": "терпение: peeking даёт ложные победы"},
+                    {"condition": "эффект на 1-й неделе ≫ на 3-й",       "outcome": "**novelty effect** — холд тест дольше"},
+                    {"condition": "10 метрик, у одной p = 0.04",         "outcome": "Bonferroni / FDR — без коррекции это шум"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Power = 1 − β.** При power 0.8 и реальном эффекте равном MDE, тест поймает его в **80% случаев**, в 20% — пропустит. Маленькая выборка = низкая power = тестируешь впустую."},
+            {"type": "callout", "kind": "tip",
+             "content": "**CUPED срезает MDE на 30-50%.** Если есть метрика пользователя за период до теста, регрессионная корректировка `Y' = Y − θ·(X − E[X])` сильно снижает variance. Тест становится мощнее, n меньше."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**SRM — красный флаг номер один.** Расхождение в долях групп ломает все статистические выводы. Чаще всего: баг в логировании экспозиции, фильтр повлиял на одну группу, бот-трафик асимметричен."},
         ],
     },
     "mlsd_ranking": {
