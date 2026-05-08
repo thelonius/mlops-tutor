@@ -221,7 +221,20 @@ body {
   display: flex; align-items: center;
   justify-content: space-between; gap: 12px;
 }
-.header-topic { font-size: 14px; font-weight: 600; color: var(--heading); }
+.header-topic { font-size: 14px; font-weight: 600; color: var(--heading); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#model-select {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 8px; border-radius: 20px;
+  background: #1e1b2e; color: #a78bfa;
+  border: 1px solid #a78bfa44;
+  cursor: pointer; outline: none;
+  appearance: none; -webkit-appearance: none;
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%23a78bfa' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  white-space: nowrap; flex-shrink: 0;
+}
+#model-select:hover { border-color: #a78bfa88; }
 .mode-badge {
   font-size: 11px; font-weight: 500;
   padding: 3px 10px; border-radius: 20px; white-space: nowrap;
@@ -587,6 +600,13 @@ textarea::placeholder { color: var(--text-dim); }
     <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleDesktopSidebar()" title="Свернуть меню">◀</button>
     <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">☰</button>
     <span class="header-topic" id="header-topic">Выбери тему →</span>
+    <select id="model-select" title="Модель" onchange="savePreferredModel(this.value)">
+      <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+      <option value="qwen/qwen3-32b">Qwen3 32B</option>
+      <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
+      <option value="meta-llama/llama-4-scout-17b-16e-instruct">Llama 4 Scout</option>
+      <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+    </select>
     <span class="mode-badge badge-learn" id="mode-badge">Объяснение</span>
   </div>
 
@@ -626,6 +646,18 @@ let messages   = [];
 let streaming  = false;
 let curriculum = [];
 let topics     = {};
+
+// ── Выбор модели ──
+function savePreferredModel(val) {
+  localStorage.setItem('mlops_model', val);
+}
+function getPreferredModel() {
+  return localStorage.getItem('mlops_model') || 'llama-3.3-70b-versatile';
+}
+(function initModelSelect() {
+  const sel = document.getElementById('model-select');
+  if (sel) sel.value = getPreferredModel();
+})();
 let progress   = new Set(JSON.parse(localStorage.getItem('mlops_progress') || '[]'));
 
 // ── Session (per browser tab via sessionStorage) ──
@@ -908,7 +940,7 @@ async function autoStart(triggerMsg) {
     const res    = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [triggerEntry], topic_id: topic, mode }),
+      body: JSON.stringify({ messages: [triggerEntry], topic_id: topic, mode, model: getPreferredModel() }),
     });
     const aiText = await streamInto(res, bubble);
     messages.push(triggerEntry);
@@ -1148,7 +1180,7 @@ async function send(text) {
     const res    = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, topic_id: topic, mode }),
+      body: JSON.stringify({ messages, topic_id: topic, mode, model: getPreferredModel() }),
     });
     const aiText = await streamInto(res, bubble);
     messages.push({ role: 'assistant', content: aiText });
