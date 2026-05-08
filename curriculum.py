@@ -113,6 +113,96 @@ TOPICS = {
             {"q": "Зачем использовать непривилегированного пользователя в контейнере?", "a": "По умолчанию процесс работает как root внутри контейнера. USER nobody снижает риск при побеге из контейнера."},
             {"q": "Как пробросить секреты в build без записи в слой?", "a": "RUN --mount=type=secret позволяет прочитать файл секрета во время сборки, не сохраняя его в layer history."},
         ],
+        "cheatsheet_blocks": [
+            {
+                "type": "tldr",
+                "content": "Образ — иммутабельный шаблон, контейнер — запущенный процесс из него. Базис всего ML-инфра: training-job, инференс, оркестрация — всё в Docker.",
+            },
+            {
+                "type": "compare",
+                "title": "Image vs Container",
+                "items": [
+                    {"title": "Image",
+                     "points": [
+                         "Иммутабельный шаблон",
+                         "Состоит из слоёв",
+                         "Хранится в реестре (Docker Hub, ECR, GCR)",
+                         "Имеет тег: `my-app:1.2`",
+                     ]},
+                    {"title": "Container",
+                     "points": [
+                         "Запущенный процесс из image",
+                         "Writable layer сверху",
+                         "Можно остановить и удалить",
+                         "Один image → много контейнеров",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "dockerfile",
+                "caption": "Минимальный Dockerfile для ML-сервиса",
+                "code": (
+                    "FROM nvcr.io/nvidia/pytorch:23.10-py3\n\n"
+                    "WORKDIR /app\n"
+                    "COPY requirements.txt .\n"
+                    "RUN pip install --no-cache-dir -r requirements.txt\n\n"
+                    "COPY . .\n\n"
+                    "USER nobody\n"
+                    "EXPOSE 8000\n"
+                    'CMD ["python", "serve.py"]'
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Best practices",
+                "kind": "do",
+                "items": [
+                    "`COPY requirements.txt` **до** `COPY . .` — кеш не ломается при правке кода",
+                    "Multi-stage build: компилируем в одном stage, копируем артефакт в slim",
+                    "`.dockerignore`: `.git`, `__pycache__`, датасеты, `.env`",
+                    "Непривилегированный `USER`, не root",
+                    "Прибивать версии: `python:3.11-slim`, не `:latest`",
+                    "Layer caching: дешёвые операции внизу, дорогие сверху",
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Команды-шпаргалка",
+                "items": [
+                    {"k": "`docker build -t my:tag .`",         "v": "собрать образ"},
+                    {"k": "`docker run --gpus all my:tag`",     "v": "запустить с GPU"},
+                    {"k": "`docker run --gpus '\"device=0\"'`", "v": "конкретный GPU"},
+                    {"k": "`docker exec -it <c> bash`",         "v": "зайти в работающий контейнер"},
+                    {"k": "`docker logs -f <c>`",               "v": "стримить логи"},
+                    {"k": "`docker compose up -d --build`",     "v": "пересобрать и запустить стек"},
+                    {"k": "`docker system prune -a`",           "v": "вычистить неиспользуемое"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "ENTRYPOINT vs CMD",
+                "items": [
+                    {"k": "`ENTRYPOINT`", "v": "исполняемый файл, **не** перезаписывается аргументами `docker run`"},
+                    {"k": "`CMD`",        "v": "аргументы по умолчанию, **заменяются** при передаче своих"},
+                ],
+            },
+            {
+                "type": "callout",
+                "kind": "tip",
+                "content": "**Multi-stage уменьшает образ в 10×.** Сборка с gcc, исходниками и тестами — в одном stage, артефакт копируется в чистый `python:3.11-slim`.",
+            },
+            {
+                "type": "callout",
+                "kind": "gotcha",
+                "content": "**Cache busting на `COPY .`.** Любая правка инвалидирует все слои ниже. Поэтому requirements.txt копируется отдельно — иначе при правке одной строки кода переустанавливается весь pip.",
+            },
+            {
+                "type": "callout",
+                "kind": "warning",
+                "content": "**Секреты в build args = в layer history.** Используй `RUN --mount=type=secret=name`, секрет доступен только во время выполнения этого RUN.",
+            },
+        ],
     },
     "k8s_basics": {
         "title": "Kubernetes: Pod, Deployment, Service",
@@ -132,6 +222,114 @@ TOPICS = {
             {"q": "Как сделать rollback Deployment?", "a": "kubectl rollout undo deployment/<name>. История хранится в аннотациях ReplicaSet, количество ревизий задаётся revisionHistoryLimit."},
             {"q": "Что такое ClusterIP vs NodePort vs LoadBalancer?", "a": "ClusterIP — только внутри кластера. NodePort — открывает порт на каждой ноде. LoadBalancer — создаёт внешний балансировщик у cloud provider."},
             {"q": "Как ограничить ресурсы пода?", "a": "resources.requests задаёт минимум для планировщика. resources.limits — жёсткий потолок. Под с превышением лимита по памяти убивается OOMKiller."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Pod — одна копия. Deployment — управляет N репликами с rolling-update. Service — стабильный endpoint, который находит поды через `selector`."},
+            {
+                "type": "compare",
+                "title": "Pod / Deployment / Service",
+                "items": [
+                    {"title": "Pod",
+                     "points": [
+                         "Один или несколько контейнеров",
+                         "Общий network namespace",
+                         "Эфемерный, IP меняется",
+                         "Сам **не** перезапускается",
+                     ]},
+                    {"title": "Deployment",
+                     "points": [
+                         "Управляет ReplicaSet",
+                         "N реплик одного Pod",
+                         "Rolling update + rollback",
+                         "Декларативный — описываешь желаемое",
+                     ]},
+                    {"title": "Service",
+                     "points": [
+                         "Стабильный virtual IP/DNS",
+                         "Балансирует трафик на поды",
+                         "Находит поды через `selector`",
+                         "ClusterIP / NodePort / LoadBalancer",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "Минимальный Deployment + Service",
+                "code": (
+                    "apiVersion: apps/v1\n"
+                    "kind: Deployment\n"
+                    "metadata: { name: api }\n"
+                    "spec:\n"
+                    "  replicas: 3\n"
+                    "  selector:\n"
+                    "    matchLabels: { app: api }\n"
+                    "  template:\n"
+                    "    metadata: { labels: { app: api } }\n"
+                    "    spec:\n"
+                    "      containers:\n"
+                    "      - name: api\n"
+                    "        image: my-api:1.0\n"
+                    "        ports: [{ containerPort: 8000 }]\n"
+                    "        readinessProbe:\n"
+                    "          httpGet: { path: /health, port: 8000 }\n"
+                    "        resources:\n"
+                    "          requests: { cpu: 100m, memory: 256Mi }\n"
+                    "          limits:   { cpu: 500m, memory: 512Mi }\n"
+                    "---\n"
+                    "apiVersion: v1\n"
+                    "kind: Service\n"
+                    "metadata: { name: api }\n"
+                    "spec:\n"
+                    "  selector: { app: api }\n"
+                    "  ports: [{ port: 80, targetPort: 8000 }]"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Service-типы",
+                "headers": ["Тип", "Кому видим", "Когда"],
+                "rows": [
+                    ["ClusterIP",    "только внутри кластера",         "межсервисное общение (default)"],
+                    ["NodePort",     "снаружи на `<NodeIP>:<port>`",   "dev, тесты"],
+                    ["LoadBalancer", "снаружи через cloud LB",          "прод (AWS/GCP создаёт реальный балансировщик)"],
+                    ["Headless",     "DNS round-robin без IP",         "StatefulSet, Kafka-style"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Probes",
+                "items": [
+                    {"k": "`readinessProbe`", "v": "пока не пройдёт, под не получает трафик"},
+                    {"k": "`livenessProbe`",  "v": "при провале — kubelet перезапустит под"},
+                    {"k": "`startupProbe`",   "v": "защита для медленного старта (модель грузится 2 минуты)"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "kubectl-шпаргалка",
+                "items": [
+                    {"k": "`kubectl get pods -A`",                   "v": "все поды во всех namespace"},
+                    {"k": "`kubectl logs <pod> -f`",                 "v": "стримить логи"},
+                    {"k": "`kubectl logs <pod> --previous`",         "v": "логи упавшего контейнера"},
+                    {"k": "`kubectl describe pod <pod>`",            "v": "events, причина CrashLoop"},
+                    {"k": "`kubectl exec -it <pod> -- sh`",          "v": "зайти в под"},
+                    {"k": "`kubectl rollout status deploy/<name>`",  "v": "следить за выкаткой"},
+                    {"k": "`kubectl rollout undo deploy/<name>`",    "v": "rollback"},
+                    {"k": "`kubectl port-forward <pod> 8000:8000`",  "v": "локальный туннель"},
+                ],
+            },
+            {
+                "type": "callout",
+                "kind": "tip",
+                "content": "**Resources обязательны.** `requests` — минимум для scheduler-а, `limits` — жёсткий потолок. Без requests планировщик не разместит под на нагруженной ноде. Превышение memory limit → OOMKilled.",
+            },
+            {
+                "type": "callout",
+                "kind": "gotcha",
+                "content": "**Rolling update без readinessProbe** = трафик уходит на «ещё не готовый» под, пользователи видят 502. `readinessProbe` критичен для zero-downtime.",
+            },
         ],
     },
     "k8s_storage": {
@@ -530,6 +728,57 @@ TOPICS = {
             {"q": "Чем отличается underfitting от overfitting?", "a": "Underfitting (высокий bias): модель плохо работает и на train, и на val. Overfitting (высокий variance): отлично на train, плохо на val. Диагностика через разрыв train/val метрик."},
             {"q": "Как регуляризация влияет на bias-variance?", "a": "Сильная регуляризация ограничивает сложность модели → снижает variance, но увеличивает bias. Компромисс между ними — задача подбора силы регуляризации."},
             {"q": "Что такое double descent?", "a": "При очень большом числе параметров (interpolation threshold) тестовая ошибка снова начинает снижаться после роста. Объясняет, почему большие нейросети без регуляризации иногда обобщаются хорошо."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Ошибка модели = bias² + variance + irreducible noise. **High bias** = модель слишком простая. **High variance** = слишком сложная. Лечатся **разными** способами — если перепутать, станет хуже."},
+            {
+                "type": "compare",
+                "title": "Bias vs Variance",
+                "items": [
+                    {"title": "High Bias (underfit)",
+                     "points": [
+                         "Train **и** val ошибки высокие",
+                         "Они близки друг к другу",
+                         "Модель упрощает задачу",
+                         "Лечение: усложнить, добавить признаки, убрать регуляризацию",
+                     ]},
+                    {"title": "High Variance (overfit)",
+                     "points": [
+                         "Train ошибка низкая",
+                         "Val ошибка высокая",
+                         "Большой gap между ними",
+                         "Лечение: регуляризация, больше данных, dropout, ансамбль, упростить",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Диагностика по learning curves",
+                "headers": ["Симптом", "Train", "Val", "Что это", "Что делать"],
+                "rows": [
+                    ["Обе кривые сошлись высоко",      "0.40", "0.45", "high bias",     "усложнить модель"],
+                    ["Низкий train, высокий val",     "0.05", "0.35", "high variance", "регуляризация / больше данных"],
+                    ["Val растёт после N эпох",        "↓",    "↑",   "overfit во времени", "early stopping"],
+                    ["Val плато, train не падает",    "↑",    "↑",   "проверь данные", "leakage? шум? баг в FE?"],
+                ],
+                "note": "Learning curve — train/val метрика как функция размера выборки или эпох обучения.",
+            },
+            {
+                "type": "flow",
+                "title": "Что делать",
+                "branches": [
+                    {"condition": "high bias",        "outcome": "сложнее модель / больше признаков / меньше регуляризации"},
+                    {"condition": "high variance",    "outcome": "больше данных / регуляризация / dropout / ансамбль / упростить"},
+                    {"condition": "оба плохо",        "outcome": "проверь данные: leakage, шум, баг в feature engineering"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Больше данных помогает только при variance.** При bias модель не выучит зависимость даже с бесконечными данными — не хватает выразительности."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Регуляризация — рукоятка bias-variance.** Сильнее регуляризация → ниже variance, выше bias. Подбор силы — это поиск compromise по cross-validation."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Double descent.** При очень большом числе параметров (interpolation threshold) тестовая ошибка снова падает. Это объясняет, почему большие сети без регуляризации иногда обобщаются хорошо."},
         ],
     },
     "ml_validation": {

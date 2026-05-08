@@ -216,11 +216,8 @@ body {
 
 .cs-list ul, .cs-list ol { padding-left: 22px; margin: 0; }
 .cs-list li { font-size: 13px; line-height: 1.7; margin: 2px 0; }
-.cs-list-do    li::marker { content: '✓ '; color: #22c55e; font-weight: 700; }
-.cs-list-dont  li::marker { content: '✗ '; color: #ef4444; font-weight: 700; }
-.cs-list-do, .cs-list-dont { list-style: none; }
 .cs-list-do ul, .cs-list-dont ul { padding-left: 4px; list-style: none; }
-.cs-list-do li, .cs-list-dont li { padding-left: 18px; position: relative; }
+.cs-list-do li, .cs-list-dont li { padding-left: 20px; position: relative; }
 .cs-list-do li::before { content: '✓'; color: #22c55e; font-weight: 700; position: absolute; left: 0; }
 .cs-list-dont li::before { content: '✗'; color: #ef4444; font-weight: 700; position: absolute; left: 0; }
 
