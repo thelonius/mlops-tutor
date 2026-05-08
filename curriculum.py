@@ -288,6 +288,90 @@ TOPICS = {
             {"q": "Как настроить алерт на деградацию модели?", "a": "Логировать предсказания и ground truth (с задержкой при наличии лейблов), считать метрику качества в скользящем окне, алертировать при падении ниже порога через Alertmanager."},
             {"q": "Что такое Evidently?", "a": "Python-библиотека для генерации отчётов о качестве данных и дрейфе. Сравнивает reference и production датасеты, строит HTML-отчёты с метриками дрейфа по каждой фиче."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Без мониторинга модель в проде деградирует молча. Три слоя: **infra** (CPU/GPU/память), **сервис** (latency, RPS, ошибки) и **качество модели** (drift, метрики на лейблах с задержкой)."},
+            {
+                "type": "compare",
+                "title": "Что мониторить",
+                "items": [
+                    {"title": "Infra",
+                     "points": [
+                         "GPU utilization, GPU memory",
+                         "CPU, memory, disk",
+                         "Network IO",
+                         "Источник: dcgm-exporter, node-exporter",
+                     ]},
+                    {"title": "Сервис",
+                     "points": [
+                         "Latency p50/p95/p99",
+                         "RPS / QPS",
+                         "Error rate (4xx, 5xx)",
+                         "Очередь Triton, queue duration",
+                     ]},
+                    {"title": "Модель",
+                     "points": [
+                         "Data drift (PSI, KS)",
+                         "Concept drift (метрика на новых лейблах)",
+                         "Распределение предсказаний",
+                         "Доля missing/anomaly во входе",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Drift-детекторы",
+                "headers": ["Метод", "Что меряет", "Когда брать", "Порог тревоги"],
+                "rows": [
+                    ["PSI",       "симметричный сдвиг распределения",      "скоринг, бинарные/категориальные фичи", "PSI > 0.25 — критический"],
+                    ["KS-тест",   "разность CDF (max distance)",            "числовые фичи",                          "p-value < 0.05"],
+                    ["JS-divergence", "Jensen-Shannon между распределениями", "категориальные с многими классами",  "> 0.1 — внимание"],
+                    ["χ²",         "категориальные распределения",          "discrete фичи",                          "p-value < 0.05"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Метрики, которые нужны почти всегда",
+                "items": [
+                    {"k": "**latency p99**",       "v": "хвост распределения, по нему ставят SLO"},
+                    {"k": "**RPS**",               "v": "нагрузка"},
+                    {"k": "**error_rate**",        "v": "5xx/total за минуту"},
+                    {"k": "**queue_duration_ms**", "v": "сколько ждут в очереди Triton"},
+                    {"k": "**gpu_util**",          "v": "должна быть высокой при нагрузке"},
+                    {"k": "**vram_used**",         "v": "OOM = всё стоит"},
+                    {"k": "**psi(feature)**",      "v": "drift по ключевым фичам"},
+                    {"k": "**model_score(window)**", "v": "качество на новых лейблах"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "Prometheus scrape Triton",
+                "code": (
+                    "scrape_configs:\n"
+                    "  - job_name: triton\n"
+                    "    static_configs:\n"
+                    "      - targets: ['triton:8002']\n"
+                    "    metrics_path: /metrics\n"
+                    "    scrape_interval: 15s"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Что делать при деградации",
+                "branches": [
+                    {"condition": "drift на одной фиче",            "outcome": "проверь источник данных, не сломался ли upstream"},
+                    {"condition": "drift на многих фичах",          "outcome": "сезонность? новый сегмент? нужен retrain"},
+                    {"condition": "concept drift (метрика упала)",  "outcome": "retrain + проверь label leakage в новых данных"},
+                    {"condition": "latency p99 растёт",              "outcome": "queue_duration / GPU util / dynamic batching"},
+                    {"condition": "GPU util низкая, latency высокая", "outcome": "preprocessing bottleneck, batch_size, CPU"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**P99 важнее mean.** Среднее скрывает хвост: если 1% запросов идут 10 секунд, mean будет 50 мс — но эти 1% делают сервис неюзабельным."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Концептуальный дрейф детектится с задержкой.** Лейблы приходят через дни/недели. Поэтому data drift (на входах) — ранний сигнал, а concept drift (на качестве) — поздний и точный."},
+        ],
     },
     "system_design": {
         "title": "System Design для MLOps",
@@ -549,6 +633,62 @@ TOPICS = {
             {"q": "Что такое leave-one-out CV (LOO)?", "a": "Каждый пример по очереди становится val, остальные — train. Дисперсия очень высокая, вычислительно дорог при больших данных. Используют только при очень малых выборках (n < 50)."},
             {"q": "Как правильно делать preprocessing при CV?", "a": "Fit скейлеров и энкодеров только на train-фолде, transform на val-фолде. Никогда fit_transform на всём датасете до CV — это temporal/preprocessing leakage."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Один train/val split даёт шумную оценку. K-fold CV усредняет по K разбиениям. Но для временных рядов и групп **обычный k-fold ломает данные** — нужны специальные варианты."},
+            {
+                "type": "table",
+                "title": "Какой k-fold брать",
+                "headers": ["Вариант", "Когда", "Что делает"],
+                "rows": [
+                    ["KFold",            "**iid данные**, балансированные классы", "случайно делит на K частей"],
+                    ["StratifiedKFold",  "классификация, дисбаланс",                "сохраняет долю классов в каждом фолде"],
+                    ["GroupKFold",       "одна сущность во многих примерах",         "одна группа целиком в одном фолде"],
+                    ["TimeSeriesSplit",  "**временные ряды**",                       "train предшествует val, без shuffle"],
+                    ["StratifiedGroupKFold", "дисбаланс **+** группы",              "комбо: страта × группа"],
+                    ["LeaveOneOut",      "n < 50",                                   "каждый пример по очереди — val"],
+                ],
+                "note": "На временных рядах обычный KFold даёт **утечку будущего** — модель видит будущие наблюдения при train.",
+            },
+            {
+                "type": "flow",
+                "title": "Какой CV выбрать",
+                "branches": [
+                    {"condition": "временные ряды",                "outcome": "TimeSeriesSplit"},
+                    {"condition": "пользователи / пациенты / магазины", "outcome": "GroupKFold (или StratifiedGroupKFold при дисбалансе)"},
+                    {"condition": "классификация · дисбаланс",      "outcome": "StratifiedKFold"},
+                    {"condition": "iid · сбалансировано",           "outcome": "KFold"},
+                    {"condition": "n < 50",                          "outcome": "LeaveOneOut"},
+                    {"condition": "подбор гиперпараметров + оценка", "outcome": "Nested CV (внешний — оценка, внутренний — поиск)"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Stratified k-fold + правильный preprocessing",
+                "code": (
+                    "from sklearn.model_selection import StratifiedKFold\n"
+                    "from sklearn.pipeline import Pipeline\n"
+                    "from sklearn.preprocessing import StandardScaler\n"
+                    "from sklearn.linear_model import LogisticRegression\n\n"
+                    "# КЛЮЧ: scaler внутри Pipeline — fit только на train-фолде\n"
+                    "pipe = Pipeline([\n"
+                    "    ('scaler', StandardScaler()),\n"
+                    "    ('clf',    LogisticRegression()),\n"
+                    "])\n\n"
+                    "skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)\n"
+                    "for tr, va in skf.split(X, y):\n"
+                    "    pipe.fit(X[tr], y[tr])\n"
+                    "    score = pipe.score(X[va], y[va])"
+                ),
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Preprocessing leakage.** `scaler.fit_transform(X)` **до** CV → информация из val утекла в train через статистики (mean/std). Fit-ить только на train-фолде. Pipeline с этим справляется автоматически."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Time leakage.** Любой `shuffle=True` на временных рядах = модель видит будущее. Признак: метрика в оффлайне отлично, в проде — катастрофа."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Nested CV.** Если подбираешь гиперпараметры через CV и репортишь ту же метрику как «качество модели» — она оптимистично завышена. Внешний цикл оценивает, внутренний — ищет."},
+        ],
     },
     "ml_leakage": {
         "title": "Утечки данных",
@@ -584,6 +724,60 @@ TOPICS = {
             {"q": "Что такое focal loss?", "a": "Модификация cross-entropy: FL = −(1−p)^γ × log(p). Уменьшает вклад легко классифицируемых примеров (большинство из них — мажорный класс), фокусирует обучение на сложных случаях."},
             {"q": "Стоит ли применять SMOTE к валидационной выборке?", "a": "Нет. SMOTE применяется только к обучающей выборке. Val и test должны отражать реальное распределение — иначе метрики не соответствуют продакшн-поведению."},
             {"q": "Чем undersampling опасен?", "a": "Удаление примеров мажорного класса уменьшает размер датасета и может выбросить полезную информацию. При малом датасете — риск высокого variance. Подходит только при очень большом датасете."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "При дисбалансе 1:100 классификатор «всегда 0» даёт 99% accuracy. Метрика бесполезна. Решение — три рукоятки: **взвешивание классов**, **sampling**, **подбор порога**. И обязательно PR-AUC вместо ROC-AUC."},
+            {
+                "type": "table",
+                "title": "Техники работы с дисбалансом",
+                "headers": ["Техника", "Что делает", "Когда", "Подводные камни"],
+                "rows": [
+                    ["`class_weight='balanced'`", "штраф меньшинства × вес в loss",      "первый шаг, бесплатно",   "не все модели поддерживают"],
+                    ["SMOTE",                      "синтетические минорные через интерполяцию", "KNN/SVM без весов",       "может создавать нереалистичные примеры"],
+                    ["Random oversampling",        "дублирует минорные",                  "очень малый датасет",      "усиливает overfit"],
+                    ["Random undersampling",       "выкидывает мажорные",                  "очень большой датасет",    "теряем информацию, variance↑"],
+                    ["Threshold tuning",           "сдвиг decision threshold",            "после обучения",           "требует калибровки вероятностей"],
+                    ["Focal loss",                 "FL = −(1−p)ᵞ · log(p)",              "deep learning, hard examples", "ещё один гиперпараметр γ"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "class_weight vs SMOTE",
+                "items": [
+                    {"title": "class_weight='balanced'",
+                     "points": [
+                         "Автоматический вес: `n / (k × n_class)`",
+                         "Не меняет данные, только loss",
+                         "Бесплатно (1 строка кода)",
+                         "Поддерживается линейными, деревьями, бустингом",
+                     ]},
+                    {"title": "SMOTE",
+                     "points": [
+                         "Синтетические примеры через интерполяцию kNN",
+                         "Физически балансирует датасет",
+                         "Нужен для KNN, SVM без weights",
+                         "Применять **только к train** (не к val/test)",
+                     ]},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "С чего начать",
+                "branches": [
+                    {"condition": "1. метрика", "outcome": "PR-AUC, F1, recall@k (НЕ accuracy, НЕ ROC-AUC)"},
+                    {"condition": "2. модель",  "outcome": "`class_weight='balanced'` — бесплатный baseline"},
+                    {"condition": "3. если не хватает", "outcome": "SMOTE на train (не на val/test)"},
+                    {"condition": "4. порог",    "outcome": "PR-кривая → cost(FP)·FP + cost(FN)·FN, минимум"},
+                    {"condition": "5. deep learning", "outcome": "focal loss"},
+                ],
+            },
+            {"type": "callout", "kind": "warning",
+             "content": "**SMOTE на val/test = катастрофа.** Метрики не соответствуют продакшн-поведению. SMOTE применяется **только** к обучающей выборке. На val/test распределение должно быть как в реальности."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Threshold tuning требует калибровки.** Сдвиг порога с 0.5 на 0.2 имеет смысл только если выходы модели — настоящие вероятности. Если нет — `CalibratedClassifierCV` или Platt scaling."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Бизнес-связка.** Низкий precision = ложные тревоги (стоимость обработки). Низкий recall = пропуски (стоимость последствий). Бизнес даёт соотношение → выбираем порог на PR-кривой."},
         ],
     },
     "ml_features": {

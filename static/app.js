@@ -389,6 +389,7 @@ function renderCheatsheet(tid) {
   if (window.hljs) {
     view.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
   }
+  if (typeof addTooltips === 'function') addTooltips(view);
 }
 
 // ── Cheatsheet block rendering ──
