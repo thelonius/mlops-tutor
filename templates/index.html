@@ -1352,12 +1352,13 @@ function addTtsButton(bubble, rawText) {
 }
 
 function addNextButton(bubble) {
-  if (mode !== 'quiz' && mode !== 'mock') return;
+  if (mode !== 'learn' && mode !== 'quiz' && mode !== 'mock') return;
+  const isLearn = mode === 'learn';
   const btn = document.createElement('button');
   btn.className = 'next-q-btn';
-  btn.innerHTML = '➡️ <span>Следующий</span>';
-  btn.title = 'Следующий вопрос';
-  btn.onclick = () => send('Следующий вопрос.');
+  btn.innerHTML = isLearn ? '➡️ <span>Далее</span>' : '➡️ <span>Следующий</span>';
+  btn.title = isLearn ? 'Продолжить объяснение' : 'Следующий вопрос';
+  btn.onclick = () => send(isLearn ? 'Далее.' : 'Следующий вопрос.');
   bubble.appendChild(btn);
 }
 
