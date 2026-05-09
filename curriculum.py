@@ -268,6 +268,97 @@ TOPICS = {
             {"q": "Можно ли запросить долю GPU (дробный GPU)?", "a": "Стандартный Device Plugin не поддерживает дроби. Нужен NVIDIA Time-Slicing или MIG. Time-Slicing делит GPU по времени без изоляции памяти."},
             {"q": "Что происходит с GPU при краше пода?", "a": "Device Plugin освобождает ресурс автоматически при завершении контейнера. GPU возвращается в пул доступных ресурсов ноды."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "GPU в K8s — extended resource `nvidia.com/gpu`. Поды просят его в `resources.limits`. **Device Plugin** регистрирует GPU и управляет выделением. Изоляция GPU-нод — через **taint+toleration**. Делёж одной GPU — **MIG** (A100/H100) или **time-slicing**."},
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "Pod, запрашивающий 1 GPU",
+                "code": (
+                    "apiVersion: v1\n"
+                    "kind: Pod\n"
+                    "metadata: { name: trainer }\n"
+                    "spec:\n"
+                    "  tolerations:\n"
+                    "  - key: nvidia.com/gpu\n"
+                    "    operator: Exists\n"
+                    "    effect: NoSchedule\n"
+                    "  nodeSelector:\n"
+                    "    nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB\n"
+                    "  containers:\n"
+                    "  - name: train\n"
+                    "    image: pytorch:2.1\n"
+                    "    resources:\n"
+                    "      limits:\n"
+                    "        nvidia.com/gpu: 1       # GPU только в limits, не в requests\n"
+                    "        cpu: 4\n"
+                    "        memory: 32Gi"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Способы делить GPU",
+                "headers": ["Способ", "Изоляция", "Где работает", "Когда"],
+                "rows": [
+                    ["**Один GPU = один Pod**",  "полная",                       "везде",                    "тренировка, тяжёлый инференс"],
+                    ["**MIG**",                    "**аппаратная** (compute + memory)", "**A100, H100**",           "несколько маленьких моделей"],
+                    ["**Time-slicing**",          "только compute (без VRAM)",     "любой GPU + Device Plugin", "dev-окружения, тесты"],
+                    ["**MPS (Multi-Process Service)**", "слабая, общая память",      "CUDA, любая GPU",           "low-latency inference"],
+                ],
+                "note": "MIG лучший по изоляции но только на A100/H100. Time-slicing удобен в dev — несколько подов делят одну GPU без гарантий.",
+            },
+            {
+                "type": "kv",
+                "title": "Taints / Tolerations / Affinity",
+                "items": [
+                    {"k": "**taint** на ноде",        "v": "`nvidia.com/gpu=present:NoSchedule` — отталкивает поды без toleration"},
+                    {"k": "**toleration** в поде",     "v": "`{key: nvidia.com/gpu, operator: Exists}` — разрешает планироваться"},
+                    {"k": "**nodeSelector**",           "v": "точное соответствие label (`nvidia.com/gpu.product=A100`)"},
+                    {"k": "**nodeAffinity**",           "v": "богаче: операторы In/NotIn/Exists, required vs preferred"},
+                    {"k": "**podAntiAffinity**",        "v": "не размещать N подов одной модели на одной ноде (HA)"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "MIG: запросить 1g.5gb-срез A100",
+                "code": (
+                    "containers:\n"
+                    "- name: small-inference\n"
+                    "  image: triton:23.10\n"
+                    "  resources:\n"
+                    "    limits:\n"
+                    "      nvidia.com/mig-1g.5gb: 1   # 1 compute slice, 5GB VRAM"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Команды диагностики",
+                "items": [
+                    {"k": "`kubectl describe node <node> | grep -A5 nvidia`", "v": "показать allocatable/used GPU"},
+                    {"k": "`kubectl exec -it <pod> -- nvidia-smi`",          "v": "состояние GPU внутри пода"},
+                    {"k": "`kubectl logs -n gpu-operator <plugin-pod>`",      "v": "логи Device Plugin"},
+                    {"k": "`kubectl get nodes -L nvidia.com/gpu.product`",     "v": "какие GPU на каких нодах"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Как разделить GPU",
+                "branches": [
+                    {"condition": "одна модель тренируется на A100",          "outcome": "целая GPU, `nvidia.com/gpu: 1`"},
+                    {"condition": "много мелких моделей в инференсе на A100", "outcome": "**MIG** — 7 × 1g.5gb"},
+                    {"condition": "любой GPU, dev-кластер",                   "outcome": "**time-slicing** — несколько подов на одну GPU"},
+                    {"condition": "low-latency inference, нужна общая память", "outcome": "**MPS** + 1 контейнер с N процессами"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**GPU только в `limits`, не в `requests`.** Стандартный Device Plugin требует явного limit на extended resource. Без него под не запланируется."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Time-slicing не изолирует VRAM.** Если один из подов «съест» всю память — соседи получат CUDA OOM. Для прода — только MIG или целая GPU."},
+            {"type": "callout", "kind": "fact",
+             "content": "**dcgm-exporter — стандарт.** Запускается DaemonSet-ом на GPU-нодах, собирает метрики DCGM (utilization, memory, temperature) и отдаёт Prometheus. Без него мониторинга GPU нет."},
+        ],
     },
     "model_formats": {
         "title": "Форматы ML-моделей",
@@ -914,6 +1005,89 @@ TOPICS = {
             {"q": "Чем log loss лучше accuracy для оценки вероятностных моделей?", "a": "Accuracy не различает 'уверенно правильно' и 'случайно правильно'. Log loss штрафует за уверенность в неправильном ответе экспоненциально, стимулируя точные вероятностные оценки."},
             {"q": "Когда логрег не подходит?", "a": "Когда граница решения нелинейная. Логрег — линейный классификатор в пространстве признаков. Для нелинейных задач нужны ядерные методы, деревья или нейросети."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Логрег = линейная комбинация фич → **sigmoid** → вероятность. Loss — **log loss** из MLE для Бернулли. Порог по умолчанию 0.5, но при дисбалансе **двигать через PR-кривую**. Калибровка важна, когда нужны настоящие вероятности (реклама, скоринг, медицина)."},
+            {
+                "type": "kv",
+                "title": "Формулы",
+                "items": [
+                    {"k": "**Sigmoid**",     "v": "`σ(z) = 1 / (1 + e⁻ᶻ)`, где `z = w·x + b`"},
+                    {"k": "**Predict**",      "v": "`P(y=1 | x) = σ(w·x + b)`"},
+                    {"k": "**Log loss**",     "v": "`−(1/n) · Σ [y·log(p) + (1−y)·log(1−p)]`"},
+                    {"k": "**MLE-вывод**",    "v": "max ∏ p^y·(1−p)^(1−y) → −log → log loss"},
+                    {"k": "**Decision rule**", "v": "`p ≥ threshold → 1`. Дефолт `threshold = 0.5`."},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Multi-class — стратегии",
+                "items": [
+                    {"title": "One-vs-Rest (OvR)",
+                     "points": [
+                         "K бинарных классификаторов",
+                         "Каждый: «класс i vs все остальные»",
+                         "Голосование по выходу с max p",
+                         "Простой, sklearn default",
+                     ]},
+                    {"title": "Multinomial (softmax)",
+                     "points": [
+                         "Один классификатор",
+                         "Softmax вместо K сигмоидов",
+                         "Лучше калиброван между классами",
+                         "Стандарт в нейросетях",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Калибровка — методы",
+                "headers": ["Метод", "Что делает", "Когда", "Минус"],
+                "rows": [
+                    ["**Platt scaling**",       "logreg поверх скоров",                  "сигмоидная форма miscalibration",   "слабая, если форма не сигмоид"],
+                    ["**Isotonic regression**", "неубывающая кусочно-постоянная",        "много данных, сложная форма",        "требует больше данных, easy overfit"],
+                    ["**Histogram binning**",   "усреднение по бинам предсказаний",      "очень простой baseline",              "грубый, шумный на хвостах"],
+                    ["**Beta calibration**",     "обобщение Platt через beta-распред.", "редко используется, гибче Platt",   "дополнительная сложность"],
+                ],
+                "note": "Логрег обычно сама хорошо откалибрована. Деревья, бустинг и SVM — почти всегда нет.",
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Калибровка вероятностей через CalibratedClassifierCV",
+                "code": (
+                    "from sklearn.calibration import CalibratedClassifierCV\n"
+                    "from sklearn.ensemble import RandomForestClassifier\n"
+                    "from sklearn.calibration import calibration_curve\n"
+                    "import matplotlib.pyplot as plt\n\n"
+                    "rf = RandomForestClassifier(n_estimators=200)\n"
+                    "calib = CalibratedClassifierCV(rf, method='isotonic', cv=5)\n"
+                    "calib.fit(X_tr, y_tr)\n\n"
+                    "# Reliability diagram\n"
+                    "p_pred = calib.predict_proba(X_te)[:, 1]\n"
+                    "frac_pos, mean_pred = calibration_curve(y_te, p_pred, n_bins=10)\n"
+                    "plt.plot([0, 1], [0, 1], '--')          # идеальная калибровка\n"
+                    "plt.plot(mean_pred, frac_pos, 'o-')      # факт"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Что брать",
+                "branches": [
+                    {"condition": "линейная граница, табличные данные",     "outcome": "**LogisticRegression** + StandardScaler + L2"},
+                    {"condition": "много фич, большинство шум",             "outcome": "LogisticRegression(penalty='l1')"},
+                    {"condition": "multi-class",                            "outcome": "`multi_class='multinomial'` + `solver='lbfgs'`"},
+                    {"condition": "нужны калиброванные вероятности",         "outcome": "**Isotonic** при много данных, **Platt** при мало"},
+                    {"condition": "нелинейная граница",                     "outcome": "не логрег — деревья, бустинг, нейросети"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Логрег — почти всегда первый baseline.** Если её результат уже годится — нет смысла идти в более сложные модели. Если плохо — это сигнал, что граница нелинейная или данных мало."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Порог ≠ 0.5.** При дисбалансе или asymmetric cost оптимум сдвинут. Строй PR-кривую и выбирай порог по `cost(FP)·FP + cost(FN)·FN` минимуму или constraint (например, `recall ≥ 0.9`)."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Калибровка vs дискриминация — разные вещи.** Можно иметь высокий ROC-AUC (модель ранжирует хорошо) и плохую калибровку (вероятности завышены/занижены). Reliability diagram — отдельная диагностика."},
+        ],
     },
     "ml_trees": {
         "title": "Деревья и Random Forest",
@@ -931,6 +1105,122 @@ TOPICS = {
             {"q": "Что такое MDI feature importance?", "a": "Mean Decrease in Impurity: суммарное снижение нечистоты по всем разбиениям по данному признаку, усреднённое по деревьям. Встроен в sklearn RandomForest."},
             {"q": "В чём ловушка MDI на высококардинальных признаках?", "a": "MDI систематически переоценивает важность признаков с большим числом уникальных значений (ID, timestamp) — у них больше вариантов разбиений. Permutation importance лишён этого bias."},
             {"q": "Как RF справляется с пропусками?", "a": "Стандартный sklearn RandomForest не поддерживает NaN — нужно импутировать. HistGradientBoosting и LightGBM обрабатывают NaN нативно, направляя их в отдельную ветвь."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Дерево** разбивает пространство фич рекурсивно по порогам, минимизируя impurity (Gini/entropy). Одно дерево overfit-ит. **Random Forest** — bagging: B деревьев на bootstrap + случайные подмножества фич → variance снижается до σ²/B. **OOB-ошибка** даёт оценку качества бесплатно."},
+            {
+                "type": "compare",
+                "title": "Gini vs Entropy",
+                "items": [
+                    {"title": "Gini",
+                     "points": [
+                         "`1 − Σpᵢ²`",
+                         "Дефолт в sklearn",
+                         "Без log → быстрее",
+                         "На практике почти не отличим",
+                     ]},
+                    {"title": "Entropy",
+                     "points": [
+                         "`−Σpᵢ·log(pᵢ)`",
+                         "Information gain criterion",
+                         "Чувствительнее к балансу",
+                         "Чуть медленнее (log)",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Гиперпараметры Random Forest",
+                "headers": ["Параметр", "Что меняет", "Типичное значение"],
+                "rows": [
+                    ["`n_estimators`",        "число деревьев",                       "200–1000 (больше = стабильнее)"],
+                    ["`max_depth`",            "глубина дерева",                       "**None** (полные) или 10-20"],
+                    ["`min_samples_split`",   "минимум для split",                    "2 (default), увеличить при overfit"],
+                    ["`min_samples_leaf`",    "минимум в листе",                       "1, 5, 20 — чем больше тем сильнее регуляризация"],
+                    ["`max_features`",         "сколько фич рассматривать на split",  "`sqrt(p)` для классификации, `p/3` для регрессии"],
+                    ["`bootstrap`",            "bootstrap-выборка или нет",            "True (нужно для OOB)"],
+                    ["`oob_score`",            "считать OOB error",                    "True"],
+                    ["`n_jobs`",               "параллелизм",                          "−1 (все ядра)"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Feature importance — методы",
+                "items": [
+                    {"title": "MDI (default sklearn)",
+                     "points": [
+                         "Mean Decrease in Impurity",
+                         "Бесплатно, встроено",
+                         "**Завышает** high-cardinality фичи",
+                         "Не учитывает корреляции",
+                     ]},
+                    {"title": "Permutation importance",
+                     "points": [
+                         "Перетасовывает фичу — смотрит ↓ метрики",
+                         "Без bias на cardinality",
+                         "Дороже (один проход на фичу)",
+                         "Корелирующие фичи делят важность",
+                     ]},
+                    {"title": "SHAP",
+                     "points": [
+                         "Игровая теория: вклад каждой фичи",
+                         "Локальная **и** глобальная интерпретация",
+                         "Дорого, но самый честный",
+                         "TreeSHAP оптимизирован под деревья",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Random Forest + OOB + permutation importance",
+                "code": (
+                    "from sklearn.ensemble import RandomForestClassifier\n"
+                    "from sklearn.inspection import permutation_importance\n\n"
+                    "rf = RandomForestClassifier(\n"
+                    "    n_estimators=500,\n"
+                    "    max_features='sqrt',\n"
+                    "    oob_score=True,        # бесплатная оценка\n"
+                    "    n_jobs=-1,\n"
+                    "    random_state=42,\n"
+                    ")\n"
+                    "rf.fit(X_tr, y_tr)\n"
+                    "print(f'OOB: {rf.oob_score_:.4f}')\n\n"
+                    "# Permutation importance — без bias на cardinality\n"
+                    "result = permutation_importance(\n"
+                    "    rf, X_va, y_va, n_repeats=10, random_state=42, n_jobs=-1\n"
+                    ")\n"
+                    "imp = sorted(zip(result.importances_mean, X.columns), reverse=True)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Bagging — почему работает",
+                "items": [
+                    {"k": "**Bootstrap**",  "v": "выборка с возвращением размера N — ~63% уникальных, ~37% out-of-bag"},
+                    {"k": "**Усреднение**", "v": "если деревья независимы с variance σ², их среднее имеет σ²/B"},
+                    {"k": "**Random subspace**", "v": "случайный выбор фич на каждом split → деревья **менее коррелируют** → среднее эффективнее"},
+                    {"k": "**OOB-ошибка**", "v": "каждый пример валидируется деревьями, которые его не видели в bootstrap"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Когда что брать",
+                "branches": [
+                    {"condition": "табличные, нужен быстрый baseline",          "outcome": "**Random Forest** — почти zero-config"},
+                    {"condition": "нужна интерпретация",                       "outcome": "одно дерево или RF + permutation/SHAP"},
+                    {"condition": "лучшее качество на табличных",                "outcome": "градиентный бустинг (XGB/LGBM/CatBoost)"},
+                    {"condition": "много пропусков NaN",                         "outcome": "HistGradientBoosting / LightGBM (нативная поддержка)"},
+                    {"condition": "очень высокая кардинальность фич",            "outcome": "**не MDI** для importance — permutation"},
+                ],
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**MDI обманывает на ID-фичах.** Признак с тысячей уникальных значений всегда даёт много возможных split-ов → MDI считает его важным. Permutation importance не имеет этого bias."},
+            {"type": "callout", "kind": "tip",
+             "content": "**OOB вместо CV.** При B ≥ 500 OOB-ошибка по точности почти равна 5-fold CV, но **бесплатна** — не требует переобучения. Включи `oob_score=True`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**RF не нужна стандартизация.** Деревья оперируют порогами по фиче, масштаб не важен. То же касается one-hot vs ordinal — деревья справляются с любым кодированием."},
         ],
     },
     "ml_boosting": {
@@ -1567,6 +1857,108 @@ TOPICS = {
             {"q": "Для чего нужен CDN?", "a": "Кешировать статические ресурсы (JS, CSS, изображения) у POP-узлов рядом с пользователем. Снижает latency и нагрузку на origin-серверы. CloudFront, Cloudflare, Fastly."},
             {"q": "Что такое reverse proxy?", "a": "Сервер перед приложением: принимает запросы клиентов, пересылает на backend, возвращает ответ. Nginx как reverse proxy — TLS termination, кеширование, балансировка, gzip."},
             {"q": "Когда вертикальное масштабирование, когда горизонтальное?", "a": "Вертикальное (bigger instance) — проще, но ограничено и дорого. Горизонтальное (больше инстансов) — требует stateless архитектуры и балансировщика, но без лимита масштабирования."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Базовый словарь system design: **stateless** сервисы → горизонтально масштабируются; **load balancer** (L4 быстрый, L7 умный); **многоуровневый кеш** (CDN → reverse proxy → app cache → DB); **TTL** — компромисс между staleness и нагрузкой."},
+            {
+                "type": "compare",
+                "title": "L4 vs L7 Load Balancer",
+                "items": [
+                    {"title": "L4 (TCP/UDP)",
+                     "points": [
+                         "Балансирует по IP/TCP",
+                         "**Быстрый** (без парсинга HTTP)",
+                         "Не видит URL/headers/cookies",
+                         "AWS NLB, HAProxy в TCP-режиме",
+                     ]},
+                    {"title": "L7 (HTTP)",
+                     "points": [
+                         "Понимает HTTP, gRPC",
+                         "Маршрутизация по URL/host/header",
+                         "TLS termination, gzip, кеш",
+                         "Nginx, Envoy, AWS ALB, Traefik",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Слои кеша",
+                "headers": ["Уровень", "Что кешируется", "TTL", "Инструмент"],
+                "rows": [
+                    ["**CDN**",          "статика (JS/CSS/img/API GET)", "часы — дни",   "Cloudflare, CloudFront, Fastly"],
+                    ["**Reverse proxy**", "HTTP-ответы по URL",            "минуты",        "Nginx, Varnish, Envoy"],
+                    ["**App-уровень**",  "результаты функций (memoize)",  "секунды-мин",  "Redis, Memcached, in-memory LRU"],
+                    ["**DB query cache**", "результаты SELECT-ов",        "очень коротко", "Postgres pg_buffercache, MySQL"],
+                    ["**Materialized view**", "пред-вычисленные агрегации", "обновление по расписанию", "PostgreSQL MV, dbt"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Cache patterns",
+                "items": [
+                    {"title": "Cache-aside",
+                     "points": [
+                         "Приложение управляет кешем",
+                         "Read: cache → miss → DB → cache",
+                         "Write: DB напрямую, инвалидация кеша",
+                         "Самый частый паттерн",
+                     ]},
+                    {"title": "Write-through",
+                     "points": [
+                         "Запись синхронно в кеш + DB",
+                         "Кеш всегда консистентен",
+                         "Запись медленнее",
+                         "Чтение всегда из кеша",
+                     ]},
+                    {"title": "Write-back",
+                     "points": [
+                         "Запись только в кеш",
+                         "DB обновляется async",
+                         "**Рискуем потерять данные** при падении кеша",
+                         "Очень быстрая запись",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Cache stampede и лечение",
+                "items": [
+                    {"k": "**Что это**",                   "v": "горячий ключ истёк → все параллельные запросы одновременно бьют в DB"},
+                    {"k": "**Probabilistic early expiration**", "v": "обновлять кеш до истечения с вероятностью exp(−Δt/τ)"},
+                    {"k": "**Mutex lock**",                 "v": "первый пользователь получает lock и обновляет, остальные ждут или возвращают stale"},
+                    {"k": "**Stale-while-revalidate**",      "v": "отдавать устаревшее значение, обновлять в фоне"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Vertical vs Horizontal scaling",
+                "headers": ["Подход", "Плюсы", "Минусы", "Когда"],
+                "rows": [
+                    ["**Vertical** (бо́льший инстанс)", "просто, нет архитектурных изменений", "лимит железа, дорого, single point of failure", "MVP, БД, stateful-сервисы"],
+                    ["**Horizontal** (больше инстансов)", "без лимита масштаба, отказоустойчиво", "нужен stateless + LB + shared storage", "веб-сервисы, ML inference"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Базовые числа для прикидок",
+                "items": [
+                    {"k": "**RAM access**",            "v": "~100 ns"},
+                    {"k": "**SSD seq read**",          "v": "~1 GB/s"},
+                    {"k": "**SSD random read 4KB**",   "v": "~50–100 μs"},
+                    {"k": "**HDD random**",             "v": "~10 ms"},
+                    {"k": "**Network round-trip (DC)**", "v": "~0.5 ms"},
+                    {"k": "**Network round-trip (cross-region)**", "v": "~50–150 ms"},
+                    {"k": "**Redis GET/SET**",          "v": "~0.1–1 ms"},
+                    {"k": "**SQL запрос (простой)**",    "v": "1–10 ms"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Stateless = масштабирование бесплатно.** Все session-данные — в Redis или JWT. Любой инстанс обслуживает любого пользователя. Sticky sessions — anti-pattern, появляется когда забыли вынести state."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Многоуровневый кеш** работает как LRU-цепочка: CDN ловит ~80% статики, reverse proxy — ~80% оставшегося, app cache — ~80% оставшегося. До DB доходит малая часть запросов."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Cache stampede прячется до пика.** При обычной нагрузке всё гладко, при пике один просроченный ключ кладёт DB. Probabilistic refresh или mutex lock — обязательны для горячих ключей."},
         ],
     },
     "sd_data": {
@@ -2206,6 +2598,101 @@ TOPICS = {
             {"q": "Что такое label definition problem?", "a": "Неоднозначность при разметке. Например, что считать 'отказом от покупки' — уход со страницы, закрытие вкладки, отсутствие заказа за 7 дней? Разные определения дают разные датасеты и метрики."},
             {"q": "Как обосновать, что ML улучшит текущее решение?", "a": "Сравнить error analysis текущего решения с тем, где ML теоретически выиграет. Нужны данные: (1) сколько кейсов не покрыто правилами, (2) есть ли паттерны в ошибках правил, (3) достаточно ли данных для обучения."},
             {"q": "Что проверить до старта ML-проекта?", "a": "1. Есть ли лейблы или можно собрать. 2. Объём данных достаточен для задачи. 3. Есть ли data leakage риски в постановке. 4. Как будет использоваться модель (batch vs real-time). 5. Кто и как будет поддерживать в продакшне."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Senior получает «снизить отток», а не «обучи модель». Перевод бизнес-цели в ML — отдельный навык. Шаги: бизнес-цель → operational metric → ML proxy → тип задачи → baseline без ML → план A/B. Каждый шаг проверяй: **«а можно без ML?»**"},
+            {
+                "type": "flow",
+                "title": "Framework: бизнес → ML",
+                "branches": [
+                    {"condition": "1. Business goal",        "outcome": "снизить отток / увеличить retention / GMV"},
+                    {"condition": "2. Operational metric",   "outcome": "% пользователей вернувшихся за 30 дней"},
+                    {"condition": "3. Можно без ML?",         "outcome": "если **да** → правила/эвристика. Иначе →"},
+                    {"condition": "4. ML proxy metric",       "outcome": "P(churn в следующие 30 дней) > порог"},
+                    {"condition": "5. Тип задачи",            "outcome": "binary classification / regression / ranking / generation"},
+                    {"condition": "6. Baseline без ML",       "outcome": "константа / правило эксперта / самое популярное"},
+                    {"condition": "7. Метрики",                "outcome": "**оффлайн** (PR-AUC, NDCG) **+ онлайн** (бизнес A/B)"},
+                    {"condition": "8. План внедрения",         "outcome": "shadow → A/B → постепенный rollout"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Тип задачи под бизнес-вопрос",
+                "headers": ["Бизнес-вопрос", "Тип ML", "Метрика"],
+                "rows": [
+                    ["«будет или нет?»",            "**бинарная классификация**",     "PR-AUC, F1"],
+                    ["«сколько?»",                    "**регрессия**",                   "MAE, RMSE, MAPE"],
+                    ["«какой класс из K?»",          "**multiclass**",                  "macro-F1, balanced acc"],
+                    ["«какие из тысяч?»",            "**multilabel**",                  "Hamming, micro-F1"],
+                    ["«в каком порядке?»",           "**ranking**",                     "NDCG, MAP, MRR"],
+                    ["«какие группы?»",              "**clustering**",                  "silhouette, ARI"],
+                    ["«похожие объекты?»",           "**retrieval / similarity**",      "recall@k"],
+                    ["«сгенерировать текст/код?»",   "**generation**",                  "BLEU/ROUGE + human eval"],
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Когда ML НЕ нужен",
+                "kind": "dont",
+                "items": [
+                    "Достаточно if/else — правила работают и интерпретируемы",
+                    "Данных слишком мало для обобщения (< 1000 примеров на класс)",
+                    "Задача меняется быстрее цикла обучения (старт-ап pivots)",
+                    "Стоимость ошибки модели выше выигрыша от ML",
+                    "Нет лейблов и нет дешёвого способа их собрать",
+                    "**ROI < cost разработки + поддержки**",
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Goodhart's law и proxy metrics",
+                "items": [
+                    {"k": "**Goodhart**",     "v": "«когда метрика становится целью, она перестаёт быть хорошей метрикой»"},
+                    {"k": "**CTR vs revenue**", "v": "оптимизация CTR может привести к clickbait — кликов больше, выручки меньше"},
+                    {"k": "**likes vs retention**", "v": "лайки растут на провокациях, ретеншн падает"},
+                    {"k": "**watch time vs satisfaction**", "v": "затягивающий контент ≠ полезный"},
+                    {"k": "**защита**",         "v": "guardrail metrics + регулярные A/B на бизнес-метрику"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Pre-flight checklist",
+                "kind": "do",
+                "items": [
+                    "Лейблы есть или можно собрать (не из будущего, без data leakage)",
+                    "Достаточно данных (на каждый класс / на time-window)",
+                    "Понятен **baseline без ML** и потенциал ML над ним",
+                    "Решение, как использовать модель: batch / real-time / human-in-the-loop",
+                    "Owner на проде: кто алертится, ретрейнит, обновляет",
+                    "Спланирован путь до **A/B на бизнес-метрику**, не только оффлайн",
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Шаблон ML system design intro (3 минуты)",
+                "code": (
+                    "1. УТОЧНЯЮ ЗАДАЧУ (clarification, 2-3 вопроса)\n"
+                    "   - бизнес-цель / KPI\n"
+                    "   - объём пользователей, RPS\n"
+                    "   - constraints: latency, стоимость, fairness, regulatory\n\n"
+                    "2. ПЕРЕВОД В ML\n"
+                    "   - тип задачи (classification / regression / ranking)\n"
+                    "   - входы / выходы\n"
+                    "   - метрика оффлайн + бизнес-метрика\n\n"
+                    "3. БЕЙЗЛАЙН\n"
+                    "   - rule-based / popularity\n"
+                    "   - простая модель: logreg / heuristic\n"
+                    "   - ML модель: что и почему\n\n"
+                    "4. ПЛАН\n"
+                    "   - данные → фичи → модель → эвал → A/B → rollout"
+                ),
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Начинай с baseline без ML.** Часто константа или простое правило даёт 80% от ML-решения за 1% усилий. ML включается только когда baseline честно не дотягивает до бизнес-нужд."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Proxy метрика ≠ бизнес-цель.** CTR, watch time, likes — все они расходятся с реальной полезностью. Обязательны guardrail metrics и периодические A/B на настоящую цель."},
         ],
     },
     "mlsd_skew": {
