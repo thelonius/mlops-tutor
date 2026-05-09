@@ -749,6 +749,137 @@ TOPICS = {
             {"q": "Как построить Pipeline в ClearML?", "a": "PipelineController декорирует функции-шаги и описывает зависимости между ними. При запуске каждый шаг выполняется как отдельный Task в очереди."},
             {"q": "Как отследить провенанс модели?", "a": "OutputModel(task=task) связывает сохранённые веса с Task. В UI видно, из каких данных и параметров получена модель, вся цепочка воспроизводима."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**ClearML** — платформа для трекинга экспериментов, версионирования датасетов и удалённого запуска. Базовые сущности: **Task** (один прогон), **Dataset** (версионированные данные), **Pipeline** (граф Task-ов), **Agent** (worker, слушает очередь). Один `Task.init()` — и всё логируется автоматически."},
+            {
+                "type": "table",
+                "title": "Базовые сущности",
+                "headers": ["Сущность", "Что хранит", "Использование"],
+                "rows": [
+                    ["**Task**",       "параметры, метрики, артефакты, лог",  "`Task.init(project, name)` — главный объект"],
+                    ["**Dataset**",     "версионированные данные (diff)",       "`Dataset.create()` + `add_files()` + `finalize()`"],
+                    ["**OutputModel**", "веса с метаданными",                    "связывает обученные веса с Task"],
+                    ["**Pipeline**",    "граф Task-ов",                          "PipelineController + декораторы шагов"],
+                    ["**Agent**",       "worker на GPU/K8s",                     "слушает очередь, выполняет Task-и"],
+                    ["**Queue**",       "очередь задач",                          "named queue: `gpu-queue`, `cpu-queue`"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Минимальный training-скрипт с трекингом",
+                "code": (
+                    "from clearml import Task\n\n"
+                    "task = Task.init(\n"
+                    "    project_name='Recommender',\n"
+                    "    task_name='lightgbm-v3',\n"
+                    "    tags=['baseline'],\n"
+                    ")\n"
+                    "params = task.connect({\n"
+                    "    'lr': 0.05, 'n_estimators': 1000, 'max_depth': 8,\n"
+                    "})\n\n"
+                    "logger = task.get_logger()\n"
+                    "for epoch in range(10):\n"
+                    "    train_loss, val_loss = train_one_epoch(...)\n"
+                    "    logger.report_scalar('loss', 'train', train_loss, iteration=epoch)\n"
+                    "    logger.report_scalar('loss', 'val',   val_loss,   iteration=epoch)\n\n"
+                    "# Сохранить артефакты\n"
+                    "task.upload_artifact('feature_importance', df_imp)\n"
+                    "from clearml import OutputModel\n"
+                    "OutputModel(task=task).update_weights('model.lgb')"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Удалённый запуск через очередь",
+                "code": (
+                    "from clearml import Task\n\n"
+                    "task = Task.init(project_name='Recommender', task_name='hp-search')\n"
+                    "params = task.connect({'lr': 0.1})\n\n"
+                    "# Один и тот же скрипт: локально → удалённо\n"
+                    "task.execute_remotely(queue_name='gpu-queue', exit_process=True)\n\n"
+                    "# Дальше идёт код, который выполнится УЖЕ на agent\n"
+                    "model = train(params['lr'])"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Версионированный Dataset",
+                "code": (
+                    "from clearml import Dataset\n\n"
+                    "# Создание новой версии\n"
+                    "ds = Dataset.create(\n"
+                    "    dataset_project='Recommender',\n"
+                    "    dataset_name='clicks-2026-w20',\n"
+                    "    parent_datasets=['<id-предыдущей-версии>'],  # diff\n"
+                    ")\n"
+                    "ds.add_files('/data/new-clicks/')\n"
+                    "ds.upload()\n"
+                    "ds.finalize()\n\n"
+                    "# Использование в обучении\n"
+                    "local_path = Dataset.get(\n"
+                    "    dataset_project='Recommender', dataset_name='clicks-2026-w20'\n"
+                    ").get_local_copy()"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Pipeline через декораторы",
+                "code": (
+                    "from clearml import PipelineDecorator\n\n"
+                    "@PipelineDecorator.component(return_values=['data'], cache=True)\n"
+                    "def fetch(date: str):\n"
+                    "    return load_data(date)\n\n"
+                    "@PipelineDecorator.component(return_values=['model'])\n"
+                    "def train(data, lr: float):\n"
+                    "    return fit(data, lr)\n\n"
+                    "@PipelineDecorator.pipeline(name='retrain', project='Recommender')\n"
+                    "def main(date: str = '2026-05-01', lr: float = 0.05):\n"
+                    "    data  = fetch(date)\n"
+                    "    model = train(data, lr)\n"
+                    "    return model"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "ClearML Agent — что это",
+                "items": [
+                    {"k": "**Что делает**",     "v": "процесс на GPU-машине / K8s-поде, слушает очередь, выполняет Task-и"},
+                    {"k": "**Запуск**",           "v": "`clearml-agent daemon --queue gpu-queue --gpus 0`"},
+                    {"k": "**Изоляция**",         "v": "git clone репо коммита, восстанавливает env (pip/conda)"},
+                    {"k": "**Очереди**",           "v": "named queues — разделение по типу железа: gpu-queue, cpu-queue, low-priority"},
+                    {"k": "**K8s-glue**",          "v": "k8s_glue_example.py — agent создаёт Pod в K8s на каждый Task"},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "ClearML vs MLflow",
+                "items": [
+                    {"title": "ClearML",
+                     "points": [
+                         "**Agents + очереди** — удалённый запуск из коробки",
+                         "Версионированный Dataset",
+                         "Pipelines с декораторами",
+                         "Бесплатный self-host, hosted SaaS",
+                     ]},
+                    {"title": "MLflow",
+                     "points": [
+                         "Минимальный, фокус на трекинге",
+                         "Model Registry чище",
+                         "Без agents — пайплайны через Airflow/Prefect",
+                         "Стандарт в Databricks-стэке",
+                     ]},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`Task.init()` ловит matplotlib и tensorboard.** Любой `plt.show()` или `tensorboard.add_scalar()` логируется автоматически в Task без явных вызовов logger. Магически удобно при миграции legacy-скриптов."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`execute_remotely()` — switch локального → удалённого запуска.** Один скрипт: локально дебажишь, потом пишешь одну строку — и тот же код выполняется на GPU-кластере с теми же параметрами через ClearML Agent."},
+        ],
     },
     "cicd": {
         "title": "CI/CD и GitOps для ML",
@@ -3203,6 +3334,102 @@ TOPICS = {
             {"q": "Какой backend использует llama.cpp на Mac?", "a": "Metal (Apple GPU). Автоматически определяется при сборке на macOS. Флаг -DLLAMA_METAL=on при cmake. На M1/M2/M3 обеспечивает приемлемую скорость без NVIDIA GPU."},
             {"q": "Когда выбрать llama.cpp вместо vLLM?", "a": "CPU-only сервер или Mac без NVIDIA GPU. Edge-деплой с жёсткими ограничениями памяти. Нужна максимальная квантизация (Q2-Q4) для сильно ограниченного железа. vLLM требует CUDA."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**llama.cpp** — C++-инференс LLM с упором на **CPU и квантизацию**. Формат **GGUF** (самодостаточный файл с весами + токенизатором + метаданными). Уровни Q4_K_M / Q8_0 / F16 — trade-off между размером и качеством. Под капотом Ollama и LM Studio."},
+            {
+                "type": "table",
+                "title": "Уровни квантизации",
+                "headers": ["Quant", "Битность", "Размер 7B", "Качество (perplexity)", "Когда брать"],
+                "rows": [
+                    ["**F16**",        "16-bit float",          "~13 GB",  "baseline",                "целевой ориентир"],
+                    ["**Q8_0**",       "8-bit, простая",         "~7 GB",   "+0.01–0.05%",             "качество ≈ F16, в 2× меньше"],
+                    ["**Q5_K_M**",     "5-bit, K-means",         "~4.8 GB", "+0.05–0.15%",             "хороший компромисс"],
+                    ["**Q4_K_M**",     "4-bit, K-means + mixed", "~4 GB",   "+0.1–0.3%",               "**default для Mac/edge**"],
+                    ["**Q3_K_M**",     "3-bit",                   "~3.3 GB", "+0.5–1%",                  "ограниченная память"],
+                    ["**Q2_K**",       "2-bit",                   "~2.6 GB", "значительная деградация", "крайние случаи"],
+                ],
+                "note": "Q4_K_M даёт ~70% сжатия при потере < 0.3% perplexity. Стандартный выбор для CPU/Mac.",
+            },
+            {
+                "type": "compare",
+                "title": "GGUF vs GGML",
+                "items": [
+                    {"title": "GGUF (актуальный)",
+                     "points": [
+                         "С августа 2023",
+                         "Самодостаточный — веса + токенизатор + метаданные",
+                         "Нет нужды в отдельных configs",
+                         "Все новые модели",
+                     ]},
+                    {"title": "GGML (deprecated)",
+                     "points": [
+                         "До 2023",
+                         "Только веса",
+                         "Нужны отдельные конфиги токенизатора",
+                         "Не поддерживается, мигрировать на GGUF",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Конвертация HF → GGUF + квантизация",
+                "code": (
+                    "# 1. HuggingFace модель → F16 GGUF\n"
+                    "python convert_hf_to_gguf.py /path/to/llama-3.2-3b \\\n"
+                    "  --outfile llama-3.2-3b.f16.gguf\n\n"
+                    "# 2. Квантизация в Q4_K_M\n"
+                    "llama-quantize llama-3.2-3b.f16.gguf \\\n"
+                    "               llama-3.2-3b.Q4_K_M.gguf Q4_K_M\n\n"
+                    "# 3. Запуск сервера (OpenAI-compatible API)\n"
+                    "llama-server -m llama-3.2-3b.Q4_K_M.gguf \\\n"
+                    "             --port 8080 \\\n"
+                    "             --ctx-size 4096 \\\n"
+                    "             --n-gpu-layers 35   # частичный GPU offload"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Backends по платформам",
+                "items": [
+                    {"k": "**Metal (Mac)**",  "v": "автоматически на M1/M2/M3 с `cmake -DLLAMA_METAL=on`"},
+                    {"k": "**CUDA**",          "v": "NVIDIA GPU, `-DLLAMA_CUDA=on`"},
+                    {"k": "**ROCm**",          "v": "AMD GPU, `-DLLAMA_HIPBLAS=on`"},
+                    {"k": "**Vulkan**",        "v": "кросс-вендор GPU"},
+                    {"k": "**SYCL**",          "v": "Intel GPU"},
+                    {"k": "**CPU only**",      "v": "по умолчанию, AVX/AVX2/AVX512"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Ключевые флаги llama-server",
+                "items": [
+                    {"k": "`-m, --model`",          "v": "путь к GGUF-файлу"},
+                    {"k": "`--port`",                 "v": "HTTP порт"},
+                    {"k": "`-c, --ctx-size`",        "v": "контекстное окно (default 2048)"},
+                    {"k": "`-ngl, --n-gpu-layers`",  "v": "сколько слоёв на GPU (35 для 7B)"},
+                    {"k": "`-t, --threads`",          "v": "число CPU-потоков"},
+                    {"k": "`-b, --batch-size`",       "v": "размер prompt batching"},
+                    {"k": "`--mlock`",                 "v": "пинить веса в RAM, не свопить"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Когда llama.cpp",
+                "branches": [
+                    {"condition": "CPU-only сервер / edge",            "outcome": "**llama.cpp** напрямую"},
+                    {"condition": "Mac (Apple Silicon)",                "outcome": "llama.cpp с Metal или Ollama"},
+                    {"condition": "dev / прототип на ноутбуке",         "outcome": "Ollama (обёртка над llama.cpp)"},
+                    {"condition": "GPU production-нагрузка",             "outcome": "**vLLM** — throughput выше"},
+                    {"condition": "ограниченная память (Pi, edge)",      "outcome": "Q3_K_M / Q2_K"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`-ngl` для частичного offload.** Если модель не влезает целиком (40 слоёв в 8GB VRAM) — отгрузи 20 слоёв на GPU, 20 останутся на CPU. Медленнее чем 100% GPU, но быстрее чем 100% CPU."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Perplexity для оценки потерь.** `llama-perplexity -m model.gguf -f wiki.txt` — стандартный бенчмарк. Q4_K_M обычно +0.1-0.3% к F16, что в 99% случаев незаметно качественно."},
+        ],
     },
     "rag": {
         "title": "RAG: Retrieval-Augmented Generation",
@@ -3627,6 +3854,95 @@ TOPICS = {
             {"q": "Как Whisper обрабатывает длинное аудио?", "a": "Оригинал режет на 30-секундные чанки и транскрибирует независимо — может терять контекст на границах. faster-whisper и WhisperX используют VAD для умной нарезки по паузам, сохраняют контекст."},
             {"q": "Какой язык и задачи поддерживает Whisper?", "a": "99 языков. task=transcribe — транскрибация на оригинальном языке. task=translate — всегда переводит на английский. language='ru' ускоряет инференс, избегая автодетекции. large-v3 лучший на русском."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Whisper** — OpenAI ASR с 99 языками. Под прод в 2025 берут не оригинал, а **faster-whisper** (CTranslate2, int8) или **WhisperX** (+ VAD + word timestamps + диаризация). Большое аудио без VAD = галлюцинации на тишине."},
+            {
+                "type": "table",
+                "title": "Размеры моделей",
+                "headers": ["Модель", "Параметры", "VRAM", "Скорость (rel)", "WER (рус)"],
+                "rows": [
+                    ["**tiny**",       "39M",   "~1 GB",  "~30×",  "плохо"],
+                    ["**base**",       "74M",   "~1 GB",  "~16×",  "так себе"],
+                    ["**small**",      "244M",  "~2 GB",  "~6×",   "**ок** для русского"],
+                    ["**medium**",     "769M",  "~5 GB",  "~2×",   "хорошо"],
+                    ["**large-v3**",   "1.5B",  "~10 GB", "1×",    "**лучший**"],
+                ],
+                "note": "Скорость относительно large-v3. Для прода обычно small/medium через faster-whisper.",
+            },
+            {
+                "type": "compare",
+                "title": "Whisper / faster-whisper / WhisperX",
+                "items": [
+                    {"title": "Whisper (orig)",
+                     "points": [
+                         "PyTorch baseline",
+                         "Базовая транскрибация",
+                         "Только segment timestamps",
+                         "Медленный",
+                     ]},
+                    {"title": "faster-whisper",
+                     "points": [
+                         "CTranslate2 + int8",
+                         "**2-4× быстрее** orig",
+                         "Batch inference",
+                         "Production default",
+                     ]},
+                    {"title": "WhisperX",
+                     "points": [
+                         "faster-whisper + VAD + alignment",
+                         "**Word-level timestamps**",
+                         "Диаризация (pyannote)",
+                         "Транскрибация встреч",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "faster-whisper с VAD",
+                "code": (
+                    "from faster_whisper import WhisperModel, BatchedInferencePipeline\n\n"
+                    "model     = WhisperModel('large-v3', device='cuda', compute_type='float16')\n"
+                    "batched   = BatchedInferencePipeline(model=model)\n\n"
+                    "segments, info = batched.transcribe(\n"
+                    "    'audio.mp3',\n"
+                    "    batch_size=16,\n"
+                    "    language='ru',          # ускоряет, без autodetect\n"
+                    "    vad_filter=True,        # отрезает тишину → нет галлюцинаций\n"
+                    "    word_timestamps=True,\n"
+                    ")\n\n"
+                    "for s in segments:\n"
+                    "    print(f'[{s.start:.1f}-{s.end:.1f}] {s.text}')"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Что добавляет WhisperX",
+                "items": [
+                    {"k": "**VAD (Silero)**",       "v": "разбивает по паузам — нет галлюцинаций на тишине"},
+                    {"k": "**Forced alignment (wav2vec2)**", "v": "точные timestamps **для каждого слова**"},
+                    {"k": "**Diarization (pyannote)**", "v": "«кто говорит когда» — Speaker 1 / Speaker 2"},
+                    {"k": "**HuggingFace token**",    "v": "нужен для pyannote моделей"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Что брать",
+                "branches": [
+                    {"condition": "транскрипция короткого аудио",         "outcome": "faster-whisper, language='ru', vad_filter=True"},
+                    {"condition": "длинное аудио (часы)",                  "outcome": "WhisperX (VAD + chunking)"},
+                    {"condition": "встречи / подкасты с несколькими спикерами", "outcome": "WhisperX + diarization"},
+                    {"condition": "subtitle / караоке (точные слова)",     "outcome": "WhisperX (word_timestamps)"},
+                    {"condition": "real-time streaming",                    "outcome": "stream-whisper, fasterwhisper-server"},
+                    {"condition": "макс. throughput на проде",              "outcome": "TensorRT-LLM для Whisper или batched faster-whisper"},
+                ],
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Без VAD — галлюцинации на тишине.** На длинном аудио Whisper «слышит» в паузах несуществующие фразы (часто названия каналов или подписки). `vad_filter=True` решает в одну строку."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`language='ru'` экономит время.** Whisper иначе сначала тратит ~10% инференса на autodetect языка по первым 30 сек. Если язык известен — указывай явно."},
+        ],
     },
     "mistral": {
         "title": "Mistral: семейство моделей",
@@ -3645,6 +3961,82 @@ TOPICS = {
             {"q": "Как запустить Mixtral на vLLM?", "a": "vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 --tensor-parallel-size 2. Нужно минимум 2xA100 для fp16. С AWQ квантизацией: --quantization awq, влезает в 2xA40."},
             {"q": "Чем Mistral Large отличается от open-source Mistral?", "a": "Mistral Large — закрытая API-модель (mistral.ai), конкурирует с GPT-4o. Open-source: Mistral-7B, Mixtral 8x7B, Mistral Nemo. Mistral Large недоступен для self-hosting."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Mistral** — французский лидер open-source LLM. Дали миру **sliding window attention** (линейная сложность по контексту) и популяризовали **MoE** через Mixtral 8x7B. Mixtral: 47B параметров, активны ~13B на токен — качество как у 70B, скорость как у 13B."},
+            {
+                "type": "table",
+                "title": "Линейка моделей",
+                "headers": ["Модель", "Параметры", "Активных", "Контекст", "Особенность"],
+                "rows": [
+                    ["**Mistral-7B**",         "7B",         "7B (dense)",   "32K",  "первая SOTA 7B (2023)"],
+                    ["**Mixtral 8x7B**",        "47B (MoE)",  "**~13B**",     "32K",  "8 экспертов, top-2 active"],
+                    ["**Mixtral 8x22B**",        "141B (MoE)", "~39B",         "64K",  "масштабированный MoE"],
+                    ["**Mistral Nemo**",         "12B",         "12B",          "**128K**", "совместно с NVIDIA, Tekken-токенизатор"],
+                    ["**Mistral Large**",        "123B",        "—",            "32K",  "**closed**, только API"],
+                    ["**Codestral**",             "22B",         "22B",          "32K",   "code-специализация"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Mixture of Experts vs Dense",
+                "items": [
+                    {"title": "Dense (Llama, Qwen)",
+                     "points": [
+                         "Все параметры активны на каждом токене",
+                         "Простая архитектура",
+                         "Стабильное обучение",
+                         "Память = N · sizeof(param)",
+                     ]},
+                    {"title": "MoE (Mixtral)",
+                     "points": [
+                         "Router выбирает top-K экспертов из N",
+                         "**Активны только K · M / N параметров**",
+                         "Качество ≈ dense с N param, скорость ≈ K · M",
+                         "Память всё равно вся (нужна загрузка)",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Sliding Window Attention",
+                "items": [
+                    {"k": "**Идея**",          "v": "каждый токен видит только последние W=4096 токенов"},
+                    {"k": "**Сложность**",      "v": "O(n · W) вместо O(n²) — линейно по контексту"},
+                    {"k": "**Rolling Buffer**", "v": "KV-cache хранит только окно W, старое сбрасывается"},
+                    {"k": "**Trade-off**",      "v": "длинные зависимости теряются; обычно компенсируется global attention в первых слоях"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Деплой Mixtral на vLLM",
+                "code": (
+                    "# fp16 — нужно 2× A100 80GB\n"
+                    "vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 \\\n"
+                    "  --tensor-parallel-size 2\n\n"
+                    "# AWQ 4-bit — влезает в 2× A40 или 1× H100\n"
+                    "vllm serve TheBloke/Mixtral-8x7B-Instruct-v0.1-AWQ \\\n"
+                    "  --tensor-parallel-size 2 \\\n"
+                    "  --quantization awq"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Когда какую брать",
+                "branches": [
+                    {"condition": "качество ≈ 70B при скорости 13B",         "outcome": "**Mixtral 8x7B**"},
+                    {"condition": "длинный контекст (128K)",                  "outcome": "**Mistral Nemo**"},
+                    {"condition": "code-задачи",                              "outcome": "Codestral 22B"},
+                    {"condition": "max качество, готовы платить за API",     "outcome": "Mistral Large (only API)"},
+                    {"condition": "одна A100, нужен open weights",           "outcome": "Mistral-7B / Nemo"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**MoE экономит compute, но не память.** Mixtral 8x7B активен ~13B параметров на токен (быстрее dense 47B), но всё ещё нужно держать **все 47B в VRAM**. Memory-эффективности дешёвый трюк не даёт."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Mixtral в AWQ 4-bit — sweet spot.** ~24GB VRAM, влезает в 2× A40 (48GB) или 1× H100 (80GB) с запасом. Качество почти не теряется, throughput вдвое выше fp16."},
+        ],
     },
     "qwen": {
         "title": "Qwen: семейство моделей Alibaba",
@@ -3662,6 +4054,102 @@ TOPICS = {
             {"q": "Как квантизировать Qwen2.5-72B для деплоя?", "a": "AWQ 4-bit: ~40GB VRAM, 1xA100 80GB. GPTQ: аналогично. В vLLM: --quantization awq --tensor-parallel-size 1. Без квантизации fp16 требует 2xA100. GGUF Q4_K_M через llama.cpp: ~41GB, запускается на Mac Studio."},
             {"q": "Что такое Qwen-Audio?", "a": "Мультимодальная модель для работы со звуком: ASR, speech understanding, audio QA. Понимает речь, музыку, звуки окружения. Менее известна чем Whisper для чистого ASR, но умеет отвечать на вопросы о звуке."},
             {"q": "Как выбрать размер Qwen для задачи?", "a": "7B: быстрый inference, edge/CPU. 14B: хороший баланс quality/speed на 1xA100. 32B: сложные reasoning задачи. 72B: максимальное качество, production с несколькими GPU. Для code: Qwen2.5-Coder-32B в большинстве случаев."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Qwen2.5** от Alibaba — лучшие open-source LLM 2024-2025 в своём классе размеров. Полная линейка от 0.5B до 72B, отдельные специализации для **кода** (Qwen2.5-Coder), **vision** (Qwen2.5-VL) и **audio** (Qwen-Audio). **Сильнее на русском** благодаря 150K-словарю."},
+            {
+                "type": "table",
+                "title": "Линейка Qwen2.5",
+                "headers": ["Размер", "VRAM (fp16)", "VRAM (AWQ 4-bit)", "Где запускать", "Когда брать"],
+                "rows": [
+                    ["**0.5B / 1.5B**",   "~2 GB",   "~1 GB",    "edge, CPU",         "embedded, mobile"],
+                    ["**3B / 7B**",        "~14 GB",  "~5 GB",    "1× T4 / RTX",        "default дев"],
+                    ["**14B**",             "~28 GB",  "~10 GB",   "1× A100/L40",        "качество × скорость"],
+                    ["**32B**",             "~64 GB",  "~22 GB",   "1× A100 80GB",      "reasoning, агенты"],
+                    ["**72B**",             "~144 GB", "~40 GB",   "2× A100 80GB",      "макс. качество"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Специализации",
+                "items": [
+                    {"title": "Qwen2.5 (base)",
+                     "points": [
+                         "Текстовая модель",
+                         "Instruct + base",
+                         "0.5B → 72B",
+                         "Default выбор",
+                     ]},
+                    {"title": "Qwen2.5-Coder",
+                     "points": [
+                         "5.5T токенов кода (88 языков)",
+                         "**FIM** для code completion",
+                         "Coder-32B ≈ GPT-4o на HumanEval/SWE-bench",
+                         "Code-агенты",
+                     ]},
+                    {"title": "Qwen2.5-VL",
+                     "points": [
+                         "Vision-Language",
+                         "Multi-image + видео",
+                         "OCR, document understanding",
+                         "Через vLLM как обычная модель",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Зачем Qwen лучше на русском",
+                "items": [
+                    {"k": "**Словарь 150K**",        "v": "vs 32K у Llama2/Llama3 — русские слова кодируются ~2× компактнее"},
+                    {"k": "**Меньше токенов**",       "v": "та же фраза — меньше токенов → дешевле и быстрее на длинных промптах"},
+                    {"k": "**Корпус**",                "v": "обучение включало больше русскоязычных данных чем Llama"},
+                    {"k": "**Tekken (Mistral Nemo)**", "v": "альтернативный токенизатор тоже хорош на русском, конкурент Qwen"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Деплой Qwen через vLLM",
+                "code": (
+                    "# Текст — Qwen2.5-7B-Instruct\n"
+                    "vllm serve Qwen/Qwen2.5-7B-Instruct \\\n"
+                    "  --enable-prefix-caching \\\n"
+                    "  --max-model-len 32768\n\n"
+                    "# Code — Qwen2.5-Coder-32B-Instruct + AWQ\n"
+                    "vllm serve Qwen/Qwen2.5-Coder-32B-Instruct-AWQ \\\n"
+                    "  --tensor-parallel-size 1 \\\n"
+                    "  --quantization awq\n\n"
+                    "# Vision — Qwen2.5-VL-7B-Instruct\n"
+                    "vllm serve Qwen/Qwen2.5-VL-7B-Instruct \\\n"
+                    "  --limit-mm-per-prompt image=4"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "GQA в Qwen — что это даёт",
+                "items": [
+                    {"k": "**GQA**",            "v": "Grouped Query Attention — несколько Q-голов делят одну K/V пару"},
+                    {"k": "**Qwen2.5-7B**",    "v": "28 Q-heads, **4 KV-heads** → KV-cache в **7× меньше**"},
+                    {"k": "**Влияние**",         "v": "больше параллельных запросов, меньше memory bandwidth"},
+                    {"k": "**Trade-off**",       "v": "минимальная потеря качества vs полный MHA"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Какой Qwen брать",
+                "branches": [
+                    {"condition": "русский / общие задачи / 1× A100",        "outcome": "**Qwen2.5-14B-Instruct** — sweet spot"},
+                    {"condition": "code-агент",                                "outcome": "**Qwen2.5-Coder-32B-Instruct** (AWQ)"},
+                    {"condition": "OCR, документы, скриншоты",                  "outcome": "Qwen2.5-VL-7B / 72B"},
+                    {"condition": "edge / mobile / CPU",                         "outcome": "Qwen2.5-1.5B / 3B"},
+                    {"condition": "макс качество, есть 2× A100",                "outcome": "Qwen2.5-72B-Instruct (fp16) или AWQ"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Qwen2.5-Coder-32B на коде сильнее GPT-4o на HumanEval и SWE-bench.** Это первая open-source модель, серьёзно конкурирующая с фронтиром на code-задачах. Идеально для self-hosted code-агентов."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Tokenization win.** Если у тебя длинные русские промпты — переход с Llama на Qwen может сократить количество токенов почти вдвое. Это и латентность, и лимит контекста, и стоимость."},
         ],
     },
 }
