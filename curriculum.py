@@ -900,6 +900,128 @@ TOPICS = {
             {"q": "Что такое values.yaml override в CI?", "a": "helm upgrade --install app ./chart -f values.yaml --set image.tag=$CI_COMMIT_SHA. Тег образа пробрасывается из CI без изменения основного values.yaml."},
             {"q": "Как настроить CI для ML-пайплайна с DVC?", "a": "В GitHub Actions: checkout → dvc pull (данные из S3) → dvc repro → dvc push. Метрики сравниваются между ветками через dvc metrics diff."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**GitOps**: git — единственная истина о состоянии инфры. **ArgoCD/Flux** автоматически синхронизируют кластер. Деплой моделей — через **Helm** + **Argo Rollouts** для canary. Секреты в git хранятся **зашифрованными** (Sealed Secrets). DVC версионирует данные параллельно git."},
+            {
+                "type": "flow",
+                "title": "GitOps цикл",
+                "branches": [
+                    {"condition": "1. Developer пушит в git",        "outcome": "values.yaml изменён → image.tag = $CI_COMMIT_SHA"},
+                    {"condition": "2. CI собирает образ",            "outcome": "docker build → push в registry"},
+                    {"condition": "3. CI обновляет манифест",         "outcome": "PR в gitops-repo с новым tag"},
+                    {"condition": "4. ArgoCD замечает изменение",     "outcome": "diff vs cluster → Sync"},
+                    {"condition": "5. Argo Rollouts canary",          "outcome": "10% трафика → метрики → 50% → 100% или rollback"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Стратегии деплоя",
+                "headers": ["Стратегия", "Как работает", "Плюс", "Минус"],
+                "rows": [
+                    ["**Rolling**",      "поды постепенно заменяются",                 "default, простой",                  "трафик идёт на старые и новые одновременно"],
+                    ["**Canary**",       "5-10% → анализ → 100% / rollback",            "**безопасно**, можно откатить",     "нужен Argo Rollouts + метрики"],
+                    ["**Blue-Green**",   "два деплоя, переключение трафика",            "мгновенный rollback",                "2× ресурсов"],
+                    ["**A/B**",          "часть трафика — новая версия (по headers)",  "пользовательское A/B на feature",   "не для деплоя, для гипотез"],
+                    ["**Shadow**",        "новая версия получает копию трафика",         "тестирование под нагрузкой",         "ответы не возвращаются пользователю"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "ArgoCD Application",
+                "code": (
+                    "apiVersion: argoproj.io/v1alpha1\n"
+                    "kind: Application\n"
+                    "metadata: { name: triton, namespace: argocd }\n"
+                    "spec:\n"
+                    "  project: default\n"
+                    "  source:\n"
+                    "    repoURL:        https://github.com/org/gitops-repo\n"
+                    "    targetRevision: HEAD\n"
+                    "    path:           apps/triton\n"
+                    "    helm:\n"
+                    "      values: |\n"
+                    "        image:\n"
+                    "          tag: 1.7.0\n"
+                    "  destination:\n"
+                    "    server:    https://kubernetes.default.svc\n"
+                    "    namespace: ml-serving\n"
+                    "  syncPolicy:\n"
+                    "    automated: { prune: true, selfHeal: true }"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "Argo Rollouts canary",
+                "code": (
+                    "apiVersion: argoproj.io/v1alpha1\n"
+                    "kind: Rollout\n"
+                    "metadata: { name: triton }\n"
+                    "spec:\n"
+                    "  replicas: 10\n"
+                    "  strategy:\n"
+                    "    canary:\n"
+                    "      steps:\n"
+                    "      - setWeight: 10           # 10% трафика\n"
+                    "      - pause:     { duration: 5m }\n"
+                    "      - analysis:                # запрос к Prometheus\n"
+                    "          templates: [{ templateName: success-rate }]\n"
+                    "      - setWeight: 50\n"
+                    "      - pause:     { duration: 10m }\n"
+                    "      - setWeight: 100"
+                ),
+            },
+            {
+                "type": "compare",
+                "title": "Helm vs Kustomize",
+                "items": [
+                    {"title": "Helm",
+                     "points": [
+                         "Шаблоны Go templates",
+                         "Версионированные релизы (history)",
+                         "Зависимости между chart-ами",
+                         "Values для разных окружений",
+                     ]},
+                    {"title": "Kustomize",
+                     "points": [
+                         "Overlay-патчи (без шаблонов)",
+                         "Встроен в kubectl",
+                         "Проще, нет логики",
+                         "Хорошо для override-ов",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Секреты в git",
+                "items": [
+                    {"k": "**Sealed Secrets**",       "v": "шифрует секрет публичным ключом кластера → закодированный yaml лежит в git"},
+                    {"k": "**External Secrets Operator**", "v": "k8s оператор синкает secrets из Vault/AWS Secrets Manager/GCP Secret Manager"},
+                    {"k": "**SOPS + age**",            "v": "файлы секретов шифруются age/PGP, расшифровываются в pipeline"},
+                    {"k": "**Vault Agent Injector**",   "v": "Vault inject secrets в Pod через init-container"},
+                    {"k": "❌ plain Secrets в git",      "v": "**нельзя**: base64 ≠ шифрование"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "DVC — git для данных",
+                "items": [
+                    {"k": "**`dvc add data/`**",       "v": "трекает большой файл (хранится в remote storage), в git — только `.dvc`-метафайл"},
+                    {"k": "**`dvc remote add s3://...`**", "v": "куда складывать реальные данные"},
+                    {"k": "**`dvc.yaml` стадии**",       "v": "stages с `deps` и `outs` — Makefile для данных"},
+                    {"k": "**`dvc repro`**",              "v": "пересчитать только изменившиеся стадии"},
+                    {"k": "**`dvc metrics diff`**",        "v": "сравнить метрики между ветками"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**ML-специфика GitOps.** Образ модели + версия датасета + код препроцессинга — три измерения, которые надо версионировать вместе. Лучшая практика: tag образа = `<git-sha>-<dvc-data-rev>` или ClearML Task ID в metadata Pod-а."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Argo Rollouts ≠ ArgoCD.** ArgoCD — синхронизация cluster ↔ git. Rollouts — продвинутые стратегии деплоя (canary, blue-green) с анализом метрик. Часто работают в паре."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Auto-rollback требует метрик.** Canary без analysis-template — просто медленный rolling. Нужны Prometheus-запросы (success-rate, p99-latency) в качестве sanity-checks для каждого шага."},
+        ],
     },
     "monitoring": {
         "title": "Мониторинг ML-систем",
@@ -2111,6 +2233,113 @@ TOPICS = {
             {"q": "Что такое уровни изоляции транзакций?", "a": "Read Uncommitted → Read Committed → Repeatable Read → Serializable. Postgres по умолчанию Read Committed. Выше уровень — меньше аномалий, больше блокировок и хуже производительность."},
             {"q": "Когда DynamoDB вместо Cassandra?", "a": "Managed service без операционной нагрузки, предсказуемые access patterns по partition key, нужен serverless/pay-per-request. Cassandra выбирают при необходимости on-premise или CQL."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Выбор хранилища** — половина system design интервью. Главные оси: **CAP** (CP vs AP), **schema** (relational/document/KV/columnar), **access pattern** (read/write-heavy, point/range), **scale** (single node → sharded). Шардинг — **consistent hashing**, репликация — **sync vs async** trade-off."},
+            {
+                "type": "table",
+                "title": "Когда что брать",
+                "headers": ["Хранилище", "Класс", "Когда", "CAP"],
+                "rows": [
+                    ["**Postgres**",     "RDBMS",         "транзакции, JOIN-ы, OLTP",                     "**CP**"],
+                    ["**MySQL**",        "RDBMS",         "то же что Postgres, чуть проще, web-app",     "CP"],
+                    ["**Cassandra**",    "wide-column",   "write-heavy, миллиарды строк, eventual ok",   "**AP**"],
+                    ["**DynamoDB**",     "managed KV",     "predictable access по partition key, serverless", "AP (configurable)"],
+                    ["**Redis**",         "in-memory KV",  "кеш, сессии, leaderboard, rate limit, queues",  "CP"],
+                    ["**MongoDB**",       "document",       "иерархические JSON, гибкая схема",                "CP/AP configurable"],
+                    ["**ClickHouse**",     "columnar OLAP",  "аналитика, агрегации, миллиарды событий",       "—"],
+                    ["**Elasticsearch**",  "search engine",  "full-text search, агрегации",                      "AP"],
+                    ["**S3 / blob**",       "object",          "артефакты, файлы, бэкапы, ML-данные",            "—"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "ACID vs BASE",
+                "items": [
+                    {"title": "ACID (RDBMS)",
+                     "points": [
+                         "**A**tomicity — всё или ничего",
+                         "**C**onsistency — инварианты сохраняются",
+                         "**I**solation — параллельные транзакции изолированы",
+                         "**D**urability — после commit не теряется",
+                         "Postgres / MySQL / Oracle",
+                     ]},
+                    {"title": "BASE (NoSQL)",
+                     "points": [
+                         "**B**asically **A**vailable — отвечает всегда",
+                         "**S**oft state — может меняться без явных операций",
+                         "**E**ventual consistency — сходится со временем",
+                         "Cassandra / DynamoDB / S3",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Шардинг — стратегии",
+                "headers": ["Стратегия", "Как работает", "Минус"],
+                "rows": [
+                    ["**Range-based**",         "по диапазону ключа (A-G, H-N, ...)",        "hot ranges, неравномерность"],
+                    ["**Hash-based**",            "hash(key) % N",                             "при изменении N перешафливаются ВСЕ ключи"],
+                    ["**Consistent hashing**",    "круг хэшей, виртуальные узлы",              "**стандарт** — добавление/удаление шарда мигрирует n/K ключей"],
+                    ["**Geo-based**",              "по региону пользователя",                   "несбалансированно если регионы разные"],
+                    ["**Directory-based**",        "lookup-сервис: key → shard",                 "single point of failure (lookup)"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Индексы",
+                "items": [
+                    {"k": "**B-tree**",        "v": "стандарт RDBMS. Логарифмический поиск, range queries. Читать-эффективен."},
+                    {"k": "**LSM-tree**",      "v": "Cassandra/RocksDB. Write-эффективен, append-only с compaction"},
+                    {"k": "**Hash index**",    "v": "точечный lookup за O(1). Range queries не работают"},
+                    {"k": "**Inverted index**", "v": "Elasticsearch. Term → list of docs. Full-text search"},
+                    {"k": "**HNSW**",            "v": "vector search. Граф для approximate kNN"},
+                    {"k": "**Bloom filter**",    "v": "вероятностный «есть/нет» — экономит чтения с диска"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Репликация",
+                "items": [
+                    {"k": "**Sync**",            "v": "запись возвращается после commit на N replicas. Нет потерь, latency↑"},
+                    {"k": "**Async**",            "v": "master подтверждает сразу, replica догоняет. Lag, можно потерять при падении master"},
+                    {"k": "**Master-slave**",    "v": "запись только на master, чтение с replicas. Стандарт RDBMS"},
+                    {"k": "**Multi-master**",     "v": "запись на любую ноду. Требует разрешения конфликтов (CRDT, last-write-wins)"},
+                    {"k": "**Quorum**",            "v": "Cassandra/Dynamo: write_qrm + read_qrm > N → strong consistency"},
+                    {"k": "**Read-your-own-writes**", "v": "после своей записи читать с master, иначе видишь stale"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Уровни изоляции (Postgres)",
+                "items": [
+                    {"k": "**Read Uncommitted**", "v": "можешь видеть незакоммиченные изменения других. В Postgres = Read Committed"},
+                    {"k": "**Read Committed**",   "v": "**default**. Видишь только закоммиченное. Possible: non-repeatable reads"},
+                    {"k": "**Repeatable Read**",   "v": "snapshot в начале транзакции, видишь её всю одинаково. Possible: phantom reads (в стандарте, в PG нет)"},
+                    {"k": "**Serializable**",      "v": "как будто транзакции выполняются последовательно. Дороже всего"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Какое хранилище",
+                "branches": [
+                    {"condition": "транзакции, JOIN-ы, ACID",                "outcome": "**Postgres**"},
+                    {"condition": "write-heavy, миллиарды записей, eventual ok", "outcome": "Cassandra / Scylla"},
+                    {"condition": "key-value lookup, low-latency, managed",    "outcome": "DynamoDB / Redis"},
+                    {"condition": "OLAP, агрегации, time-series",              "outcome": "ClickHouse / TimescaleDB"},
+                    {"condition": "full-text search",                          "outcome": "Elasticsearch / OpenSearch"},
+                    {"condition": "vector search (RAG)",                        "outcome": "Qdrant / pgvector / Weaviate"},
+                    {"condition": "артефакты, файлы, бэкапы",                   "outcome": "S3 / GCS / blob"},
+                    {"condition": "feature store",                              "outcome": "online: Redis / DynamoDB; offline: Parquet/Hive"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**CAP в реальности — это PACELC.** При partition выбираем CP/AP. Когда **нет** partition — выбираем между Latency и Consistency. PA/EC = Cassandra (доступность + быстро при нормальной работе, eventual). PC/EC = Postgres."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Hot key кладёт шард.** Один популярный ключ → весь трафик на одну ноду, остальные простаивают. Лечение: локальный кеш на каждом инстансе приложения, или random suffix в ключе (`user:42:0`, `user:42:1`, ...) с aggregation на чтении."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Read replica lag = stale reads.** Если lag 100ms, пользователь может прочитать устаревшие данные сразу после своей записи. Защита: read-your-own-writes (читать с master в окне после write) или causal consistency через session token."},
+        ],
     },
     "sd_messaging": {
         "title": "Очереди, Kafka, события",
@@ -2131,6 +2360,128 @@ TOPICS = {
             {"q": "Что такое dead letter queue?", "a": "Сообщения, которые не удалось обработать N раз, перемещаются в DLQ. Позволяет не блокировать основную очередь из-за 'ядовитых' сообщений и разобраться с ними отдельно."},
             {"q": "Когда очередь вместо синхронного HTTP?", "a": "Когда producer и consumer могут работать с разной скоростью (буферизация нагрузки). Когда consumer может быть временно недоступен. Когда нужно fan-out одного события на несколько сервисов."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Очередь** — асинхронный буфер между сервисами. Главные оси: **очередь vs стрим** (RabbitMQ vs Kafka), **семантика доставки** (at-most/at-least/exactly-once), **идемпотентность** consumer-а. Стандартные паттерны: **outbox**, **CDC**, **dead letter queue**."},
+            {
+                "type": "compare",
+                "title": "Очередь vs Стрим",
+                "items": [
+                    {"title": "Очередь (RabbitMQ, SQS)",
+                     "points": [
+                         "Сообщение удаляется после ack",
+                         "Маршрутизация: routing key, exchange",
+                         "Task queues, request/reply",
+                         "Не для replay",
+                     ]},
+                    {"title": "Стрим (Kafka, Pulsar, Kinesis)",
+                     "points": [
+                         "Лог с удержанием — replay возможен",
+                         "Consumer сам управляет offset",
+                         "Высокий throughput (МБ/сек)",
+                         "Event sourcing, CDC, ETL",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Когда что брать",
+                "headers": ["Система", "Класс", "Когда"],
+                "rows": [
+                    ["**Kafka**",        "стрим",         "event sourcing, CDC, аналитика, replay, миллионы msg/sec"],
+                    ["**Pulsar**",        "стрим",         "Kafka-альтернатива с tiered storage, мульти-тенантный"],
+                    ["**RabbitMQ**",      "очередь",        "task queues, RPC, маршрутизация по routing key"],
+                    ["**SQS**",            "очередь",        "managed AWS, простой, fan-out через SNS"],
+                    ["**Redis Streams**",  "стрим",         "лёгкий стрим, если уже есть Redis"],
+                    ["**NATS**",            "pub/sub",        "low-latency, IoT, edge"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Семантика доставки",
+                "items": [
+                    {"k": "**At-most-once**",  "v": "fire-and-forget. Может потеряться. Логи, метрики."},
+                    {"k": "**At-least-once**", "v": "**default**. Может прийти **дважды** → consumer должен быть **идемпотентным**."},
+                    {"k": "**Exactly-once**",   "v": "идеал. В Kafka: idempotent producer + transactional producer + read-process-write в транзакции. Дорого."},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Идемпотентный consumer (Kafka)",
+                "code": (
+                    "from confluent_kafka import Consumer\n"
+                    "import psycopg2\n\n"
+                    "consumer = Consumer({\n"
+                    "    'bootstrap.servers': 'kafka:9092',\n"
+                    "    'group.id':          'orders-processor',\n"
+                    "    'enable.auto.commit': False,        # коммит после успешной обработки\n"
+                    "})\n"
+                    "consumer.subscribe(['orders'])\n\n"
+                    "while True:\n"
+                    "    msg = consumer.poll(1.0)\n"
+                    "    if msg is None or msg.error(): continue\n"
+                    "    event = json.loads(msg.value())\n\n"
+                    "    with conn.transaction():\n"
+                    "        # дедупликация по event.id (UNIQUE constraint)\n"
+                    "        try:\n"
+                    "            cur.execute('INSERT INTO processed_events (id) VALUES (%s)', [event['id']])\n"
+                    "            process(event)\n"
+                    "        except UniqueViolation:\n"
+                    "            pass    # уже обработано\n\n"
+                    "    consumer.commit(msg)"
+                ),
+            },
+            {
+                "type": "compare",
+                "title": "Outbox vs CDC",
+                "items": [
+                    {"title": "Outbox pattern",
+                     "points": [
+                         "В одной БД-транзакции: write + insert в `outbox`",
+                         "Отдельный poller публикует из `outbox` в Kafka",
+                         "Контроль в коде приложения",
+                         "Schema требует таблицу `outbox`",
+                     ]},
+                    {"title": "CDC (Debezium)",
+                     "points": [
+                         "Читает binlog/WAL БД",
+                         "**Не требует изменений** в приложении",
+                         "Каждое изменение — событие",
+                         "Сложная инфра (Kafka Connect)",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Партиции и consumer groups",
+                "items": [
+                    {"k": "**Partition**",        "v": "часть топика, упорядочена. Один partition = один consumer в группе"},
+                    {"k": "**Partition key**",     "v": "hash(key) % N → одна сущность всегда в одной partition (упорядочено)"},
+                    {"k": "**Consumer group**",     "v": "разделяет partitions между инстансами. Один топик можно читать **разными** группами независимо"},
+                    {"k": "**Параллелизм**",         "v": "ограничен числом partitions. 8 partitions = max 8 параллельных consumer в группе"},
+                    {"k": "**Rebalance**",            "v": "при добавлении/удалении consumer группа перераспределяет partitions"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → решение",
+                "branches": [
+                    {"condition": "consumer отстаёт (lag растёт)",       "outcome": "↑ partitions + ↑ consumer-инстансов, batch processing, async IO"},
+                    {"condition": "одно «ядовитое» сообщение блокирует", "outcome": "**DLQ**: после N retries → в dead letter queue"},
+                    {"condition": "дубли при retry",                     "outcome": "**идемпотентный consumer**: dedup по message_id"},
+                    {"condition": "событие потерялось при падении",      "outcome": "**outbox**: писать в БД + outbox в одной транзакции"},
+                    {"condition": "fan-out одного события N сервисам",  "outcome": "Kafka с N consumer groups (или SNS+SQS)"},
+                    {"condition": "нужен replay истории",                "outcome": "Kafka с retention >> bus duration"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Параллелизм Kafka = число partitions.** Если в топике 4 partition — максимум 4 consumer-а в группе работают параллельно, остальные простаивают. Перепланирование partitions требует rebalance, поэтому закладывать запас на старте — обычная практика."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Идемпотентность важнее exactly-once.** Сделать producer-consumer-цикл exactly-once дорого и редко надёжно. Гораздо проще — at-least-once + идемпотентный consumer (UNIQUE constraint на event_id, dedup-таблица, или idempotent business logic)."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Без DLQ poison message топит всё.** Если consumer падает на одном сообщении и retry-ит бесконечно — лаг растёт лавиной. После 3-5 retries → DLQ + alert на on-call."},
+        ],
     },
     "sd_reliability": {
         "title": "Надёжность: rate limit, circuit breaker, SLO",
@@ -2150,6 +2501,123 @@ TOPICS = {
             {"q": "Чем SLI, SLO и SLA отличаются?", "a": "SLI (indicator) — метрика: latency p99. SLO (objective) — цель: p99 < 200ms 99.9% времени. SLA (agreement) — контракт с клиентом: нарушение SLO → штраф. SLO внутренние и жёстче SLA."},
             {"q": "Что такое bulkhead pattern?", "a": "Изоляция ресурсов: отдельные thread pool или connection pool для каждого downstream-сервиса. Если один сервис деградирует — он исчерпывает только свой pool, не затрагивая остальные."},
             {"q": "Как graceful degradation отличается от graceful shutdown?", "a": "Graceful degradation — система продолжает работать при частичном отказе, предоставляя деградированный сервис (кеш вместо БД). Graceful shutdown — корректное завершение с дождиванием активных запросов."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Senior-кандидата отличают разговоры о **failure modes**. Защита от каскадных отказов — это **rate limit + circuit breaker + retry с jitter + timeout + bulkhead**. Целевые числа — через **SLI/SLO/SLA**. Под нагрузкой работает не «крутая модель», а строгий контроль failure paths."},
+            {
+                "type": "table",
+                "title": "Rate limit алгоритмы",
+                "headers": ["Алгоритм", "Поведение", "Burst", "Когда"],
+                "rows": [
+                    ["**Token bucket**",     "токены капают со скоростью R, ёмкость B",  "**да**, до B",        "API gateway, **default**"],
+                    ["**Leaky bucket**",      "запросы вытекают со скоростью R",            "сглаживается",         "когда нужен ровный output"],
+                    ["**Fixed window**",      "счётчик за окно (1мин)",                      "burst на границе",      "просто, неточно"],
+                    ["**Sliding window log**", "timestamps всех запросов в окне",            "точно",                  "дорого по памяти"],
+                    ["**Sliding window counter**", "взвешенная сумма двух окон",             "точно, дёшево",          "**production sweet spot**"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Защитные паттерны",
+                "items": [
+                    {"k": "**Timeout**",                 "v": "**первая** защита. Запрос не висит вечно — отдаёт error за N мс"},
+                    {"k": "**Retry + exp backoff + jitter**", "v": "повторяем с растущей задержкой, **случайной** добавкой → нет retry storm"},
+                    {"k": "**Circuit breaker**",         "v": "при error rate > X% → Open → запросы отклоняются → Half-Open пробный → Closed"},
+                    {"k": "**Bulkhead**",                  "v": "отдельный thread/connection pool на downstream → один сервис не топит остальные"},
+                    {"k": "**Rate limit**",                 "v": "защищает себя и downstream от перегрузки"},
+                    {"k": "**Graceful degradation**",        "v": "при падении БД — отдаём stale из кеша; при падении ML — fallback на правила"},
+                    {"k": "**Hedged requests**",              "v": "при p99 → шлём дубль на другой replica, берём первый ответ"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Retry с exponential backoff + jitter",
+                "code": (
+                    "import random, time\n\n"
+                    "def call_with_retry(fn, *, max_attempts=5, base=0.1, cap=10.0):\n"
+                    "    for attempt in range(max_attempts):\n"
+                    "        try:\n"
+                    "            return fn()\n"
+                    "        except RetryableError:\n"
+                    "            if attempt == max_attempts - 1:\n"
+                    "                raise\n"
+                    "            # exponential backoff с full jitter\n"
+                    "            delay = min(cap, base * 2 ** attempt)\n"
+                    "            sleep = random.uniform(0, delay)\n"
+                    "            time.sleep(sleep)\n\n"
+                    "# Без jitter — все клиенты в одну секунду делают retry → retry storm"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "SLO в простое за год",
+                "headers": ["SLO", "Простой / год", "Простой / месяц", "Простой / день"],
+                "rows": [
+                    ["**99%**",       "3.65 дня",    "7.2 часа",    "14.4 минуты"],
+                    ["**99.9%**",      "8.7 часа",    "43 минуты",   "1.4 минуты"],
+                    ["**99.95%**",     "4.4 часа",    "22 минуты",   "43 секунды"],
+                    ["**99.99%**",     "52 минуты",   "4.3 минуты",  "8.6 секунд"],
+                    ["**99.999%**",    "5.3 минуты",  "26 секунд",    "0.86 секунды"],
+                ],
+                "note": "Каждая девятка ≈ 10× дороже в инфре и людях. 99.99% уже требует multi-region.",
+            },
+            {
+                "type": "compare",
+                "title": "SLI / SLO / SLA",
+                "items": [
+                    {"title": "SLI (Indicator)",
+                     "points": [
+                         "Метрика, что мерим",
+                         "Например: latency p99 = 180 мс",
+                         "Из мониторинга",
+                         "«Как сейчас»",
+                     ]},
+                    {"title": "SLO (Objective)",
+                     "points": [
+                         "Внутренняя цель",
+                         "«p99 < 200мс 99.9% времени за 30 дней»",
+                         "Жёстче чем SLA",
+                         "Триггер для error budget alerts",
+                     ]},
+                    {"title": "SLA (Agreement)",
+                     "points": [
+                         "Контракт с клиентом",
+                         "«99.9% uptime, иначе скидка»",
+                         "Юридический документ",
+                         "Внутренние SLO **жёстче** SLA",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Circuit breaker — состояния",
+                "items": [
+                    {"k": "**Closed**",      "v": "нормальное состояние. Запросы идут, считаем error rate"},
+                    {"k": "**Open**",         "v": "error rate превысил порог → отклоняем все запросы N секунд (без обращения к downstream)"},
+                    {"k": "**Half-Open**",    "v": "после таймаута пробуем 1 запрос. OK → Closed. Fail → Open снова"},
+                    {"k": "**Зачем**",          "v": "защита от retry storm на упавший сервис, fast-fail для caller"},
+                    {"k": "**Когда лишний**",    "v": "если caller — единственный пользователь и нет масштаба, обычного retry достаточно"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Цепочка защит downstream-вызова",
+                "branches": [
+                    {"condition": "1. Timeout",                      "outcome": "ограничение по времени каждого запроса"},
+                    {"condition": "2. Retry с exp backoff + jitter",  "outcome": "повтор при transient ошибках, без storm"},
+                    {"condition": "3. Circuit breaker",                "outcome": "перестать ходить в упавший сервис"},
+                    {"condition": "4. Bulkhead",                       "outcome": "отдельный pool — не топит другие downstream"},
+                    {"condition": "5. Fallback / degradation",          "outcome": "stale cache / правила / пустой ответ"},
+                ],
+            },
+            {"type": "callout", "kind": "warning",
+             "content": "**Retry без jitter = retry storm.** Все клиенты падают одновременно → одновременно пытаются повторить → одновременно бьют в восстанавливающийся сервис → роняют его снова. **Full jitter** (`sleep = random.uniform(0, delay)`) ломает синхронизацию."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Error budget = (1 − SLO) × period.** SLO 99.9% за 30 дней → 43 минуты бюджета. Когда расходован — фриз релизов до восстановления. Превращает SLO из мечты в operational инструмент."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Hedged requests чинят long tail.** При латентности > p95 шлём второй запрос на другой replica и берём первый из двух ответов. Снижает p99 в 2-5×, цена — рост нагрузки на 5%."},
         ],
     },
     "sd_classics": {
@@ -3048,6 +3516,99 @@ TOPICS = {
             {"q": "Как устроена two-tower архитектура?", "a": "Отдельные энкодеры для user и item → embeddings → dot product = relevance score. Обучается на interaction data. Преимущество: item embeddings можно предвычислить и хранить в vector DB (FAISS, Pinecone) для fast ANN retrieval."},
             {"q": "Что такое position bias в обучающих данных?", "a": "Пользователи кликают на верхние позиции просто потому что они выше, а не потому что они лучше. Модель обученная на кликах обучится ранжировать популярные item выше. Решение: position-aware features, inverse propensity scoring, counterfactual learning."},
             {"q": "Как мерить качество рекомендаций оффлайн?", "a": "Recall@K: доля релевантных item в топ-K. Precision@K: доля релевантных среди топ-K. NDCG@K: с учётом позиции. MRR: среднее reciprocal rank первого релевантного. Важно: оффлайн-метрики коррелируют с онлайн-метриками но не совпадают — всегда нужен A/B."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Recommender и search — стандартные кейсы ML System Design. Архитектура: **retrieval** (топ-1000 из миллионов, дёшево) → **ranking** (точно скорим топ-1000) → **business logic** (дедупликация, diversity). Метрики: **NDCG / Recall@K / MRR** оффлайн + A/B на бизнес-метрику."},
+            {
+                "type": "flow",
+                "title": "Двухэтапная архитектура",
+                "branches": [
+                    {"condition": "1. Retrieval / Candidate generation",  "outcome": "ANN + two-tower / popularity / collaborative → top-1000"},
+                    {"condition": "2. Ranking",                           "outcome": "точная модель (LambdaMART, DNN) скорит 1000 → top-100"},
+                    {"condition": "3. Re-ranking / business logic",        "outcome": "diversity, freshness, фильтры, личные блок-листы → top-K"},
+                    {"condition": "4. Display",                            "outcome": "выдача пользователю + логирование impression/click"},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Pointwise / Pairwise / Listwise",
+                "items": [
+                    {"title": "Pointwise",
+                     "points": [
+                         "Regression/classification на каждом item",
+                         "Предсказание скора независимо",
+                         "Простой baseline",
+                         "Не оптимизирует ранжирование напрямую",
+                     ]},
+                    {"title": "Pairwise",
+                     "points": [
+                         "Пары (A, B) — какой лучше",
+                         "RankNet, LambdaRank",
+                         "Лучше pointwise на ранжировании",
+                         "Не учитывает позицию в списке",
+                     ]},
+                    {"title": "Listwise",
+                     "points": [
+                         "Оптимизация метрики всего списка",
+                         "**LambdaMART** (LightGBM Ranker), NDCG-loss",
+                         "Самое корректное",
+                         "**Стандарт прода**",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Метрики ранжирования",
+                "headers": ["Метрика", "Что считает", "Когда брать"],
+                "rows": [
+                    ["**Recall@K**",   "доля релевантных item в топ-K",            "retrieval"],
+                    ["**Precision@K**", "доля релевантных среди топ-K",              "когда фиксированный размер выдачи"],
+                    ["**NDCG@K**",       "учитывает позицию + степень релевантности", "**default для ranking** при graded labels"],
+                    ["**MAP**",          "mean average precision",                    "бинарная релевантность"],
+                    ["**MRR**",           "1/rank первого релевантного",                "поиск ответа на вопрос"],
+                    ["**HR@K (Hit rate)**", "был ли релевантный в топ-K",                 "binary recall"],
+                    ["**CTR / GMV**",      "онлайн бизнес-метрики",                       "**настоящая истина**, A/B"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Two-tower архитектура",
+                "items": [
+                    {"k": "**User tower**",        "v": "энкодер фич пользователя → user_emb"},
+                    {"k": "**Item tower**",         "v": "энкодер фич item → item_emb"},
+                    {"k": "**Score**",                "v": "`dot(user_emb, item_emb)` или cosine"},
+                    {"k": "**Loss**",                  "v": "in-batch sampled softmax / contrastive (хорошие пары близко, случайные далеко)"},
+                    {"k": "**Inference**",            "v": "item_emb предвычислены и в **ANN-индексе** (FAISS/ScaNN) → fast retrieval"},
+                    {"k": "**Когда брать**",          "v": "большой каталог (millions+), нужен быстрый retrieval"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Cold start — кого холодит",
+                "items": [
+                    {"k": "**Новый пользователь**",  "v": "popularity, demographic rules, разнообразный контент для сбора сигнала"},
+                    {"k": "**Новый item**",            "v": "content-based фичи (описание/категория/теги), boost для новинок, **embedding** через LLM"},
+                    {"k": "**Новая категория**",        "v": "transfer от похожих категорий, hand-curated пока не накопился сигнал"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Exploration vs Exploitation",
+                "headers": ["Метод", "Идея", "Когда"],
+                "rows": [
+                    ["**ε-greedy**",          "с вероятностью ε случайный пик, иначе best",  "простой baseline"],
+                    ["**UCB**",                "score = mean + √(log N / count) — бонус за неопределённость",  "теоретически обоснован, регрет O(log T)"],
+                    ["**Thompson sampling**",   "сэмпл из posterior, выбор max",                                 "**production sweet spot** — гибче UCB"],
+                    ["**LinUCB / contextual bandit**", "bandit + фичи контекста",                                 "персонализация выбора между exploit и explore"],
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**LambdaMART почти всегда побеждает на табличных рангах.** LightGBM Ranker с listwise-loss + категориальные фичи + interaction features. На большинстве production-задач рекомендаций он или его DNN-аналог — стандарт."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Position bias.** Click-логи завышают скоры топовых позиций. Модель учит «популярное хорошо», а не «релевантное хорошо». Лечение: **inverse propensity scoring** (взвешивание по позиции), позиция как фича на train (=0 на inference), counterfactual evaluation."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Оффлайн-метрики НЕ совпадают с онлайн.** Можно улучшить NDCG@10 на 5%, а CTR упадёт. Причины: position bias, distribution mismatch, recommendation feedback loop. Финальное слово всегда за **A/B на бизнес-метрику**."},
         ],
     },
     "vllm": {
