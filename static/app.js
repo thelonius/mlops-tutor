@@ -100,22 +100,39 @@ function renderAllMessages() {
 }
 
 // ── Theme ──
-function initTheme() {
-  const saved = localStorage.getItem('mlops_theme') || 'dark';
-  applyTheme(saved);
+// Логика: 1) если пользователь явно выбрал — берём из localStorage.
+//         2) иначе — следуем системной prefers-color-scheme.
+//         3) дефолт — dark.
+// При смене системной темы реагируем, если пользователь явно не переопределил.
+function systemTheme() {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+  return 'dark';
 }
-function applyTheme(t) {
+function initTheme() {
+  const saved = localStorage.getItem('mlops_theme'); // 'dark' | 'light' | null
+  applyTheme(saved || systemTheme(), { explicit: !!saved });
+
+  // Реагировать на смену системной темы, если пользователь не выбирал вручную
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', (e) => {
+      if (!localStorage.getItem('mlops_theme')) {
+        applyTheme(e.matches ? 'light' : 'dark', { explicit: false });
+      }
+    });
+  }
+}
+function applyTheme(t, opts = { explicit: true }) {
   document.documentElement.setAttribute('data-theme', t);
   document.getElementById('theme-btn').textContent = t === 'dark' ? '🌙' : '☀️';
   document.getElementById('hljs-css').href =
     t === 'dark'
       ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
       : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
-  localStorage.setItem('mlops_theme', t);
+  if (opts.explicit) localStorage.setItem('mlops_theme', t);
 }
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme');
-  applyTheme(cur === 'dark' ? 'light' : 'dark');
+  applyTheme(cur === 'dark' ? 'light' : 'dark'); // explicit by default
 }
 
 // ── Modes ──
