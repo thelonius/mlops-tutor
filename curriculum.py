@@ -3428,6 +3428,147 @@ TOPICS = {
             {"q": "Что такое ParamSpec?", "a": "P = ParamSpec('P') — захватывает параметры функции для типизации декораторов. def decorator(f: Callable[P, T]) -> Callable[P, T]: позволяет mypy сохранить сигнатуру декорируемой функции."},
             {"q": "Когда использовать TypedDict?", "a": "Для типизации словарей с фиксированной схемой, особенно при работе с JSON API или legacy кодом без Pydantic. TypedDict дешевле Pydantic — нет валидации в рантайме, только статическая проверка."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Типы в Python — статические, без runtime-эффектов** (если не Pydantic). Pydantic, FastAPI, dataclass читают аннотации через `get_type_hints()`. С 3.9 пишем `list[int]`, не `List[int]`. **`Protocol`** для duck-typing, **`Annotated`** для метаданных, **`TypeVar`** для generic-ов."},
+            {
+                "type": "table",
+                "title": "Базовые конструкции",
+                "headers": ["Конструкция", "Что значит", "Когда"],
+                "rows": [
+                    ["**`list[int]`**",            "список int (3.9+)",                    "default"],
+                    ["**`Optional[X]` = `X \\| None`**",  "может быть None",                    "необязательный параметр"],
+                    ["**`Union[X, Y]` = `X \\| Y`**",       "один из типов",                      "несколько вариантов"],
+                    ["**`Literal['a', 'b']`**",     "одно из конкретных значений",            "enum-like, статусы, режимы"],
+                    ["**`TypedDict`**",                "dict с фиксированными ключами",          "JSON-схемы без runtime-проверок"],
+                    ["**`Protocol`**",                  "structural subtyping (duck-typing)",      "интерфейсы без наследования"],
+                    ["**`TypeVar`**",                    "generic-параметр",                        "функции, работающие с любым типом"],
+                    ["**`Annotated[T, meta]`**",          "тип + метаданные",                       "Pydantic Field, FastAPI Depends"],
+                    ["**`Final[T]`**",                     "константа, нельзя переприсвоить",         "module-level constants"],
+                    ["**`ClassVar[T]`**",                   "атрибут класса (не instance)",            "shared state в классе"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Protocol vs ABC",
+                "items": [
+                    {"title": "ABC (nominal subtyping)",
+                     "points": [
+                         "**Явное** наследование от `ABC`",
+                         "`@abstractmethod` для обязательных методов",
+                         "`isinstance()` работает по дереву наследования",
+                         "Java-стиль интерфейсов",
+                     ]},
+                    {"title": "Protocol (structural subtyping)",
+                     "points": [
+                         "**Без наследования** — duck-typing",
+                         "Класс совместим, если имеет нужные методы",
+                         "`@runtime_checkable` для `isinstance()` в runtime",
+                         "Python-style — рекомендованный для новых интерфейсов",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Generic функции через TypeVar",
+                "code": (
+                    "from typing import TypeVar\n\n"
+                    "T = TypeVar('T')\n"
+                    "K = TypeVar('K')\n"
+                    "V = TypeVar('V')\n\n"
+                    "def first(items: list[T]) -> T | None:\n"
+                    "    return items[0] if items else None\n\n"
+                    "def invert(d: dict[K, V]) -> dict[V, K]:\n"
+                    "    return {v: k for k, v in d.items()}\n\n"
+                    "# Bounded TypeVar — только Number-подобные\n"
+                    "from numbers import Number\n"
+                    "N = TypeVar('N', bound=Number)\n"
+                    "def sum_two(a: N, b: N) -> N:\n"
+                    "    return a + b"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Protocol — структурная типизация",
+                "code": (
+                    "from typing import Protocol, runtime_checkable\n\n"
+                    "@runtime_checkable\n"
+                    "class HasArea(Protocol):\n"
+                    "    def area(self) -> float: ...\n\n"
+                    "class Circle:\n"
+                    "    def __init__(self, r): self.r = r\n"
+                    "    def area(self): return 3.14 * self.r ** 2\n\n"
+                    "def total_area(shapes: list[HasArea]) -> float:\n"
+                    "    return sum(s.area() for s in shapes)\n\n"
+                    "# Circle не наследует HasArea — но совместим по структуре\n"
+                    "total_area([Circle(1), Circle(2)])  # OK\n"
+                    "isinstance(Circle(1), HasArea)        # True (нужен @runtime_checkable)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "ParamSpec — типизация декораторов (3.10+)",
+                "code": (
+                    "from typing import ParamSpec, TypeVar, Callable\n"
+                    "import time, functools\n\n"
+                    "P = ParamSpec('P')\n"
+                    "R = TypeVar('R')\n\n"
+                    "def timer(fn: Callable[P, R]) -> Callable[P, R]:\n"
+                    "    @functools.wraps(fn)\n"
+                    "    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:\n"
+                    "        start = time.monotonic()\n"
+                    "        try:\n"
+                    "            return fn(*args, **kwargs)\n"
+                    "        finally:\n"
+                    "            print(f'{fn.__name__}: {time.monotonic() - start:.3f}s')\n"
+                    "    return wrapper\n\n"
+                    "# mypy сохраняет сигнатуру оригинала через P + R"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Type narrowing — сужение",
+                "items": [
+                    {"k": "**`isinstance()`**",       "v": "`if isinstance(x, str): ...` — внутри блока mypy знает x: str"},
+                    {"k": "**`assert`**",              "v": "`assert isinstance(x, int)` — после mypy сужает"},
+                    {"k": "**`is None` check**",       "v": "`if x is None: ... else: ...` — в else x не None"},
+                    {"k": "**`Literal` match**",        "v": "`if status == 'active': ...` сужает до Literal['active']"},
+                    {"k": "**`TypeGuard`**",            "v": "функция-предикат, помечает return-тип `TypeGuard[T]`"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Аннотации в runtime",
+                "items": [
+                    {"k": "**По умолчанию**",       "v": "Python **не проверяет** типы. Аннотации лежат в `__annotations__`"},
+                    {"k": "**`get_type_hints(func)`**", "v": "разрешает forward references (строковые аннотации)"},
+                    {"k": "**`from __future__ import annotations`**", "v": "все аннотации становятся строковыми (lazy)"},
+                    {"k": "**Pydantic / FastAPI / dataclass**", "v": "**читают** аннотации, превращают в валидацию"},
+                    {"k": "**mypy / pyright**",         "v": "статические проверки, в runtime ничего не делают"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Стек инструментов",
+                "headers": ["Инструмент", "Что делает", "Когда"],
+                "rows": [
+                    ["**mypy**",       "static type checker",                       "default, в CI"],
+                    ["**pyright**",     "type checker от Microsoft, быстрее mypy",    "VSCode/Pylance, big codebases"],
+                    ["**ruff**",        "fast linter (pyflakes + pycodestyle + ...)", "формат + базовые проверки"],
+                    ["**pyrefly**",     "type checker от Meta",                       "новый инструмент"],
+                    ["**stubgen**",      "генерация .pyi-stub из кода",                 "для legacy без аннотаций"],
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`Annotated[T, meta]` — мост между типами и runtime.** Pydantic читает `Annotated[str, Field(min_length=1)]`, FastAPI — `Annotated[User, Depends(get_user)]`. Тип статически тот же, метаданные приклеены и доступны через `get_type_hints(include_extras=True)`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Аннотации в runtime — это lazy-строки в `__future__ annotations`.** При `from __future__ import annotations` все аннотации становятся строками — нет cycle imports, нет runtime-стоимости. Pydantic v2 справляется с этим через `model_rebuild()`."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**`Protocol` без `@runtime_checkable` не работает в `isinstance`.** Только статическая совместимость. Если нужна проверка в runtime — добавляй декоратор. Замедляет проверку (`isinstance` идёт по всем методам)."},
+        ],
     },
     "py_pydantic": {
         "title": "Pydantic v2",
@@ -3447,6 +3588,116 @@ TOPICS = {
             {"q": "Как кастомизировать сериализацию?", "a": "@field_serializer('field') для кастомного представления поля. model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()}) для типов. model_dump(mode='json') применяет JSON-совместимые преобразования."},
             {"q": "Что такое validate_call?", "a": "@validate_call декоратор добавляет Pydantic-валидацию к обычной функции. Аргументы проверяются по аннотациям типов при каждом вызове. Удобно для CLI или utility функций."},
             {"q": "Как работает model_validate vs __init__?", "a": "model_validate(data) принимает dict или объект и создаёт модель с полной валидацией. __init__ тоже валидирует, но model_validate удобнее при работе с внешними данными и поддерживает from_attributes=True для ORM объектов."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Pydantic v2** на **Rust-ядре** — в 5-50× быстрее v1. Главный сдвиг: `model_validate` (вместо `parse_obj`), `field_validator` (вместо `validator`), `model_dump` (вместо `dict()`). FastAPI и pydantic-settings построены на нём."},
+            {
+                "type": "table",
+                "title": "v1 → v2 миграция",
+                "headers": ["v1", "v2", "Что меняется"],
+                "rows": [
+                    ["`@validator`",                    "`@field_validator`",                "новый декоратор + classmethod"],
+                    ["`@root_validator`",                 "`@model_validator(mode='before/after')`", "явный mode"],
+                    ["`Model.parse_obj(data)`",            "**`Model.model_validate(data)`**",  "новое имя"],
+                    ["`obj.dict()`",                         "**`obj.model_dump()`**",            "новое имя + опции (mode='json')"],
+                    ["`obj.json()`",                          "`obj.model_dump_json()`",         "JSON-сериализация"],
+                    ["`Config:` класс",                       "**`model_config = ConfigDict(...)`**", "теперь dict-like"],
+                    ["`schema()` / `schema_json()`",          "`model_json_schema()`",            "OpenAPI/JSON schema"],
+                    ["`pydantic.BaseSettings`",                 "**`pydantic_settings.BaseSettings`**", "вынесен в отдельный пакет"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "field_validator vs model_validator",
+                "items": [
+                    {"title": "@field_validator('x')",
+                     "points": [
+                         "Валидирует **одно** поле",
+                         "Получает значение и FieldInfo",
+                         "Можно изменить значение перед сохранением",
+                         "Most common case",
+                     ]},
+                    {"title": "@model_validator(mode='before/after')",
+                     "points": [
+                         "Получает **весь** объект (dict в before, Model в after)",
+                         "Cross-field валидация (`password == confirm`)",
+                         "before — модификация raw input",
+                         "after — финальные инварианты",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "BaseModel + валидаторы",
+                "code": (
+                    "from typing import Annotated\n"
+                    "from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator, ConfigDict\n\n"
+                    "class User(BaseModel):\n"
+                    "    model_config = ConfigDict(\n"
+                    "        from_attributes=True,    # для ORM-объектов\n"
+                    "        str_strip_whitespace=True,\n"
+                    "    )\n\n"
+                    "    name:    Annotated[str, Field(min_length=1, max_length=80)]\n"
+                    "    email:   EmailStr\n"
+                    "    age:     int = Field(ge=18, le=120)\n"
+                    "    pwd:     str\n"
+                    "    pwd_confirm: str\n\n"
+                    "    @field_validator('name')\n"
+                    "    @classmethod\n"
+                    "    def name_capitalize(cls, v: str) -> str:\n"
+                    "        return v.title()\n\n"
+                    "    @model_validator(mode='after')\n"
+                    "    def passwords_match(self):\n"
+                    "        if self.pwd != self.pwd_confirm:\n"
+                    "            raise ValueError('passwords do not match')\n"
+                    "        return self\n\n"
+                    "user = User.model_validate({'name': 'ada', 'email': 'a@b.c',\n"
+                    "    'age': 30, 'pwd': 'x', 'pwd_confirm': 'x'})\n"
+                    "print(user.model_dump())              # dict\n"
+                    "print(user.model_dump_json(indent=2)) # JSON"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "BaseSettings (pydantic-settings)",
+                "code": (
+                    "from pydantic import Field\n"
+                    "from pydantic_settings import BaseSettings, SettingsConfigDict\n\n"
+                    "class Settings(BaseSettings):\n"
+                    "    model_config = SettingsConfigDict(\n"
+                    "        env_file='.env',\n"
+                    "        env_file_encoding='utf-8',\n"
+                    "        env_nested_delimiter='__',     # DB__URL=...\n"
+                    "    )\n\n"
+                    "    db_url:      str = Field(alias='DATABASE_URL')\n"
+                    "    redis_url:   str\n"
+                    "    api_key:     str\n"
+                    "    debug:       bool = False\n\n"
+                    "settings = Settings()  # автоматически из env / .env"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Ключевые приёмы v2",
+                "items": [
+                    {"k": "**`computed_field`**",        "v": "@computed_field — поле, вычисляемое из других, включается в model_dump"},
+                    {"k": "**`field_serializer`**",       "v": "@field_serializer('x') — кастомное представление при сериализации"},
+                    {"k": "**`mode='before' / 'after'`**", "v": "before — raw input, after — провалидированный объект"},
+                    {"k": "**`validate_call`**",            "v": "@validate_call — Pydantic-валидация для обычных функций"},
+                    {"k": "**`from_attributes=True`**",      "v": "разрешает .model_validate(orm_object) — читает атрибуты вместо dict"},
+                    {"k": "**`Annotated[T, Field(...)]`**",   "v": "альтернатива default-аргументам Field — играет с TypedDict и dataclass"},
+                    {"k": "**`model_dump(mode='json')`**",     "v": "JSON-совместимые типы (`datetime` → str, etc.)"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`model_validate` лучше `__init__` для внешних данных.** Возвращает понятную `ValidationError` с локацией ошибок и поддерживает `from_attributes=True` для ORM. `__init__` тоже валидирует, но менее удобен для DTO."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Pydantic v2 на Rust = 5-50× ускорение.** Критично для FastAPI на высоких RPS. Миграцию делает `bump-pydantic` — автоматически правит большинство breaking changes."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**`@field_validator` требует `@classmethod`.** Без явного декоратора получишь warning или ошибку. Это отличие от v1, где `@validator` его выставлял неявно."},
         ],
     },
     "py_fastapi": {
@@ -3468,6 +3719,151 @@ TOPICS = {
             {"q": "Как организовать аутентификацию через Depends?", "a": "Depends(oauth2_scheme) извлекает Bearer token. Depends(get_current_user) декодирует JWT и возвращает пользователя. Вложенные Depends позволяют строить цепочки: token → user → permissions."},
             {"q": "Как переопределить зависимость в тестах?", "a": "app.dependency_overrides[get_db] = lambda: test_session. Позволяет подменить реальную БД на тестовую без изменения кода. Сбросить после теста: app.dependency_overrides = {}."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**FastAPI** = Starlette (async ASGI) + Pydantic (валидация) + DI через `Depends`. Главное: **не блокируй event loop** в `async def`, используй `Depends` для DB-сессий / auth / rate-limit, **`lifespan`** вместо deprecated `on_event`, **`BackgroundTasks`** только для лёгкого fire-and-forget."},
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Базовый FastAPI: Pydantic + Depends + lifespan",
+                "code": (
+                    "from contextlib import asynccontextmanager\n"
+                    "from typing import Annotated\n"
+                    "from fastapi import FastAPI, Depends, HTTPException, status\n"
+                    "from pydantic import BaseModel\n\n"
+                    "@asynccontextmanager\n"
+                    "async def lifespan(app: FastAPI):\n"
+                    "    # startup\n"
+                    "    app.state.pool = await asyncpg.create_pool(DSN)\n"
+                    "    yield\n"
+                    "    # shutdown\n"
+                    "    await app.state.pool.close()\n\n"
+                    "app = FastAPI(lifespan=lifespan)\n\n"
+                    "class UserIn(BaseModel):\n"
+                    "    email: EmailStr\n"
+                    "    age:   int\n\n"
+                    "async def get_db():                      # dependency\n"
+                    "    async with app.state.pool.acquire() as conn:\n"
+                    "        yield conn\n\n"
+                    "@app.post('/users', status_code=201, response_model=UserOut)\n"
+                    "async def create_user(\n"
+                    "    user: UserIn,\n"
+                    "    db: Annotated[Connection, Depends(get_db)],\n"
+                    "):\n"
+                    "    return await db.fetchrow('INSERT ... RETURNING *', user.email, user.age)"
+                ),
+            },
+            {
+                "type": "compare",
+                "title": "`async def` vs `def` роут",
+                "items": [
+                    {"title": "**async def**",
+                     "points": [
+                         "Выполняется в event loop",
+                         "Любой блокирующий вызов внутри = смерть",
+                         "Используй `httpx.AsyncClient`, `asyncpg`",
+                         "Стандарт для нового кода",
+                     ]},
+                    {"title": "**def**",
+                     "points": [
+                         "FastAPI автоматически шлёт в `anyio.to_thread`",
+                         "Безопасно использовать sync-библиотеки",
+                         "Платишь thread overhead",
+                         "Хорошо для legacy / sync-DB",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Depends — auth + permissions",
+                "code": (
+                    "from fastapi import Depends, HTTPException\n"
+                    "from fastapi.security import OAuth2PasswordBearer\n"
+                    "from typing import Annotated\n\n"
+                    "oauth2 = OAuth2PasswordBearer(tokenUrl='/auth/login')\n\n"
+                    "async def get_current_user(\n"
+                    "    token: Annotated[str, Depends(oauth2)],\n"
+                    "    db:    Annotated[Connection, Depends(get_db)],\n"
+                    ") -> User:\n"
+                    "    payload = decode_jwt(token)\n"
+                    "    user = await db.fetchrow('SELECT * FROM users WHERE id=$1', payload['sub'])\n"
+                    "    if not user:\n"
+                    "        raise HTTPException(401)\n"
+                    "    return User(**user)\n\n"
+                    "def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:\n"
+                    "    if not user.is_admin:\n"
+                    "        raise HTTPException(403)\n"
+                    "    return user\n\n"
+                    "@app.delete('/users/{id}')\n"
+                    "async def delete_user(id: int, _: Annotated[User, Depends(require_admin)]):\n"
+                    "    ..."
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Background tasks: что выбрать",
+                "headers": ["Решение", "Когда", "Минусы"],
+                "rows": [
+                    ["**BackgroundTasks**",      "лёгкий fire-and-forget, send email после ответа",  "**нет retry**, нет persistence, теряются при краше"],
+                    ["**ARQ**",                    "async task queue (Redis), нативно с asyncio",       "только async-код"],
+                    ["**Celery**",                  "стандарт, retry, schedule, мощный broker",          "тяжёлый, sync-ориентирован"],
+                    ["**Dramatiq**",                "проще Celery, нормальный async support",             "меньше экосистемы"],
+                    ["**RQ**",                       "минималистичный sync, Redis",                        "только sync"],
+                    ["**Kafka consumer**",            "event-driven, при наличии Kafka",                    "сложнее scheduling"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Грабли в async-роутах",
+                "items": [
+                    {"k": "❌ `requests.get(...)`",     "v": "блокирует. Используй `httpx.AsyncClient`"},
+                    {"k": "❌ `psycopg2`",                "v": "блокирует. Используй `asyncpg` или SQLAlchemy 2.0 async"},
+                    {"k": "❌ `time.sleep(n)`",           "v": "блокирует. Используй `await asyncio.sleep(n)`"},
+                    {"k": "❌ Тяжёлый numpy/pandas-цикл", "v": "блокирует. Используй `def` роут или `run_in_executor`"},
+                    {"k": "✅ `BackgroundTasks`",         "v": "после `return response` — задача не блокирует ответ"},
+                    {"k": "✅ Async DB-pool",              "v": "asyncpg pool в `app.state`, выдавай через Depends"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Тестирование (TestClient)",
+                "items": [
+                    {"k": "**`fastapi.testclient.TestClient`**",  "v": "sync API через httpx внутри"},
+                    {"k": "**`httpx.AsyncClient`**",                "v": "для async-тестов: `AsyncClient(app=app, base_url='http://test')`"},
+                    {"k": "**`app.dependency_overrides`**",         "v": "подмена зависимостей: `[get_db] = lambda: test_session`"},
+                    {"k": "**`fastapi.Lifespan`**",                  "v": "контекст с `LifespanManager(app)` для теста startup/shutdown"},
+                    {"k": "**`pytest-asyncio`** + `httpx`",          "v": "стандарт для async-тестирования endpoints"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Кастомный exception handler",
+                "code": (
+                    "from fastapi.responses import JSONResponse\n\n"
+                    "class BusinessError(Exception):\n"
+                    "    def __init__(self, code: str, message: str):\n"
+                    "        self.code, self.message = code, message\n\n"
+                    "@app.exception_handler(BusinessError)\n"
+                    "async def biz_handler(request, exc: BusinessError):\n"
+                    "    return JSONResponse(status_code=400, content={\n"
+                    "        'error': {'code': exc.code, 'message': exc.message}\n"
+                    "    })\n\n"
+                    "# А ещё:\n"
+                    "from fastapi.exceptions import RequestValidationError\n"
+                    "@app.exception_handler(RequestValidationError)\n"
+                    "async def validation_handler(request, exc):\n"
+                    "    return JSONResponse(status_code=422, content={'errors': exc.errors()})"
+                ),
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`Annotated[T, Depends(...)]` — рекомендованный синтаксис.** Стандартный `param: T = Depends(...)` тоже работает, но `Annotated` совместим с TypedDict, dataclass и переиспользованием dependency как переменной."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`def`-роут не катастрофа.** FastAPI шлёт его в `anyio.to_thread` — event loop не блокируется. Просто платишь thread overhead. Если интегрируешь sync-библиотеку (legacy ORM) — `def` роут лучше чем мучаться с `run_in_executor`."},
+            {"type": "callout", "kind": "warning",
+             "content": "**`BackgroundTasks` — НЕ Celery.** Задача выполняется в том же процессе после `return`. Crash процесса = задача потеряна. Без retry, без scheduling. Для важных операций — Celery/ARQ/Kafka."},
+        ],
     },
     "py_db_orm": {
         "title": "БД, SQLAlchemy, миграции",
@@ -3488,6 +3884,127 @@ TOPICS = {
             {"q": "Что такое lazy loading в SQLAlchemy?", "a": "По умолчанию связанные объекты загружаются при первом обращении (дополнительный SELECT). В async-коде это проблема — нельзя делать запросы вне async-контекста. Явно указывать eager loading стратегию."},
             {"q": "Как откатить alembic миграцию?", "a": "alembic downgrade -1 откатывает на одну версию назад. alembic downgrade base — до начального состояния. В миграции должен быть корректный downgrade() метод с обратными операциями."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**SQLAlchemy 2.0** — единый async/sync API через `select()`. Главные грабли: **N+1** (lazy loading) → лечится `selectinload`/`joinedload`. Миграции — **alembic** с осторожным `autogenerate`. В FastAPI сессия выдаётся через `Depends` с `async with`."},
+            {
+                "type": "compare",
+                "title": "selectinload vs joinedload",
+                "items": [
+                    {"title": "**`joinedload`**",
+                     "points": [
+                         "**JOIN** в одном запросе",
+                         "Загружает всё сразу",
+                         "Может дублировать родительские строки в результате",
+                         "Хорошо для many-to-one, one-to-one",
+                     ]},
+                    {"title": "**`selectinload`**",
+                     "points": [
+                         "Отдельный `SELECT ... WHERE id IN (...)` для связи",
+                         "Один доп-запрос, без дубликатов",
+                         "Хорошо для one-to-many с большим числом связанных",
+                         "**Default рекомендация**",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "SQLAlchemy 2.0 async — стандартная схема",
+                "code": (
+                    "from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession\n"
+                    "from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload\n"
+                    "from sqlalchemy import select, ForeignKey\n\n"
+                    "class Base(DeclarativeBase):\n"
+                    "    pass\n\n"
+                    "class User(Base):\n"
+                    "    __tablename__ = 'users'\n"
+                    "    id:    Mapped[int] = mapped_column(primary_key=True)\n"
+                    "    email: Mapped[str]\n"
+                    "    posts: Mapped[list['Post']] = relationship(back_populates='user')\n\n"
+                    "class Post(Base):\n"
+                    "    __tablename__ = 'posts'\n"
+                    "    id:      Mapped[int] = mapped_column(primary_key=True)\n"
+                    "    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))\n"
+                    "    text:    Mapped[str]\n"
+                    "    user:    Mapped['User'] = relationship(back_populates='posts')\n\n"
+                    "engine = create_async_engine('postgresql+asyncpg://...', pool_size=10)\n"
+                    "Session = async_sessionmaker(engine, expire_on_commit=False)\n\n"
+                    "async with Session() as s:\n"
+                    "    # БЕЗ selectinload → N+1 при доступе к u.posts\n"
+                    "    stmt = select(User).options(selectinload(User.posts)).where(User.id == 1)\n"
+                    "    user = (await s.execute(stmt)).scalar_one()\n"
+                    "    for p in user.posts:                     # без N+1\n"
+                    "        print(p.text)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Session lifecycle",
+                "items": [
+                    {"k": "**`flush()`**",     "v": "отправляет SQL в БД в рамках текущей транзакции. Объекты получают `id`. **Не commit**"},
+                    {"k": "**`commit()`**",     "v": "фиксирует транзакцию. Изменения видны другим"},
+                    {"k": "**`rollback()`**",   "v": "откат транзакции"},
+                    {"k": "**`close()`**",       "v": "закрытие сессии. Лучше — `async with`"},
+                    {"k": "**`expire_on_commit=False`**", "v": "не инвалидировать объекты после commit. Default в async лучше True если объект используется дальше"},
+                    {"k": "**`refresh(obj)`**",   "v": "перечитать объект из БД"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Depends-сессия в FastAPI",
+                "code": (
+                    "from fastapi import Depends\n"
+                    "from typing import Annotated\n\n"
+                    "async def get_session() -> AsyncGenerator[AsyncSession, None]:\n"
+                    "    async with Session() as session:\n"
+                    "        try:\n"
+                    "            yield session\n"
+                    "            await session.commit()\n"
+                    "        except Exception:\n"
+                    "            await session.rollback()\n"
+                    "            raise\n\n"
+                    "DBSession = Annotated[AsyncSession, Depends(get_session)]\n\n"
+                    "@app.get('/users/{id}')\n"
+                    "async def get_user(id: int, db: DBSession):\n"
+                    "    return (await db.execute(select(User).where(User.id == id))).scalar_one_or_none()"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "alembic миграции",
+                "items": [
+                    {"k": "**`alembic init alembic`**",          "v": "создать конфиг и папку миграций"},
+                    {"k": "**`alembic revision -m 'add x'`**",   "v": "пустая миграция"},
+                    {"k": "**`alembic revision --autogenerate`**", "v": "diff моделей и БД → миграция. Проверять глазами!"},
+                    {"k": "**`alembic upgrade head`**",            "v": "накатить все миграции"},
+                    {"k": "**`alembic downgrade -1`**",             "v": "откат на одну версию"},
+                    {"k": "**`alembic history`**",                   "v": "список ревизий"},
+                    {"k": "**Грабли autogenerate**",                  "v": "не видит raw SQL, типы без named-constraints, изменения в sequences. Всегда читать diff"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Драйверы и пулы",
+                "headers": ["Драйвер", "Async", "Когда"],
+                "rows": [
+                    ["**asyncpg**",                  "**да**",   "Postgres + async, fastest"],
+                    ["**psycopg3** (async)",          "да",      "Postgres + async, более совместим"],
+                    ["**psycopg2**",                   "нет",     "legacy sync"],
+                    ["**SQLAlchemy + asyncpg**",       "да",      "ORM + async, default"],
+                    ["**aiomysql**",                    "да",      "MySQL async"],
+                    ["**aiosqlite**",                    "да",      "SQLite async (тесты)"],
+                ],
+                "note": "`pool_size`, `max_overflow` подбирать под RPS. Не делать `engine = create_engine()` в каждом запросе — пул должен жить весь lifespan.",
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**N+1 — самая частая беда.** `for u in users: print(u.posts)` без `selectinload` = N запросов к БД. Лечение: `select(User).options(selectinload(User.posts))`. В async-коде доступ к ленивому полю упадёт с `MissingGreenlet`."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`expire_on_commit=False` для async.** В async-сессиях после commit объект становится «expired» — обращение к атрибутам инициирует SELECT, что в async-контексте вызывает `MissingGreenlet`. Отключай для FastAPI-стиля."},
+            {"type": "callout", "kind": "warning",
+             "content": "**`alembic autogenerate` не видит всё.** Raw SQL, изменения в `Index/CHECK` без имени, sequence-rename — пропускает. **Всегда** читай сгенерированный файл, тестируй upgrade + downgrade, прежде чем мержить."},
+        ],
     },
     "py_testing": {
         "title": "Тестирование (pytest)",
@@ -3507,6 +4024,148 @@ TOPICS = {
             {"q": "Что такое pytest.mark.parametrize?", "a": "@pytest.mark.parametrize('input,expected', [(1, 2), (2, 4)]) запускает тест для каждой пары. Чище чем цикл внутри теста — каждый случай виден отдельно при провале. Комбинировать несколько parametrize можно как декартово произведение."},
             {"q": "Как тестировать async функции?", "a": "@pytest.mark.asyncio (pytest-asyncio) или asyncio.run(). Для FastAPI с async эндпоинтами: httpx.AsyncClient(app=app, base_url='http://test'). Использовать anyio-backend fixture для настройки event loop."},
             {"q": "Что такое monkeypatch в pytest?", "a": "Встроенная фикстура для временной замены атрибутов, переменных окружения, функций. monkeypatch.setattr(module, 'func', mock_func). Автоматически откатывается после теста. Проще чем mock.patch для простых случаев."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**pytest** — стандарт. Главное: **фикстуры** с `scope`, **`conftest.py`** для shared, **`parametrize`** для табличных тестов, **`mock.patch`** там где используется (не где определено), **`pytest-asyncio` + `httpx.AsyncClient`** для async FastAPI."},
+            {
+                "type": "table",
+                "title": "Scope фикстур",
+                "headers": ["Scope", "Когда создаётся", "Когда уничтожается"],
+                "rows": [
+                    ["**`function`** (default)",   "перед каждым тестом",            "после каждого теста"],
+                    ["**`class`**",                  "перед первым тестом класса",      "после последнего теста класса"],
+                    ["**`module`**",                  "перед первым тестом файла",        "после последнего теста файла"],
+                    ["**`package`**",                  "первый раз в папке",                "после папки"],
+                    ["**`session`**",                  "**один раз** на прогон",          "в конце прогона"],
+                ],
+                "note": "Фикстура широкого scope может использовать только фикстуры того же или более широкого scope. session-фикстура НЕ может зависеть от function.",
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "conftest.py для FastAPI + async DB",
+                "code": (
+                    "# conftest.py\n"
+                    "import pytest_asyncio\n"
+                    "from httpx import AsyncClient, ASGITransport\n"
+                    "from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker\n\n"
+                    "@pytest_asyncio.fixture(scope='session')\n"
+                    "async def db_engine():\n"
+                    "    engine = create_async_engine('sqlite+aiosqlite:///:memory:')\n"
+                    "    async with engine.begin() as conn:\n"
+                    "        await conn.run_sync(Base.metadata.create_all)\n"
+                    "    yield engine\n"
+                    "    await engine.dispose()\n\n"
+                    "@pytest_asyncio.fixture\n"
+                    "async def db_session(db_engine):\n"
+                    "    Session = async_sessionmaker(db_engine, expire_on_commit=False)\n"
+                    "    async with Session() as session:\n"
+                    "        yield session\n"
+                    "        await session.rollback()\n\n"
+                    "@pytest_asyncio.fixture\n"
+                    "async def client(db_session):\n"
+                    "    async def override_db():\n"
+                    "        yield db_session\n"
+                    "    app.dependency_overrides[get_session] = override_db\n"
+                    "    transport = ASGITransport(app=app)\n"
+                    "    async with AsyncClient(transport=transport, base_url='http://test') as ac:\n"
+                    "        yield ac\n"
+                    "    app.dependency_overrides.clear()"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Тесты — patch / parametrize / async",
+                "code": (
+                    "import pytest\n"
+                    "from unittest.mock import patch, MagicMock\n\n"
+                    "# 1. parametrize — табличные тесты\n"
+                    "@pytest.mark.parametrize('input,expected', [\n"
+                    "    ('hello', 5),\n"
+                    "    ('',      0),\n"
+                    "    ('пр',    2),\n"
+                    "])\n"
+                    "def test_length(input, expected):\n"
+                    "    assert len(input) == expected\n\n"
+                    "# 2. patch — там, где используется (не где определено!)\n"
+                    "def test_fetch_user_data():\n"
+                    "    with patch('myapp.service.requests.get') as mock_get:\n"
+                    "        mock_get.return_value.json.return_value = {'id': 1}\n"
+                    "        result = fetch_user_data(1)\n"
+                    "        mock_get.assert_called_once_with('https://api/users/1')\n"
+                    "        assert result == {'id': 1}\n\n"
+                    "# 3. async test\n"
+                    "@pytest.mark.asyncio\n"
+                    "async def test_create_user(client):\n"
+                    "    response = await client.post('/users', json={'email': 'a@b.c'})\n"
+                    "    assert response.status_code == 201"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Куда ставить patch",
+                "items": [
+                    {"k": "**Правило**",      "v": "патчить **в месте использования**, не в месте определения"},
+                    {"k": "**Пример**",        "v": "если `myapp/service.py` имеет `from requests import get`, патчить `myapp.service.get`, не `requests.get`"},
+                    {"k": "**`patch.object()`**", "v": "когда нужно патчить метод/атрибут конкретного объекта"},
+                    {"k": "**`autospec=True`**",  "v": "проверка соответствия сигнатуре. Поломается если заменяешь на функцию с другими параметрами"},
+                    {"k": "**`monkeypatch`**",     "v": "встроенная pytest-фикстура: проще для setattr, setenv, delattr"},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "TestClient vs httpx.AsyncClient",
+                "items": [
+                    {"title": "**`TestClient`**",
+                     "points": [
+                         "Sync API через `httpx` внутри",
+                         "Удобно для большинства тестов",
+                         "Запускает async-роуты в event loop под капотом",
+                         "`from fastapi.testclient import TestClient`",
+                     ]},
+                    {"title": "**`httpx.AsyncClient`**",
+                     "points": [
+                         "Полностью async — нужен для async-fixtures",
+                         "Подходит когда тест сам async",
+                         "`AsyncClient(transport=ASGITransport(app=app))`",
+                         "Стандарт для async-тестов",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "pytest флаги-must-have",
+                "items": [
+                    {"k": "**`-x`**",        "v": "остановиться на первом провале"},
+                    {"k": "**`-k 'expr'`**",  "v": "запустить только тесты с подходящим именем"},
+                    {"k": "**`-m 'mark'`**",   "v": "только тесты с маркером"},
+                    {"k": "**`-vv`**",          "v": "подробный output, полные diff"},
+                    {"k": "**`-s`**",            "v": "не захватывать stdout (видно print-ы)"},
+                    {"k": "**`--lf` / `--ff`**", "v": "только провалившиеся / упавшие сначала"},
+                    {"k": "**`--pdb`**",          "v": "запускать pdb при первом провале"},
+                    {"k": "**`-n auto`**",         "v": "параллелизм через pytest-xdist"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Структурирование тестов",
+                "items": [
+                    {"k": "**Arrange-Act-Assert**", "v": "три явных блока: подготовка, действие, проверка"},
+                    {"k": "**Один assert на тест**",  "v": "если упадёт — сразу понятно почему"},
+                    {"k": "**factory_boy / faker**",  "v": "генерация тестовых данных без boilerplate"},
+                    {"k": "**hypothesis**",            "v": "property-based testing — генерирует входы автоматически"},
+                    {"k": "**freezegun**",              "v": "мокинг текущего времени (`with freeze_time('2024-01-01'): ...`)"},
+                    {"k": "**testcontainers**",          "v": "real БД/Redis/Kafka в Docker для интеграционных тестов"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Маркер `@pytest.mark.asyncio` устарел в pytest-asyncio 0.21+** — используй `asyncio_mode = 'auto'` в `pyproject.toml`. Все async-тесты будут подхватываться автоматически."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`monkeypatch` vs `mock.patch`.** monkeypatch для setattr/setenv — встроена в pytest, авто-откат, проще. mock.patch когда нужны вызовы (`assert_called_with`, `return_value`, `side_effect`). Не выбирай первое попавшееся — каждое для своего."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Патч в неправильном месте — самый частый pyright-зелёный, runtime-сломанный тест.** `from requests import get` в коде → патчишь `myapp.service.get`. `import requests; requests.get(...)` → патчишь `myapp.service.requests.get`. Ищи `get` в локальном namespace модуля."},
         ],
     },
     "py_mock_interview": {
