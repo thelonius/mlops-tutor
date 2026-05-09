@@ -2937,6 +2937,125 @@ TOPICS = {
             {"q": "Как vLLM обрабатывает prefix caching?", "a": "Если несколько запросов начинаются с одинакового префикса (например, system prompt), их KV-cache блоки физически переиспользуются. Включается через --enable-prefix-caching. Сильно помогает при RAG с одним системным промптом."},
             {"q": "Как мониторить vLLM в продакшне?", "a": "Prometheus метрики доступны на /metrics: vllm:num_requests_running, vllm:gpu_cache_usage_perc, vllm:request_success_total, latency перцентили. Стандартный стек: Prometheus + Grafana."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**vLLM** — стандарт для serving больших LLM в проде. **PagedAttention** разбивает KV-cache на блоки как виртуальную память → 10-24× больше параллельных запросов чем наивный HF. **Continuous batching** не даёт GPU простаивать. OpenAI-compatible API на `:8000`."},
+            {
+                "type": "compare",
+                "title": "Static vs Continuous batching",
+                "items": [
+                    {"title": "Static batching",
+                     "points": [
+                         "Ждём, пока **все** запросы в батче закончат",
+                         "Короткие ответы простаивают",
+                         "GPU простаивает на хвосте",
+                         "Простой, но медленный",
+                     ]},
+                    {"title": "Continuous batching (vLLM)",
+                     "points": [
+                         "Закончил один запрос → влил новый",
+                         "GPU **всегда** загружена",
+                         "Throughput в 10× выше",
+                         "Стандарт в современных серверах",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Что внутри vLLM",
+                "items": [
+                    {"k": "**PagedAttention**",       "v": "KV-cache разбит на блоки → нет фрагментации, prefix sharing"},
+                    {"k": "**Continuous batching**",   "v": "новый запрос вливается, как только закончился любой из текущих"},
+                    {"k": "**Prefix caching**",         "v": "запросы с одинаковым префиксом (system prompt) делят блоки KV"},
+                    {"k": "**Tensor parallelism**",    "v": "слои attention/MLP разрезаются между GPU → меньше VRAM на GPU"},
+                    {"k": "**LoRA serving**",            "v": "несколько адаптеров на одном сервере, выбор через `model=...`"},
+                    {"k": "**Quantization**",            "v": "AWQ / GPTQ / FP8 / bitsandbytes — меньше VRAM, выше throughput"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Запуск vLLM сервера",
+                "code": (
+                    "vllm serve Qwen/Qwen2.5-7B-Instruct \\\n"
+                    "  --tensor-parallel-size 2 \\\n"
+                    "  --gpu-memory-utilization 0.9 \\\n"
+                    "  --enable-prefix-caching \\\n"
+                    "  --max-model-len 8192 \\\n"
+                    "  --quantization awq \\\n"
+                    "  --enable-lora \\\n"
+                    "  --lora-modules sql=/loras/sql code=/loras/code\n\n"
+                    "# OpenAI-compatible API на :8000\n"
+                    "# POST /v1/chat/completions\n"
+                    "# POST /v1/completions"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Клиент через openai SDK",
+                "code": (
+                    "from openai import OpenAI\n\n"
+                    "client = OpenAI(base_url='http://localhost:8000/v1', api_key='EMPTY')\n\n"
+                    "resp = client.chat.completions.create(\n"
+                    "    model='Qwen/Qwen2.5-7B-Instruct',  # или 'sql' для LoRA\n"
+                    "    messages=[\n"
+                    "        {'role':'system', 'content':'Ты опытный SQL-разработчик'},\n"
+                    "        {'role':'user',   'content':'Напиши запрос для топ-10 покупателей'},\n"
+                    "    ],\n"
+                    "    temperature=0.7,\n"
+                    "    max_tokens=512,\n"
+                    "    stream=True,\n"
+                    ")\n"
+                    "for chunk in resp:\n"
+                    "    print(chunk.choices[0].delta.content or '', end='', flush=True)"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Ключевые флаги тюнинга",
+                "headers": ["Флаг", "Что меняет", "Когда трогать"],
+                "rows": [
+                    ["`--tensor-parallel-size N`",     "слоить модель на N GPU",        "модель не помещается в одну VRAM"],
+                    ["`--gpu-memory-utilization`",      "доля VRAM под KV-cache",         "↓ при OOM, ↑ для большего batch"],
+                    ["`--max-model-len`",                "максимум context window",         "ограничивает память на длинных запросах"],
+                    ["`--enable-prefix-caching`",        "переиспользовать KV у общего префикса", "RAG с общим system prompt → ускорение в разы"],
+                    ["`--quantization awq`",              "AWQ-квантизация",                 "больше throughput, чуть ниже качество"],
+                    ["`--enforce-eager`",                  "выключить CUDA-граф",             "дебаг, в проде не использовать"],
+                    ["`--max-num-seqs`",                   "максимум параллельных запросов", "ограничивает throughput"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Метрики Prometheus (`/metrics`)",
+                "items": [
+                    {"k": "`vllm:num_requests_running`",  "v": "запросов сейчас в работе"},
+                    {"k": "`vllm:num_requests_waiting`",   "v": "в очереди (не влезли в batch)"},
+                    {"k": "`vllm:gpu_cache_usage_perc`",    "v": "загрузка KV-cache (100% = OOM на batch)"},
+                    {"k": "`vllm:e2e_request_latency_seconds`", "v": "end-to-end latency, p50/p95/p99"},
+                    {"k": "`vllm:time_to_first_token_seconds`", "v": "TTFT — время до первого токена"},
+                    {"k": "`vllm:time_per_output_token_seconds`", "v": "TPOT — между токенами"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что крутить",
+                "branches": [
+                    {"condition": "OOM при старте",                            "outcome": "↓ `gpu-memory-utilization` или `max-model-len`"},
+                    {"condition": "OOM при пиковой нагрузке",                  "outcome": "↑ TP / квантизация / ↓ `max-num-seqs`"},
+                    {"condition": "GPU util **низкая**, очередь пустая",        "outcome": "клиентов мало — ничего не нужно"},
+                    {"condition": "очередь длинная, GPU 100%",                   "outcome": "↑ TP / больше реплик / квантизация"},
+                    {"condition": "TTFT высокий, все одинаковый system prompt",  "outcome": "**`--enable-prefix-caching`**"},
+                    {"condition": "много LoRA-сценариев",                        "outcome": "`--enable-lora` + `--lora-modules ...`"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Prefix caching — почти бесплатное ускорение.** Если у тебя RAG или агент с одним system prompt — `--enable-prefix-caching` экономит 30-90% prefill-этапа. TTFT падает в разы."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`gpu-memory-utilization` ≠ память модели.** Это потолок для всего vLLM (веса + KV-cache). Веса берут фиксировано, остальное — KV-cache на параллельные запросы. ↑ = больше batch, ↓ = безопаснее под OOM."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Tensor parallelism ≠ data parallelism.** TP режет модель на куски, каждый GPU работает с частью одного запроса. Для большего throughput нужны **N репликов сервера**, а не TP."},
+        ],
     },
     "ollama": {
         "title": "Ollama: локальный LLM",
@@ -2954,6 +3073,117 @@ TOPICS = {
             {"q": "Как задать параметры генерации в Ollama?", "a": "В Modelfile через PARAMETER: temperature 0.7, num_ctx 4096, top_p 0.9. Или в запросе через поле options: {\"temperature\": 0.7}. num_ctx определяет размер контекстного окна."},
             {"q": "Какие мультимодальные модели поддерживает Ollama?", "a": "llava, moondream, bakllava — для vision-language. Изображение передаётся в base64 в поле images запроса. Работает как на CPU, так и с GPU offloading."},
             {"q": "Как посмотреть, сколько памяти занимает модель?", "a": "ollama ps показывает загруженные модели и занятую VRAM/RAM. ollama list — все скачанные модели с размером."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Ollama** — Docker для LLM. Одна команда `ollama run llama3.2` — модель скачана, запущена, доступна на `:11434`. Кросс-платформенно (Mac/Linux), GGUF под капотом. Для **dev и прототипов** идеально, для production-нагрузки — vLLM."},
+            {
+                "type": "compare",
+                "title": "Ollama vs vLLM",
+                "items": [
+                    {"title": "Ollama",
+                     "points": [
+                         "Простота: 1 команда",
+                         "Кросс-платформенный (Mac/Linux/Win)",
+                         "GGUF, llama.cpp под капотом",
+                         "**Dev, прототипы, CI**",
+                     ]},
+                    {"title": "vLLM",
+                     "points": [
+                         "Production-throughput",
+                         "PagedAttention + continuous batching",
+                         "Tensor parallelism",
+                         "**Прод под нагрузкой**",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Базовые команды",
+                "code": (
+                    "# Скачать и запустить интерактивно\n"
+                    "ollama run llama3.2\n\n"
+                    "# Только скачать\n"
+                    "ollama pull qwen2.5:7b\n\n"
+                    "# Поднять API-сервер\n"
+                    "ollama serve              # на :11434\n\n"
+                    "# Что загружено в память\n"
+                    "ollama ps\n\n"
+                    "# Что скачано\n"
+                    "ollama list\n\n"
+                    "# Удалить\n"
+                    "ollama rm llama3.2"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Modelfile — кастомный variant модели",
+                "code": (
+                    "FROM llama3.2\n\n"
+                    "PARAMETER temperature   0.3\n"
+                    "PARAMETER num_ctx       8192\n"
+                    "PARAMETER top_p         0.9\n"
+                    "PARAMETER stop          \"<|endoftext|>\"\n\n"
+                    "SYSTEM \"\"\"\n"
+                    "Ты опытный SQL-разработчик.\n"
+                    "Отвечай только запросами, без объяснений.\n"
+                    "\"\"\"\n\n"
+                    "# Сборка: ollama create sql-bot -f Modelfile"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Интеграция через openai SDK",
+                "code": (
+                    "from openai import OpenAI\n\n"
+                    "client = OpenAI(\n"
+                    "    base_url='http://localhost:11434/v1',\n"
+                    "    api_key='ollama',  # любая строка\n"
+                    ")\n\n"
+                    "resp = client.chat.completions.create(\n"
+                    "    model='llama3.2',\n"
+                    "    messages=[{'role':'user', 'content':'Привет!'}],\n"
+                    "    stream=True,\n"
+                    ")\n"
+                    "for chunk in resp:\n"
+                    "    print(chunk.choices[0].delta.content or '', end='', flush=True)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Параметры в Modelfile",
+                "items": [
+                    {"k": "`PARAMETER temperature`",   "v": "случайность вывода (0–2). 0 = детерминизм"},
+                    {"k": "`PARAMETER num_ctx`",        "v": "контекстное окно (по умолчанию 2048)"},
+                    {"k": "`PARAMETER top_p`",           "v": "nucleus sampling (0.9 — стандарт)"},
+                    {"k": "`PARAMETER top_k`",           "v": "top-k sampling"},
+                    {"k": "`PARAMETER repeat_penalty`",  "v": "штраф за повторы (1.1 — мягко)"},
+                    {"k": "`PARAMETER stop`",             "v": "стоп-токен"},
+                    {"k": "`SYSTEM`",                       "v": "системный промпт по умолчанию"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "bash",
+                "caption": "Docker для GPU-сервера",
+                "code": (
+                    "docker run -d \\\n"
+                    "  --gpus all \\\n"
+                    "  -v ollama:/root/.ollama \\\n"
+                    "  -p 11434:11434 \\\n"
+                    "  --name ollama \\\n"
+                    "  ollama/ollama\n\n"
+                    "# Скачать модель внутри контейнера\n"
+                    "docker exec ollama ollama pull qwen2.5:7b"
+                ),
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**OpenAI SDK работает напрямую.** Подмени `base_url='http://localhost:11434/v1'` и любой код, написанный под OpenAI, заработает с Ollama. Хорошо для миграции prod → local-dev."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Под капотом — llama.cpp + GGUF.** Те же квантизации (Q4_K_M, Q5_K_M, Q8_0), та же скорость, просто с приятным CLI и API. Для CPU-инференса на ноутбуке — лучшее, что есть."},
         ],
     },
     "llama_cpp": {
@@ -2992,6 +3222,149 @@ TOPICS = {
             {"q": "Как бороться с потерей информации в середине контекста?", "a": "Lost-in-the-middle: LLM хуже использует документы из середины длинного контекста. Решения: reranker кладёт самые важные в начало и конец, уменьшить K, использовать модели с лучшим long-context handling."},
             {"q": "Как реализовать metadata filtering в RAG?", "a": "При indexing добавлять metadata (дата, источник, раздел) в payload vector store. При retrieval передавать фильтр: query='вопрос', filter={date: {gte: '2024-01-01'}}. Qdrant и Weaviate поддерживают сложные boolean фильтры."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**RAG** = поиск релевантных кусков + генерация на их основе. Архитектура: документы → **chunking** → **embedding** → **vector store**. На запрос: top-K nearest → (опционально reranker) → LLM. Главные рычаги качества: chunking, hybrid search, reranking, evaluation."},
+            {
+                "type": "flow",
+                "title": "Pipeline",
+                "branches": [
+                    {"condition": "1. Indexing (offline)",   "outcome": "documents → chunking → embedding model → vector store"},
+                    {"condition": "2. Retrieval (online)",   "outcome": "query → embedding → top-K nearest neighbors (+ metadata filter)"},
+                    {"condition": "3. Reranking (опц.)",     "outcome": "top-K → cross-encoder → top-N (N << K, обычно 5)"},
+                    {"condition": "4. Generation",            "outcome": "LLM(system + query + top-N chunks) → ответ + цитаты"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Стратегии chunking",
+                "headers": ["Стратегия", "Как режет", "Когда брать", "Минусы"],
+                "rows": [
+                    ["**Fixed-size**",                "512 токенов + overlap 50",          "default, простой baseline",   "режет на середине предложения"],
+                    ["**Recursive character splitter**", "по параграфам → предложениям → словам", "большинство текстов",   "ничего особо"],
+                    ["**Semantic chunking**",          "разрыв на больших cos-разрывах",     "длинные документы, структура важна", "медленнее, нужна модель"],
+                    ["**Sentence-window**",            "embed предложение, хранить окно",    "фактологический recall",      "indexing большой"],
+                    ["**Document-level**",             "целые документы",                     "короткие документы (< 1000 токенов)", "плохо ranjируется"],
+                    ["**Markdown headers**",           "по заголовкам",                       "технические доки",            "только если структура есть"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Dense / Sparse / Hybrid",
+                "items": [
+                    {"title": "Sparse (BM25)",
+                     "points": [
+                         "Ключевые слова, TF-IDF",
+                         "**Точные термины** (имена, коды)",
+                         "Нет семантики",
+                         "Базовый retrieval",
+                     ]},
+                    {"title": "Dense (bi-encoder)",
+                     "points": [
+                         "Embedding запроса и документа",
+                         "**Семантическая близость**",
+                         "Парафразы, синонимы",
+                         "Не ловит редкие термины",
+                     ]},
+                    {"title": "Hybrid (RRF-fusion)",
+                     "points": [
+                         "Обе оценки, объединение через RRF",
+                         "Лучший **recall** на практике",
+                         "Стандарт в проде",
+                         "Чуть дороже",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Vector stores",
+                "headers": ["Store", "Когда брать", "Особенности"],
+                "rows": [
+                    ["**Qdrant**",     "default для прода",          "Rust, быстрый, мощные filters по payload, hybrid search"],
+                    ["**Weaviate**",    "hybrid из коробки",            "BM25 + vectors, GraphQL, модули реранкеров"],
+                    ["**Chroma**",      "dev / прототип",                "embedded, локальный, простой API"],
+                    ["**pgvector**",    "уже есть Postgres",           "не отдельный сервис, JOIN с метаданными"],
+                    ["**FAISS**",       "кастомное решение",            "не сервер — библиотека, нужна обёртка"],
+                    ["**Milvus**",      "миллиарды векторов",            "распределённый, тяжёлый ops"],
+                    ["**Elasticsearch / OpenSearch**", "уже есть кластер", "BM25 + dense vectors с 8.0"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Минимальный RAG на Qdrant + sentence-transformers + OpenAI",
+                "code": (
+                    "from qdrant_client import QdrantClient\n"
+                    "from qdrant_client.models import Distance, VectorParams, PointStruct\n"
+                    "from sentence_transformers import SentenceTransformer\n"
+                    "from openai import OpenAI\n\n"
+                    "encoder = SentenceTransformer('intfloat/multilingual-e5-large')\n"
+                    "client  = QdrantClient(':memory:')\n"
+                    "llm     = OpenAI()\n\n"
+                    "# 1. Indexing\n"
+                    "client.create_collection('docs', VectorParams(size=1024, distance=Distance.COSINE))\n"
+                    "client.upsert('docs', points=[\n"
+                    "    PointStruct(id=i, vector=encoder.encode('passage: ' + d).tolist(),\n"
+                    "                payload={'text': d, 'source': src})\n"
+                    "    for i, (d, src) in enumerate(documents)\n"
+                    "])\n\n"
+                    "# 2. Retrieval\n"
+                    "query_vec = encoder.encode('query: ' + question).tolist()\n"
+                    "hits      = client.search('docs', query_vec, limit=5)\n"
+                    "context   = '\\n\\n'.join(h.payload['text'] for h in hits)\n\n"
+                    "# 3. Generation\n"
+                    "resp = llm.chat.completions.create(\n"
+                    "    model='gpt-4o-mini',\n"
+                    "    messages=[\n"
+                    "        {'role':'system', 'content':f'Используй ТОЛЬКО контекст:\\n{context}'},\n"
+                    "        {'role':'user',   'content': question},\n"
+                    "    ],\n"
+                    ")"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "RAGAS метрики",
+                "items": [
+                    {"k": "**faithfulness**",          "v": "ответ основан на контексте? (нет галлюцинаций)"},
+                    {"k": "**answer relevancy**",       "v": "ответ релевантен запросу?"},
+                    {"k": "**context precision**",       "v": "доля релевантных chunks среди retrieved"},
+                    {"k": "**context recall**",          "v": "все ли нужные документы нашли?"},
+                    {"k": "**context entity recall**",   "v": "сущности из ground truth есть в контексте?"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Продвинутые техники",
+                "kind": "do",
+                "items": [
+                    "**Hybrid search**: BM25 + dense через RRF — почти всегда лучше одного",
+                    "**Reranker** (cross-encoder): top-20 → top-5 — повышает precision",
+                    "**HyDE**: LLM генерит гипотетический ответ → ищем по нему, не по вопросу",
+                    "**Query expansion**: LLM переписывает запрос (synonyms, decomposition)",
+                    "**Metadata filtering**: дата, источник, секция — не миксуем мусор",
+                    "**Cite sources** в промпте — ответ с цитатами проще проверить",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "галлюцинации (низкий faithfulness)",         "outcome": "ужесточить prompt («только контекст»), reranker, ↓ K"},
+                    {"condition": "правильные документы не находятся (low recall)", "outcome": "hybrid search, увеличь K, лучшая embedding model"},
+                    {"condition": "много мусора в top-K",                        "outcome": "reranker (BGE / cohere), metadata filter"},
+                    {"condition": "lost-in-the-middle",                          "outcome": "↓ K, реранкер кладёт важное в начало/конец"},
+                    {"condition": "не находит синонимы",                          "outcome": "dense вместо BM25 / query expansion"},
+                    {"condition": "не находит точные имена/коды",                "outcome": "BM25 в hybrid"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Hybrid + reranker — стандарт прода.** BM25 ловит точные термины, dense — семантику, RRF-fusion даёт top-K, cross-encoder реранкер фильтрует мусор. Связка часто +20-30% к recall@5."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Lost-in-the-middle.** LLM хуже использует документы из середины длинного контекста. Поэтому top-5 после реранка работает лучше top-20 без — даже когда модель умеет в 128K контекст."},
+            {"type": "callout", "kind": "warning",
+             "content": "**RAG без evaluation = боль.** RAGAS, ARES или хотя бы вручную размеченный golden set — без метрик ты крутишь параметры вслепую. Faithfulness и context recall — must-have."},
+        ],
     },
     "langchain": {
         "title": "LangChain",
@@ -3010,6 +3383,120 @@ TOPICS = {
             {"q": "Когда langchain — лишняя абстракция?", "a": "Если цепочка простая (один промпт → один вызов) — прямой SDK быстрее и понятнее. LangChain оправдан для: мульти-шаговых пайплайнов, агентов с tools, нужен трейсинг через LangSmith, команда уже его знает."},
             {"q": "Что такое RunnableParallel и когда использовать?", "a": "Запускает несколько Runnable параллельно и возвращает dict результатов. Полезно: одновременно делать retrieval из разных источников, параллельные LLM-вызовы для разных аспектов задачи."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**LangChain** — самый популярный LLM-фреймворк. Главное API сегодня — **LCEL** (`prompt | llm | parser`). Цепочки — фиксированный граф, **агенты** — LLM сам выбирает следующий tool. **LangSmith** для трейсинга — must-have. Для одношаговых задач — SDK без LangChain быстрее."},
+            {
+                "type": "compare",
+                "title": "Chain vs Agent",
+                "items": [
+                    {"title": "Chain (LCEL)",
+                     "points": [
+                         "**Фиксированный** граф шагов",
+                         "Декларативно: `prompt | llm | parser`",
+                         "Предсказуемо, дёшево",
+                         "Подходит большинству задач",
+                     ]},
+                    {"title": "Agent",
+                     "points": [
+                         "LLM решает следующий шаг",
+                         "Цикл tool-call → result → tool-call",
+                         "Гибкий, но дорогой и медленный",
+                         "Нужно ставить guardrails (max iterations)",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "LCEL: pipe-синтаксис",
+                "code": (
+                    "from langchain_core.runnables import RunnablePassthrough, RunnableParallel\n"
+                    "from langchain_core.prompts import ChatPromptTemplate\n"
+                    "from langchain_core.output_parsers import StrOutputParser\n"
+                    "from langchain_openai import ChatOpenAI\n\n"
+                    "llm    = ChatOpenAI(model='gpt-4o-mini', temperature=0)\n"
+                    "prompt = ChatPromptTemplate.from_messages([\n"
+                    "    ('system', 'Используй ТОЛЬКО контекст:\\n{context}'),\n"
+                    "    ('user',   '{question}'),\n"
+                    "])\n\n"
+                    "# RAG-chain в одну строку\n"
+                    "chain = (\n"
+                    "    {'context': retriever | format_docs, 'question': RunnablePassthrough()}\n"
+                    "    | prompt | llm | StrOutputParser()\n"
+                    ")\n\n"
+                    "# Параллельные ветки\n"
+                    "summarize = RunnableParallel({\n"
+                    "    'tldr':     prompt_tldr | llm | parser,\n"
+                    "    'keywords': prompt_kw   | llm | parser,\n"
+                    "})\n\n"
+                    "# Стриминг\n"
+                    "for chunk in chain.stream('Что такое PagedAttention?'):\n"
+                    "    print(chunk, end='', flush=True)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Агент с tools",
+                "code": (
+                    "from langchain_core.tools import tool\n"
+                    "from langchain.agents import create_tool_calling_agent, AgentExecutor\n\n"
+                    "@tool\n"
+                    "def search_docs(query: str) -> str:\n"
+                    "    \"\"\"Search internal documentation. Use for product questions.\"\"\"\n"
+                    "    return retriever.invoke(query)\n\n"
+                    "@tool\n"
+                    "def calculator(expression: str) -> float:\n"
+                    "    \"\"\"Evaluate a math expression. Use for numbers.\"\"\"\n"
+                    "    return eval(expression, {'__builtins__': {}})\n\n"
+                    "agent  = create_tool_calling_agent(llm, [search_docs, calculator], prompt)\n"
+                    "runner = AgentExecutor(agent=agent, tools=[search_docs, calculator],\n"
+                    "                       max_iterations=5, return_intermediate_steps=True)\n"
+                    "result = runner.invoke({'input': 'Сколько vRAM нужно для Qwen2.5-7B в FP16?'})"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Memory-варианты",
+                "items": [
+                    {"k": "**ConversationBufferMemory**",  "v": "вся история. Дёшево, но контекст растёт"},
+                    {"k": "**ConversationSummaryMemory**",  "v": "LLM суммаризирует старое — экономит токены"},
+                    {"k": "**ConversationTokenBufferMemory**", "v": "обрезает по лимиту токенов"},
+                    {"k": "**RunnableWithMessageHistory**",   "v": "LCEL-обёртка с pluggable storage (Redis/Postgres)"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Когда LangChain vs прямой SDK",
+                "headers": ["Сценарий", "LangChain", "SDK напрямую"],
+                "rows": [
+                    ["Один промпт → один вызов",            "лишняя абстракция",      "**SDK** быстрее"],
+                    ["Многошаговый pipeline (RAG, агент)",  "**LangChain** удобен",   "много велосипедов"],
+                    ["Нужен трейсинг для отладки",            "LangChain + LangSmith",  "руками логи"],
+                    ["Команда уже знает LangChain",            "продолжаем",              "—"],
+                    ["Высокий performance / низкая latency",   "оверхед заметен",         "**SDK**"],
+                    ["Сложный граф с состоянием/циклами",      "лучше **LangGraph**",     "сложно"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "LangSmith — что даёт",
+                "items": [
+                    {"k": "**Tracing**",       "v": "каждый вызов: входы, выходы, latency, токены, errors"},
+                    {"k": "**Datasets**",       "v": "сохранять inputs/outputs для регрессионного теста"},
+                    {"k": "**Evaluators**",     "v": "автоматическая оценка (correctness, similarity, custom)"},
+                    {"k": "**Prompt hub**",      "v": "хранить и версионировать промпты"},
+                    {"k": "**Включение**",        "v": "`LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY=...`"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**LCEL умеет всё, что нужно chain.** `invoke / stream / batch / ainvoke` — четыре метода на любой Runnable. `RunnableParallel` для веток, `RunnableBranch` для условий, `RunnableWithMessageHistory` для памяти. Не нужны старые `LLMChain`/`ConversationChain`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Tool docstring — это промпт.** `@tool`-декоратор делает функцию доступной агенту. Описание в docstring + аннотации типов — это то, что LLM читает чтобы решить «звать или нет». Хороший docstring = меньше галлюцинаций tool-call."},
+            {"type": "callout", "kind": "warning",
+             "content": "**LangChain ≠ silver bullet.** Если задача — один LLM-вызов с RAG-контекстом, прямой openai/anthropic SDK быстрее, понятнее, без зависимостей. Включай LangChain только когда оверхед оправдан (агенты, многошаговые pipeline, трейсинг)."},
+        ],
     },
     "langgraph": {
         "title": "LangGraph: граф-оркестрация агентов",
@@ -3027,6 +3514,100 @@ TOPICS = {
             {"q": "Как организовать multi-agent систему в LangGraph?", "a": "Каждый агент — отдельный StateGraph. Supervisor агент (ReAct) решает, кому делегировать задачу. Или swarm: агенты передают управление через handoffs. Общее состояние через shared state schema."},
             {"q": "Когда LangGraph, а когда достаточно LCEL chain?", "a": "LCEL: линейный пайплайн без циклов, не нужна персистентность. LangGraph: нужны циклы (retry, tool-use loop), многошаговое состояние, human-in-the-loop, несколько агентов с делегированием."},
             {"q": "Как дебажить LangGraph граф?", "a": "graph.get_graph().print_ascii() — визуализация топологии. LangSmith трейсит каждый узел с входами/выходами. stream_mode='debug' выводит состояние после каждого шага. langgraph dev — локальный UI для визуального дебага."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**LangGraph** — граф-оркестратор для production-агентов. Узлы — функции, рёбра — переходы (включая **conditional**). State персистится через **checkpointer** между вызовами. Поддерживает циклы, ветвления, **human-in-the-loop** и multi-agent. Когда LangChain-агента уже мало — берут LangGraph."},
+            {
+                "type": "compare",
+                "title": "LCEL chain / LangChain agent / LangGraph",
+                "items": [
+                    {"title": "LCEL chain",
+                     "points": [
+                         "Линейный pipeline",
+                         "Без циклов и состояния",
+                         "Простой, дёшев",
+                         "Большинство задач",
+                     ]},
+                    {"title": "LangChain agent",
+                     "points": [
+                         "Цикл tool-call с одним LLM",
+                         "Без явного state",
+                         "Просто, но без HITL",
+                         "Простые агенты",
+                     ]},
+                    {"title": "LangGraph",
+                     "points": [
+                         "Явный граф с TypedDict state",
+                         "Циклы, ветвления, мульти-LLM",
+                         "Checkpointing, HITL",
+                         "Production multi-agent",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Базовый StateGraph с conditional edge",
+                "code": (
+                    "from typing import TypedDict, Annotated\n"
+                    "from langgraph.graph import StateGraph, START, END\n"
+                    "from langgraph.graph.message import add_messages\n"
+                    "from langchain_openai import ChatOpenAI\n\n"
+                    "class State(TypedDict):\n"
+                    "    messages: Annotated[list, add_messages]\n\n"
+                    "llm   = ChatOpenAI(model='gpt-4o-mini').bind_tools([search, calc])\n\n"
+                    "def agent(state: State):\n"
+                    "    return {'messages': [llm.invoke(state['messages'])]}\n\n"
+                    "def route(state: State):\n"
+                    "    last = state['messages'][-1]\n"
+                    "    return 'tools' if last.tool_calls else END\n\n"
+                    "graph = StateGraph(State)\n"
+                    "graph.add_node('agent', agent)\n"
+                    "graph.add_node('tools', ToolNode([search, calc]))\n"
+                    "graph.add_edge(START, 'agent')\n"
+                    "graph.add_conditional_edges('agent', route)\n"
+                    "graph.add_edge('tools', 'agent')      # цикл!\n\n"
+                    "app = graph.compile(checkpointer=MemorySaver())"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Checkpointers",
+                "items": [
+                    {"k": "**MemorySaver**",     "v": "in-memory, для тестов и dev"},
+                    {"k": "**SqliteSaver**",     "v": "файл sqlite, для одного процесса"},
+                    {"k": "**PostgresSaver**",   "v": "shared между процессами, продакшн"},
+                    {"k": "**Redis-based**",      "v": "через сторонние библиотеки"},
+                    {"k": "**thread_id**",         "v": "каждая сессия = thread, граф продолжает с того же state"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Human-in-the-loop",
+                "items": [
+                    {"k": "**interrupt_before**",  "v": "граф останавливается перед узлом, ждёт ввода"},
+                    {"k": "**interrupt_after**",    "v": "останавливается после узла"},
+                    {"k": "**Command(resume=...)**", "v": "продолжить после паузы с дополнительным input"},
+                    {"k": "**update_state**",       "v": "вручную поменять state перед resume (например, отредактировать tool args)"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Когда LangGraph",
+                "branches": [
+                    {"condition": "линейная цепочка без состояния",        "outcome": "**LCEL chain** — проще"},
+                    {"condition": "tool-loop без сложных решений",          "outcome": "LangChain agent"},
+                    {"condition": "нужны циклы / retry / multi-step",       "outcome": "**LangGraph**"},
+                    {"condition": "human approval перед действием",         "outcome": "LangGraph + interrupt_before"},
+                    {"condition": "несколько агентов с делегированием",      "outcome": "LangGraph multi-agent (supervisor / swarm)"},
+                    {"condition": "долгие сессии с памятью",                  "outcome": "LangGraph + checkpointer"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`add_messages` reducer** — стандартный merge для истории сообщений. State обновляется не как replace, а как append. Указывается через `Annotated[list, add_messages]` — для других типов state свой reducer."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Multi-agent в LangGraph — паттерн supervisor.** Один LLM-агент решает, кому из специализированных агентов передать задачу. Альтернатива — swarm: агенты сами вызывают handoff. Оба строятся на StateGraph."},
         ],
     },
     "whisper": {
