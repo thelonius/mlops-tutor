@@ -4588,6 +4588,136 @@ TOPICS = {
             {"q": "Как применить lru_cache к рекурсии?", "a": "@functools.lru_cache(maxsize=None) def fib(n): if n <= 1: return n; return fib(n-1) + fib(n-2). Аргументы должны быть hashable. cache_clear() освобождает кеш."},
             {"q": "Задача 'N ферзей' — как подходить?", "a": "Backtracking: расставлять ферзей строка за строкой. Для каждой строки пробовать все столбцы, проверять конфликт с уже стоящими (столбец, диагонали). Откатывать при конфликте. O(N!) без pruning."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Рекурсия**: базовый случай + шаг к нему. Стек вызовов в Python ограничен **~1000** глубиной (`sys.setrecursionlimit`). Для большой глубины — итерация с явным стеком. **Мемоизация** превращает O(2ⁿ) в O(n). **Backtracking** = «выбор → рекурсия → откат»."},
+            {
+                "type": "compare",
+                "title": "Memoization (top-down) vs Tabulation (bottom-up)",
+                "items": [
+                    {"title": "**Memoization**",
+                     "points": [
+                         "Рекурсия + `@lru_cache`",
+                         "Считает **только нужные** подзадачи",
+                         "Естественно для дерева задач",
+                         "Риск переполнения стека",
+                     ]},
+                    {"title": "**Tabulation**",
+                     "points": [
+                         "Итерация, таблица заполняется bottom-up",
+                         "Нет риска stack overflow",
+                         "Возможно лишние вычисления",
+                         "Можно оптимизировать память (rolling array)",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Fibonacci — три способа",
+                "code": (
+                    "# 1. Naive recursion — O(2ⁿ)\n"
+                    "def fib(n):\n"
+                    "    if n <= 1: return n\n"
+                    "    return fib(n - 1) + fib(n - 2)\n\n"
+                    "# 2. Memoization (top-down) — O(n) time + O(n) space\n"
+                    "from functools import lru_cache\n"
+                    "@lru_cache(maxsize=None)\n"
+                    "def fib_memo(n):\n"
+                    "    if n <= 1: return n\n"
+                    "    return fib_memo(n - 1) + fib_memo(n - 2)\n\n"
+                    "# 3. Tabulation (bottom-up) — O(n) time + O(1) space\n"
+                    "def fib_iter(n):\n"
+                    "    a, b = 0, 1\n"
+                    "    for _ in range(n):\n"
+                    "        a, b = b, a + b\n"
+                    "    return a"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Шаблон backtracking — все перестановки",
+                "code": (
+                    "def permutations(nums):\n"
+                    "    result = []\n"
+                    "    used   = [False] * len(nums)\n"
+                    "    path   = []\n\n"
+                    "    def backtrack():\n"
+                    "        if len(path) == len(nums):\n"
+                    "            result.append(path.copy())   # COPY!\n"
+                    "            return\n"
+                    "        for i, x in enumerate(nums):\n"
+                    "            if used[i]: continue\n"
+                    "            # Выбор\n"
+                    "            used[i] = True; path.append(x)\n"
+                    "            # Рекурсия\n"
+                    "            backtrack()\n"
+                    "            # Откат\n"
+                    "            used[i] = False; path.pop()\n\n"
+                    "    backtrack()\n"
+                    "    return result"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "DFS — рекурсия → явный стек",
+                "code": (
+                    "# Рекурсивный DFS\n"
+                    "def dfs_rec(node, visited):\n"
+                    "    if node in visited: return\n"
+                    "    visited.add(node)\n"
+                    "    for n in node.neighbors:\n"
+                    "        dfs_rec(n, visited)\n\n"
+                    "# Итеративный — без риска stack overflow\n"
+                    "def dfs_iter(start):\n"
+                    "    visited = set()\n"
+                    "    stack = [start]\n"
+                    "    while stack:\n"
+                    "        node = stack.pop()\n"
+                    "        if node in visited: continue\n"
+                    "        visited.add(node)\n"
+                    "        for n in node.neighbors:\n"
+                    "            if n not in visited:\n"
+                    "                stack.append(n)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Сложности рекурсии",
+                "items": [
+                    {"k": "**Naive Fibonacci**",     "v": "O(2ⁿ) — бинарное дерево вызовов высотой n"},
+                    {"k": "**Memoized Fibonacci**",   "v": "O(n) — n уникальных аргументов, каждый O(1)"},
+                    {"k": "**Permutations**",          "v": "O(n · n!) — n! листьев, путь длины n до каждого"},
+                    {"k": "**Subsets**",                "v": "O(2ⁿ · n) — 2ⁿ подмножеств, копирование O(n)"},
+                    {"k": "**N-Queens**",               "v": "O(N!) без pruning, ~O(N!/branches) с pruning"},
+                    {"k": "**DFS на графе**",            "v": "O(V + E) с visited"},
+                    {"k": "**Recursion depth**",          "v": "O(d) памяти на стек, **default Python ~1000**"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Backtracking: типовые задачи",
+                "headers": ["Задача", "Состояние", "Pruning"],
+                "rows": [
+                    ["**Permutations**",         "used[] + path[]",                "—"],
+                    ["**Combinations**",          "start_index + path[]",            "—"],
+                    ["**Subsets**",                "index + include/exclude",         "—"],
+                    ["**N-Queens**",                "cols[] / diags[]",                "конфликт по столбцу/диагонали"],
+                    ["**Sudoku**",                  "grid + (row, col)",                "проверка 3×3 блока"],
+                    ["**Word Search**",             "(r, c) + visited",                 "out-of-bounds, mismatch"],
+                ],
+            },
+            {"type": "callout", "kind": "warning",
+             "content": "**Python recursion limit ≈ 1000.** `sys.setrecursionlimit(10000)` если нужно глубже, но лучше — переписать в итерацию с явным стеком. На практике глубина 10⁴+ означает, что DFS должен быть iterative."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`@lru_cache(maxsize=None)` ≈ memoization бесплатно.** Аргументы должны быть hashable (tuple, не list). После — `cache_clear()` для освобождения. Python 3.9+ — `@functools.cache` (то же без maxsize)."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Не копируешь `path` — теряешь результат.** В backtracking `result.append(path)` сохранит **ссылку**, а path продолжает изменяться. Всегда `result.append(path.copy())` или `path[:]`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Python не оптимизирует tail calls.** Гвидо решил сохранять читаемые traceback-и. Поэтому хвостовая рекурсия в Python — anti-pattern. Переписывай в while-цикл."},
+        ],
     },
     "algo_sorting": {
         "title": "Сортировки",
@@ -4748,6 +4878,127 @@ TOPICS = {
             {"q": "Как объединить два отсортированных списка?", "a": "Dummy head + текущий указатель. Сравнивать головы двух списков, присоединять меньший к результату. Когда один заканчивается — присоединить хвост другого. O(n+m)."},
             {"q": "Как удалить k-й элемент с конца за один проход?", "a": "Два указателя: fast идёт на k шагов вперёд, затем оба идут до конца. slow.next — узел для удаления. Dummy head упрощает удаление head если k == длина списка."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Linked list** — структура указателей, не массив. Реальный use-case в Python редок (есть `list`, `deque`), но задачи на linked list — классика интервью. Главные приёмы: **dummy head**, **two pointers** (slow/fast), **разворот через 3 указателя**, **алгоритм Флойда** (заяц/черепаха) для цикла."},
+            {
+                "type": "compare",
+                "title": "Array vs Linked list",
+                "items": [
+                    {"title": "**Array**",
+                     "points": [
+                         "Random access O(1)",
+                         "Insert/delete в середине O(n)",
+                         "**Cache-friendly** (соседние в памяти)",
+                         "Меньше памяти (без указателей)",
+                     ]},
+                    {"title": "**Linked list**",
+                     "points": [
+                         "Random access O(n)",
+                         "Insert/delete с известным узлом O(1)",
+                         "**Cache miss** на каждом шаге",
+                         "Память: данные + указатели",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Разворот списка — 3 указателя",
+                "code": (
+                    "class ListNode:\n"
+                    "    def __init__(self, val=0, next=None):\n"
+                    "        self.val, self.next = val, next\n\n"
+                    "def reverse(head: ListNode | None) -> ListNode | None:\n"
+                    "    prev, curr = None, head\n"
+                    "    while curr:\n"
+                    "        nxt = curr.next      # сохранить следующий\n"
+                    "        curr.next = prev     # развернуть указатель\n"
+                    "        prev = curr          # сдвинуть prev\n"
+                    "        curr = nxt           # сдвинуть curr\n"
+                    "    return prev              # новый head"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Floyd cycle detection — заяц и черепаха",
+                "code": (
+                    "def has_cycle(head):\n"
+                    "    slow = fast = head\n"
+                    "    while fast and fast.next:\n"
+                    "        slow = slow.next\n"
+                    "        fast = fast.next.next\n"
+                    "        if slow is fast:\n"
+                    "            return True\n"
+                    "    return False\n\n"
+                    "def cycle_start(head):\n"
+                    "    # Шаг 1: найти точку встречи\n"
+                    "    slow = fast = head\n"
+                    "    while fast and fast.next:\n"
+                    "        slow, fast = slow.next, fast.next.next\n"
+                    "        if slow is fast:\n"
+                    "            break\n"
+                    "    else:\n"
+                    "        return None\n"
+                    "    # Шаг 2: переместить slow в head, оба идут по 1\n"
+                    "    slow = head\n"
+                    "    while slow is not fast:\n"
+                    "        slow, fast = slow.next, fast.next\n"
+                    "    return slow"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Dummy head — слияние двух отсортированных",
+                "code": (
+                    "def merge_two(a, b):\n"
+                    "    dummy = ListNode()\n"
+                    "    tail  = dummy\n"
+                    "    while a and b:\n"
+                    "        if a.val <= b.val:\n"
+                    "            tail.next, a = a, a.next\n"
+                    "        else:\n"
+                    "            tail.next, b = b, b.next\n"
+                    "        tail = tail.next\n"
+                    "    tail.next = a or b           # хвост одного из списков\n"
+                    "    return dummy.next"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Типовые задачи и приёмы",
+                "headers": ["Задача", "Приём", "Сложность"],
+                "rows": [
+                    ["**Reverse list**",                 "три указателя prev/curr/next",          "O(n) / O(1)"],
+                    ["**Find middle**",                    "slow/fast (slow на середине)",          "O(n) / O(1)"],
+                    ["**Detect cycle**",                    "Floyd (заяц/черепаха)",                  "O(n) / O(1)"],
+                    ["**Find cycle start**",                  "Floyd + переместить slow в head",       "O(n) / O(1)"],
+                    ["**Merge two sorted**",                  "dummy head + два указателя",            "O(n+m) / O(1)"],
+                    ["**Remove k-th from end**",               "fast на k шагов вперёд, потом оба",      "O(n) / O(1)"],
+                    ["**Palindrome list**",                     "найти середину → развернуть половину → сравнить", "O(n) / O(1)"],
+                    ["**Intersection of two lists**",            "обмен указателей при достижении конца",   "O(n+m) / O(1)"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Защита от грабель",
+                "items": [
+                    {"k": "**Pустой список**",         "v": "проверь `if not head: return ...`"},
+                    {"k": "**Один элемент**",          "v": "edge case часто ломается без проверки"},
+                    {"k": "**`while curr and curr.next`**", "v": "защита от `None.next` AttributeError"},
+                    {"k": "**Dummy head**",                "v": "если head может измениться — используй dummy → код проще"},
+                    {"k": "**Сохрани next перед изменением**", "v": "иначе `curr.next = X` потеряет хвост"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Slow/fast pointer — швейцарский нож linked list.** Ищет середину, обнаруживает цикл, находит k-й с конца, проверяет палиндром. Один проход O(n), O(1) памяти."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Floyd's cycle detection — два этапа.** Сначала зайти в цикл (slow/fast встретились). Потом slow в head, оба идут по 1 — встретятся на **входе в цикл**. Математика: расстояние от head до начала = расстояние от точки встречи до начала."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Dummy head без копирования.** В Python `dummy = ListNode()` и `dummy.next = head` (NOT `dummy = head`). После операций возврашаем `dummy.next` — потому что head мог измениться, но dummy.next всегда указывает на актуальное начало."},
+        ],
     },
     "algo_stack_queue": {
         "title": "Стек, очередь, дек",
@@ -4767,6 +5018,132 @@ TOPICS = {
             {"q": "Когда использовать heapq вместо обычной очереди?", "a": "Приоритетная очередь: выбирать элемент с минимальным (или максимальным) значением за O(log n). heapq.heappush/heappop. Для max-heap в Python: хранить (-val, val)."},
             {"q": "Как стек связан с рекурсией?", "a": "Стек вызовов — это явный стек под рекурсией. Любую рекурсивную функцию можно переписать с явным стеком. DFS рекурсивно = DFS с явным стеком, только без риска RecursionError."},
             {"q": "Задача 'valid parentheses' через стек?", "a": "Проходим строку. Открывающую скобку push. Закрывающую: проверить, совпадает ли с top стека. Если нет или стек пуст → invalid. В конце стек должен быть пустым."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Стек (LIFO)** = Python `list` + `append`/`pop`. **Очередь (FIFO)** = `collections.deque`. **Монотонный стек/дек** решает «next greater» и «sliding max» за O(n). **`heapq`** — приоритетная очередь O(log n)."},
+            {
+                "type": "table",
+                "title": "Сравнение",
+                "headers": ["Структура", "Push", "Pop", "Реализация"],
+                "rows": [
+                    ["**Stack (LIFO)**",          "O(1)",     "O(1) (right)",   "list, deque"],
+                    ["**Queue (FIFO)**",           "O(1)",     "O(1) (left)",     "**deque** (не list!)"],
+                    ["**Deque (двусторонняя)**",   "O(1)",     "O(1) с обеих сторон", "collections.deque"],
+                    ["**Priority queue**",          "O(log n)", "O(log n) min",     "heapq"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Стек, очередь, deque",
+                "code": (
+                    "from collections import deque\n"
+                    "import heapq\n\n"
+                    "# Стек на list\n"
+                    "stack = []\n"
+                    "stack.append(1)        # push — O(1)\n"
+                    "x = stack.pop()         # pop — O(1)\n\n"
+                    "# Очередь на deque (НЕ list — list.pop(0) = O(n))\n"
+                    "q = deque()\n"
+                    "q.append(1)              # enqueue — O(1)\n"
+                    "x = q.popleft()           # dequeue — O(1)\n\n"
+                    "# Дек\n"
+                    "dq = deque([1, 2, 3])\n"
+                    "dq.appendleft(0)\n"
+                    "dq.pop()\n\n"
+                    "# Приоритетная очередь (min-heap)\n"
+                    "h = []\n"
+                    "heapq.heappush(h, 5)\n"
+                    "heapq.heappush(h, 2)\n"
+                    "x = heapq.heappop(h)     # 2 — минимум за O(log n)\n\n"
+                    "# Max-heap: храним (-val, val)\n"
+                    "heapq.heappush(h, (-5, item))\n"
+                    "_, top = heapq.heappop(h)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Монотонный стек — Next Greater Element",
+                "code": (
+                    "def next_greater(nums: list[int]) -> list[int]:\n"
+                    "    n = len(nums)\n"
+                    "    result = [-1] * n\n"
+                    "    stack: list[int] = []         # храним индексы\n\n"
+                    "    for i, x in enumerate(nums):\n"
+                    "        # вытесняем всё, для чего nums[i] — next greater\n"
+                    "        while stack and nums[stack[-1]] < x:\n"
+                    "            j = stack.pop()\n"
+                    "            result[j] = x\n"
+                    "        stack.append(i)\n"
+                    "    return result\n\n"
+                    "# nums   = [2, 1, 5, 3, 4]\n"
+                    "# result = [5, 5, -1, 4, -1]\n"
+                    "# O(n) — каждый элемент входит и выходит из стека один раз"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Монотонный дек — Sliding Window Maximum",
+                "code": (
+                    "from collections import deque\n\n"
+                    "def max_sliding_window(nums: list[int], k: int) -> list[int]:\n"
+                    "    dq: deque[int] = deque()    # индексы в порядке убывания значений\n"
+                    "    result = []\n\n"
+                    "    for i, x in enumerate(nums):\n"
+                    "        # 1. Убираем front, если вышел из окна\n"
+                    "        if dq and dq[0] <= i - k:\n"
+                    "            dq.popleft()\n"
+                    "        # 2. Поддерживаем убывающий порядок\n"
+                    "        while dq and nums[dq[-1]] < x:\n"
+                    "            dq.pop()\n"
+                    "        dq.append(i)\n"
+                    "        # 3. Когда окно наполнилось — записываем max\n"
+                    "        if i >= k - 1:\n"
+                    "            result.append(nums[dq[0]])\n"
+                    "    return result\n\n"
+                    "# O(n) — каждый индекс входит/выходит из дека один раз"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Очередь на двух стеках",
+                "code": (
+                    "class TwoStackQueue:\n"
+                    "    def __init__(self):\n"
+                    "        self.in_stack: list[int] = []\n"
+                    "        self.out_stack: list[int] = []\n\n"
+                    "    def enqueue(self, x: int) -> None:\n"
+                    "        self.in_stack.append(x)              # O(1)\n\n"
+                    "    def dequeue(self) -> int:\n"
+                    "        if not self.out_stack:\n"
+                    "            while self.in_stack:\n"
+                    "                self.out_stack.append(self.in_stack.pop())\n"
+                    "        return self.out_stack.pop()           # амортизированный O(1)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Применения",
+                "items": [
+                    {"k": "**Stack для DFS**",            "v": "явный стек вместо рекурсии — без stack overflow"},
+                    {"k": "**Queue для BFS**",             "v": "deque, стандарт обхода в ширину"},
+                    {"k": "**Монотонный стек**",            "v": "Next Greater, гистограммы, Largest Rectangle"},
+                    {"k": "**Монотонный дек**",              "v": "Sliding Window Maximum, дек убывающих"},
+                    {"k": "**Heap (min)**",                  "v": "K smallest, Dijkstra, scheduler"},
+                    {"k": "**Heap (max через -val)**",       "v": "K largest, top-K"},
+                    {"k": "**Stack для скобок**",            "v": "valid parentheses, evaluate expression"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Монотонный стек = O(n) вместо O(n²).** Trick: каждый элемент входит и выходит из стека один раз. Total amortized O(n). Идеален для «найти ближайший X слева/справа» задач."},
+            {"type": "callout", "kind": "warning",
+             "content": "**`list.pop(0)` — O(n)!** Если очередь — используй `deque`. Каждое `pop(0)` в Python `list` сдвигает все n-1 элементов влево. На 10⁵ элементов — это 10¹⁰ операций."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`heapq` только min-heap.** Для max — храни `(-priority, value)` или используй модуль `heapq._heapify_max` (private API). На интервью отрицательное приоритет — стандартный приём."},
         ],
     },
     "algo_hash_tables": {
@@ -4933,6 +5310,151 @@ TOPICS = {
             {"q": "Что такое trie (префиксное дерево)?", "a": "Дерево где каждый путь от корня до узла — префикс хранимых строк. Вставка/поиск O(m) где m — длина строки. Идеален для автокомплита: обход от узла соответствующего префиксу."},
             {"q": "Итеративный in-order обход через стек?", "a": "curr = root; stack = []. while curr or stack: while curr: stack.append(curr); curr = curr.left. curr = stack.pop(); visit(curr); curr = curr.right."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Дерево** — связный ациклический граф. Главные приёмы: **3 обхода** (pre/in/post), **level-order BFS**, **BST inorder = sorted**. Балансные деревья (**AVL**, **Red-Black**) гарантируют O(log n). **Trie** — префиксное дерево, O(m) на операцию."},
+            {
+                "type": "table",
+                "title": "Обходы дерева",
+                "headers": ["Обход", "Порядок", "Использование"],
+                "rows": [
+                    ["**Pre-order**",   "**root** → left → right",        "копирование, сериализация"],
+                    ["**In-order**",     "left → **root** → right",        "**для BST даёт отсортированный порядок**"],
+                    ["**Post-order**",    "left → right → **root**",        "удаление, освобождение памяти"],
+                    ["**Level-order (BFS)**", "по уровням сверху вниз",     "ширина дерева, минимальное расстояние"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Все обходы — рекурсия и итерация",
+                "code": (
+                    "class Node:\n"
+                    "    def __init__(self, val, left=None, right=None):\n"
+                    "        self.val, self.left, self.right = val, left, right\n\n"
+                    "# Рекурсивно\n"
+                    "def inorder(node, result):\n"
+                    "    if not node: return\n"
+                    "    inorder(node.left, result)\n"
+                    "    result.append(node.val)\n"
+                    "    inorder(node.right, result)\n\n"
+                    "# Итеративно in-order через стек\n"
+                    "def inorder_iter(root):\n"
+                    "    stack, curr, result = [], root, []\n"
+                    "    while curr or stack:\n"
+                    "        while curr:\n"
+                    "            stack.append(curr)\n"
+                    "            curr = curr.left\n"
+                    "        curr = stack.pop()\n"
+                    "        result.append(curr.val)\n"
+                    "        curr = curr.right\n"
+                    "    return result\n\n"
+                    "# BFS по уровням\n"
+                    "from collections import deque\n"
+                    "def level_order(root):\n"
+                    "    if not root: return []\n"
+                    "    q, levels = deque([root]), []\n"
+                    "    while q:\n"
+                    "        level = []\n"
+                    "        for _ in range(len(q)):\n"
+                    "            n = q.popleft()\n"
+                    "            level.append(n.val)\n"
+                    "            if n.left:  q.append(n.left)\n"
+                    "            if n.right: q.append(n.right)\n"
+                    "        levels.append(level)\n"
+                    "    return levels"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Validate BST + LCA",
+                "code": (
+                    "def is_valid_bst(root, lo=float('-inf'), hi=float('inf')):\n"
+                    "    if not root: return True\n"
+                    "    if not (lo < root.val < hi): return False\n"
+                    "    return (is_valid_bst(root.left,  lo, root.val) and\n"
+                    "            is_valid_bst(root.right, root.val, hi))\n\n"
+                    "# LCA в BST — за O(h)\n"
+                    "def lca_bst(root, p, q):\n"
+                    "    while root:\n"
+                    "        if p.val < root.val and q.val < root.val:\n"
+                    "            root = root.left\n"
+                    "        elif p.val > root.val and q.val > root.val:\n"
+                    "            root = root.right\n"
+                    "        else:\n"
+                    "            return root         # split point\n\n"
+                    "# LCA в обычном дереве — рекурсия\n"
+                    "def lca(root, p, q):\n"
+                    "    if not root or root is p or root is q:\n"
+                    "        return root\n"
+                    "    left  = lca(root.left,  p, q)\n"
+                    "    right = lca(root.right, p, q)\n"
+                    "    return root if left and right else (left or right)"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Сложности",
+                "headers": ["Структура", "Search", "Insert", "Delete", "Особенности"],
+                "rows": [
+                    ["**Несбалансированное BST**", "O(n) worst",   "O(n) worst",   "O(n) worst",  "деградирует на отсортированных"],
+                    ["**AVL**",                     "O(log n)",     "O(log n)",     "O(log n)",    "строгий баланс через ротации"],
+                    ["**Red-Black**",                "O(log n)",     "O(log n)",     "O(log n)",    "менее строгий, быстрее insert/delete"],
+                    ["**B-tree (БД)**",              "O(log n)",     "O(log n)",     "O(log n)",    "много ключей в узле, для дисков"],
+                    ["**Trie**",                       "O(m)",         "O(m)",         "O(m)",        "m — длина ключа"],
+                    ["**Heap**",                        "O(n)",         "O(log n)",     "O(log n)",    "только min/max за O(log n)"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Trie — префиксное дерево",
+                "code": (
+                    "class Trie:\n"
+                    "    def __init__(self):\n"
+                    "        self.root: dict = {}\n"
+                    "        self.END = '$'\n\n"
+                    "    def insert(self, word: str) -> None:\n"
+                    "        node = self.root\n"
+                    "        for ch in word:\n"
+                    "            node = node.setdefault(ch, {})\n"
+                    "        node[self.END] = True\n\n"
+                    "    def search(self, word: str) -> bool:\n"
+                    "        node = self.root\n"
+                    "        for ch in word:\n"
+                    "            if ch not in node: return False\n"
+                    "            node = node[ch]\n"
+                    "        return self.END in node\n\n"
+                    "    def starts_with(self, prefix: str) -> bool:\n"
+                    "        node = self.root\n"
+                    "        for ch in prefix:\n"
+                    "            if ch not in node: return False\n"
+                    "            node = node[ch]\n"
+                    "        return True"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Типовые задачи",
+                "items": [
+                    {"k": "**Validate BST**",                 "v": "рекурсия с min/max границами, не только parent"},
+                    {"k": "**Inorder iterative**",             "v": "стек с симуляцией рекурсии"},
+                    {"k": "**LCA**",                            "v": "BST: split point. Generic: рекурсия с поиском в обоих поддеревьях"},
+                    {"k": "**Diameter / max path sum**",         "v": "post-order, при возврате считаем глубину/сумму"},
+                    {"k": "**Serialize / deserialize**",         "v": "pre-order с маркером None"},
+                    {"k": "**Level-order**",                      "v": "BFS с deque + level-size"},
+                    {"k": "**Mirror / invert**",                  "v": "swap left/right + рекурсия"},
+                    {"k": "**Path sum / count**",                 "v": "DFS с накоплением, prefix sum для path sum III"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Inorder BST = sorted.** Если задача про k-ый наименьший в BST или ранг элемента — делай inorder с counter, прерывайся при достижении k. O(h + k) вместо O(n)."},
+            {"type": "callout", "kind": "fact",
+             "content": "**AVL vs Red-Black.** AVL строже балансирует (высота ≤ 1.44 log n) → быстрее search. Red-Black менее строгий → быстрее insert/delete. В std::map (C++) и Java TreeMap — Red-Black. В Postgres B-tree — другая зверушка для дисков."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Validate BST — НЕ проверка только parent vs node.** Узел в правом поддереве должен быть больше **всех** предков, не только непосредственного. Рекурсия с min/max границами — единственный правильный способ."},
+        ],
     },
     "algo_graphs": {
         "title": "Графы: представление, BFS, DFS",
@@ -4952,6 +5474,163 @@ TOPICS = {
             {"q": "Union-Find (DSU) — когда применять?", "a": "Задачи на компоненты связности: сколько групп, принадлежат ли два элемента одной группе, объединить группы. Kruskal's MST использует DSU. Операции near O(1) с path compression + union by rank."},
             {"q": "BFS vs DFS — когда что?", "a": "BFS: кратчайший путь в невзвешенном графе, обход по уровням, nearest задачи. DFS: топологический порядок, обнаружение цикла, поиск компонент, backtracking. BFS использует память O(V) в очереди, DFS O(h) в стеке."},
             {"q": "Как найти все компоненты связности?", "a": "Для каждой непосещённой вершины запустить BFS/DFS — все достигнутые вершины одна компонента. Счётчик запусков = число компонент. Время O(V+E)."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Графы** = вершины + рёбра. Главные приёмы: **BFS** (кратчайший путь без весов), **DFS** (топсорт, циклы, компоненты), **Union-Find** (компоненты связности с операциями near-O(1)). Для DAG — **топологическая сортировка** через Kahn (BFS) или DFS post-order."},
+            {
+                "type": "compare",
+                "title": "Adjacency matrix vs list",
+                "items": [
+                    {"title": "**Matrix O(V²)**",
+                     "points": [
+                         "Проверка ребра O(1)",
+                         "Память O(V²) — много для разреженного",
+                         "Хорошо при V малое (≤ 1000)",
+                         "Хорошо для плотного графа (E ≈ V²)",
+                     ]},
+                    {"title": "**Adjacency list O(V+E)**",
+                     "points": [
+                         "Проверка ребра O(degree)",
+                         "Память O(V + E)",
+                         "**Default** для разреженных графов",
+                         "`defaultdict(list)` — стандарт Python",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "BFS — кратчайший путь в невзвешенном графе",
+                "code": (
+                    "from collections import deque\n\n"
+                    "def bfs_shortest(graph: dict[int, list[int]], start: int, target: int) -> int:\n"
+                    "    if start == target: return 0\n"
+                    "    visited = {start}\n"
+                    "    q = deque([(start, 0)])\n"
+                    "    while q:\n"
+                    "        node, dist = q.popleft()\n"
+                    "        for neighbor in graph[node]:\n"
+                    "            if neighbor == target:\n"
+                    "                return dist + 1\n"
+                    "            if neighbor not in visited:\n"
+                    "                visited.add(neighbor)\n"
+                    "                q.append((neighbor, dist + 1))\n"
+                    "    return -1\n\n"
+                    "# O(V + E)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "DFS — топсорт + cycle detection (3 цвета)",
+                "code": (
+                    "WHITE, GREY, BLACK = 0, 1, 2\n\n"
+                    "def topo_sort_dfs(graph: dict[int, list[int]]) -> list[int]:\n"
+                    "    color = {v: WHITE for v in graph}\n"
+                    "    order: list[int] = []\n\n"
+                    "    def dfs(v):\n"
+                    "        color[v] = GREY\n"
+                    "        for n in graph[v]:\n"
+                    "            if color[n] == GREY:\n"
+                    "                raise ValueError('cycle')\n"
+                    "            if color[n] == WHITE:\n"
+                    "                dfs(n)\n"
+                    "        color[v] = BLACK\n"
+                    "        order.append(v)         # post-order\n\n"
+                    "    for v in graph:\n"
+                    "        if color[v] == WHITE:\n"
+                    "            dfs(v)\n"
+                    "    return order[::-1]            # reverse post-order"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Kahn's algorithm — топсорт через in-degree",
+                "code": (
+                    "from collections import defaultdict, deque\n\n"
+                    "def topo_kahn(graph: dict[int, list[int]]) -> list[int]:\n"
+                    "    in_degree = defaultdict(int)\n"
+                    "    for v in graph:\n"
+                    "        in_degree.setdefault(v, 0)\n"
+                    "        for u in graph[v]:\n"
+                    "            in_degree[u] += 1\n\n"
+                    "    q = deque([v for v, d in in_degree.items() if d == 0])\n"
+                    "    order = []\n"
+                    "    while q:\n"
+                    "        v = q.popleft()\n"
+                    "        order.append(v)\n"
+                    "        for u in graph[v]:\n"
+                    "            in_degree[u] -= 1\n"
+                    "            if in_degree[u] == 0:\n"
+                    "                q.append(u)\n"
+                    "    if len(order) != len(in_degree):\n"
+                    "        raise ValueError('cycle')\n"
+                    "    return order"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Union-Find (DSU) с path compression + union by rank",
+                "code": (
+                    "class DSU:\n"
+                    "    def __init__(self, n: int):\n"
+                    "        self.parent = list(range(n))\n"
+                    "        self.rank   = [0] * n\n\n"
+                    "    def find(self, x: int) -> int:\n"
+                    "        while self.parent[x] != x:\n"
+                    "            self.parent[x] = self.parent[self.parent[x]]   # path compression\n"
+                    "            x = self.parent[x]\n"
+                    "        return x\n\n"
+                    "    def union(self, a: int, b: int) -> bool:\n"
+                    "        ra, rb = self.find(a), self.find(b)\n"
+                    "        if ra == rb: return False\n"
+                    "        if self.rank[ra] < self.rank[rb]:\n"
+                    "            ra, rb = rb, ra\n"
+                    "        self.parent[rb] = ra\n"
+                    "        if self.rank[ra] == self.rank[rb]:\n"
+                    "            self.rank[ra] += 1\n"
+                    "        return True\n\n"
+                    "# Операции near O(1) (α(n) — обратная функция Аккермана)"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "BFS vs DFS — когда что",
+                "headers": ["Задача", "Алгоритм", "Почему"],
+                "rows": [
+                    ["**Кратчайший путь (без весов)**",   "BFS",         "уровни = расстояния"],
+                    ["**Топологическая сортировка**",       "DFS (post) / Kahn (BFS)", "оба работают"],
+                    ["**Обнаружение цикла (orient)**",        "DFS 3-цвета",  "grey-edge = cycle"],
+                    ["**Обнаружение цикла (неориент)**",       "DFS / Union-Find", "при объединении уже связных"],
+                    ["**Компоненты связности**",                "DFS / BFS / DSU", "запустить пока есть непосещённые"],
+                    ["**Strongly connected (Kosaraju/Tarjan)**", "DFS×2 / DFS+stack", "DFS на исходном + транспонированном"],
+                    ["**MST (минимальное остовное)**",            "Kruskal (DSU) / Prim (heap)", "DSU для слияния, heap для выбора"],
+                    ["**Bipartite check**",                          "BFS с 2-coloring", "два цвета чередуются по уровням"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Шаблоны и сложности",
+                "items": [
+                    {"k": "**BFS**",                 "v": "O(V + E), очередь deque, visited set"},
+                    {"k": "**DFS recursive**",        "v": "O(V + E), глубина стека O(V)"},
+                    {"k": "**DFS iterative**",         "v": "O(V + E), явный стек — без stack overflow"},
+                    {"k": "**Topo sort (Kahn)**",       "v": "O(V + E), in-degree + queue"},
+                    {"k": "**Cycle detection (DFS)**",   "v": "3 цвета: white/grey/black"},
+                    {"k": "**Union-Find**",                "v": "O(α(n)) ≈ O(1) на операцию"},
+                    {"k": "**Kosaraju (SCC)**",            "v": "DFS на G + DFS на Gᵀ"},
+                    {"k": "**Tarjan (SCC)**",              "v": "один DFS со стеком"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`defaultdict(list)` — самая частая адъяценс-структура в Python.** `graph[u].append(v)` — добавить ребро. Для неориентированного — `append` в обоих направлениях. Для weighted — `(neighbor, weight)` в списке."},
+            {"type": "callout", "kind": "fact",
+             "content": "**BFS = shortest path в невзвешенном.** Уровень BFS = минимальное число рёбер до start. DFS НЕ гарантирует кратчайший путь — он может пойти длинным маршрутом сначала. Для weighted — Dijkstra."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Cycle в неориентированном графе ≠ cycle в ориентированном.** Для неориентированного: в DFS обратное ребро в visited (не parent) = cycle. Для ориентированного: 3 цвета, ребро в **grey** = cycle. Не путай."},
         ],
     },
     "algo_shortest_paths": {
