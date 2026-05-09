@@ -2639,6 +2639,117 @@ TOPICS = {
             {"q": "Как проектировать систему нотификаций?", "a": "Producer публикует событие в Kafka. Notification service читает, формирует payload, отправляет через push (FCM/APNs), email (SES), SMS (Twilio). Retry через DLQ при ошибке доставки."},
             {"q": "Как строить search autocomplete?", "a": "Trie в памяти для быстрого поиска по префиксу. Для масштаба: Elasticsearch с prefix query или search-as-you-type маппингом. Кешировать топ-N результатов популярных запросов в Redis."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "На SD-интервью почти наверняка спросят одну из 7-8 классических задач. Они **не про новизну**, а про правильный пайплайн ответа: clarification → capacity estimation → high-level → deep-dive → trade-offs. Подходить как к шаблону, не как к креативу."},
+            {
+                "type": "flow",
+                "title": "Шаблон ответа на SD-задачу (45-60 минут)",
+                "branches": [
+                    {"condition": "1. Clarification (5 мин)",         "outcome": "функциональные / non-функциональные требования, границы"},
+                    {"condition": "2. Capacity estimation (5 мин)",   "outcome": "DAU, RPS, storage, bandwidth — порядки"},
+                    {"condition": "3. High-level architecture (10 мин)", "outcome": "клиент → LB → API → БД / кеш / queue / worker"},
+                    {"condition": "4. Data model + API (10 мин)",     "outcome": "ключевые таблицы / endpoints / события"},
+                    {"condition": "5. Deep-dive (15 мин)",              "outcome": "**одно** место подробно: шардинг / consistency / fan-out"},
+                    {"condition": "6. Trade-offs + scaling (10 мин)",   "outcome": "что не идеально, что улучшать дальше, как мониторить"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Capacity estimation — формулы",
+                "headers": ["Что считаем", "Как", "Пример (1B DAU, 10 действий)"],
+                "rows": [
+                    ["**RPS**",          "DAU × actions / 86400",                  "10⁹ × 10 / 86400 ≈ **115K RPS**"],
+                    ["**Peak RPS**",     "RPS × 3-5 (peak factor)",                 "≈ **500K RPS**"],
+                    ["**Storage / day**", "writes × size × N",                       "10⁹ × 1 KB = **1 TB/день**"],
+                    ["**Storage / 5 yrs**", "× 365 × 5 + replication × 3",           "**5 PB**"],
+                    ["**Bandwidth**",     "RPS × response_size",                      "115K × 10 KB = **1.15 GB/s**"],
+                    ["**Cache size**",    "20% горячих × средний size",                "200M × 1KB = **200 GB**"],
+                ],
+                "note": "Округляй до порядков. 1B vs 5B — разница в железе как 1× vs 5×, не как 10×.",
+            },
+            {
+                "type": "table",
+                "title": "Канон задач + ключевая идея",
+                "headers": ["Задача", "Ключевые техники", "Главный trade-off"],
+                "rows": [
+                    ["**URL shortener**",       "hash → base62, KV-store, 301 vs 302 redirect",   "длина ID vs collision rate"],
+                    ["**News feed (Twitter)**", "**fan-out on write vs on read**, гибрид для celebs", "запись vs чтение нагрузка"],
+                    ["**Чат (WhatsApp)**",      "партиции по `chat_id`, time-bucket для hot chats",  "consistency vs latency"],
+                    ["**Rate limiter**",          "token bucket в Redis, per-user counters",          "точность vs Redis нагрузка"],
+                    ["**Uber / поиск рядом**",   "geohash-ячейки, sharding по гео, S2-cells",         "шарды vs реалтайм-обновления"],
+                    ["**Dropbox / file storage**", "chunking 4MB, дедуп по hash, S3 + metadata в PG", "консистентность файла vs скорость sync"],
+                    ["**Уведомления**",            "Kafka → Notification svc → push/email/SMS, DLQ",  "доставка vs spam"],
+                    ["**Autocomplete**",            "Trie / Elasticsearch prefix, кеш популярных",     "свежесть vs latency"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Fan-out on write vs on read (news feed)",
+                "items": [
+                    {"title": "Fan-out on write",
+                     "points": [
+                         "При публикации пост копируется в ленту **каждого** подписчика",
+                         "Чтение ленты — простое",
+                         "**Дорогая запись** (если 100M followers — 100M записей)",
+                         "Хорошо для обычных юзеров",
+                     ]},
+                    {"title": "Fan-out on read",
+                     "points": [
+                         "Лента собирается **на чтение** из постов подписок",
+                         "Запись дешёвая",
+                         "**Дорогое чтение** (агрегация по N подпискам)",
+                         "Хорошо для celebrities (1 пост → millions reads)",
+                     ]},
+                    {"title": "Гибрид (Twitter way)",
+                     "points": [
+                         "On-write для обычных пользователей",
+                         "On-read для celebrities (≥ X followers)",
+                         "Merge при показе ленты",
+                         "**Стандарт прода**",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "URL shortener — числа",
+                "items": [
+                    {"k": "**ID длина 6 base62**", "v": "62⁶ ≈ 56B уникальных URL"},
+                    {"k": "**ID длина 7 base62**", "v": "62⁷ ≈ 3.5T URL — стандарт"},
+                    {"k": "**Сжатие**",              "v": "long URL ~100 байт → 7 байт = 14× меньше storage"},
+                    {"k": "**Хранение**",             "v": "Redis (горячее) + Cassandra (long tail)"},
+                    {"k": "**Redirect 301 vs 302**", "v": "301 кешируется браузером (быстро, без аналитики), 302 всегда через сервер (логи кликов)"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Чат — паттерны партиционирования",
+                "items": [
+                    {"k": "**По `chat_id`**",                 "v": "все сообщения чата на одном шарде. Проблема: hot chats"},
+                    {"k": "**По `(chat_id, time_bucket)`**",   "v": "разделение по часам/дням → размер партиции под контролем"},
+                    {"k": "**Last-N в Redis**",                  "v": "последние 50 сообщений в кеше для быстрого открытия чата"},
+                    {"k": "**Архив в Cassandra**",                "v": "холодные сообщения (> 30 дней)"},
+                    {"k": "**Push через WebSocket**",              "v": "long-lived connection или socket.io. Fall-back на long-poll"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Поиск рядом (Uber)",
+                "items": [
+                    {"k": "**Geohash**",       "v": "координаты → строка-префикс. Близкие точки → общий префикс"},
+                    {"k": "**S2 cells**",        "v": "Google: иерархическая разбивка сферы на ячейки 17 уровней"},
+                    {"k": "**H3**",                "v": "Uber: гексагональная разбивка"},
+                    {"k": "**Запрос**",            "v": "берём текущую ячейку + соседние ячейки → выдаём водителей в них"},
+                    {"k": "**Шардинг**",           "v": "по geo-ключу → один регион = один шард → low-latency"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Capacity estimation — порядки, не точность.** «1M RPS или 10M RPS» — это разные системы. «800K vs 1.2M» — одна и та же. Сразу округляй до 1M, не пересчитывай в реальном времени."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Все классические задачи сводятся к 4 шаблонам:** (1) ID → данные (URL, file storage), (2) feed/timeline (Twitter, Instagram), (3) realtime связь (chat, notifications), (4) геопоиск (Uber, food delivery). Изучи 4 — закроешь 80% вопросов."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Не уходи в deep-dive первым делом.** Frequent ошибка — сразу обсуждать «давайте используем Cassandra». Сначала clarification → estimation → high-level. Deep-dive только после согласования с интервьюером."},
+        ],
     },
     "sd_ml_systems": {
         "title": "Проектирование ML-систем",
@@ -2658,6 +2769,132 @@ TOPICS = {
             {"q": "Что такое two-tower архитектура?", "a": "Две нейросети: одна кодирует пользователя, другая — item. Скалярное произведение эмбеддингов = релевантность. User tower вычисляется один раз, item tower — заранее. ANN-индекс для поиска ближайших item."},
             {"q": "Как организовать закрытый цикл обучения?", "a": "Логировать запросы и ответы модели → собирать implicit feedback (клики, покупки) → переобучать на новых данных → деплоить через A/B → оценивать метрики бизнеса → повторять."},
             {"q": "Как организовать A/B тест для ML-модели?", "a": "Разделить трафик по user_id % N. Выдерживать тест статистически значимое время (минимум 1-2 недели для сезонных эффектов). Метрика — бизнес-KPI, не только модельная. Остерегаться novelty effect."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "ML-system design на стыке backend и ML. Главные оси: **online vs offline** inference, **feature store** для борьбы со skew, **closed-loop feedback** (логи → ретрейн → A/B → деплой). Backend-канон тут не помогает — нужно думать про latency budget, distribution drift и closed-loop bias."},
+            {
+                "type": "compare",
+                "title": "Online vs Offline inference",
+                "items": [
+                    {"title": "Online (real-time)",
+                     "points": [
+                         "Запрос пришёл → модель → ответ за < 100мс",
+                         "Поиск, рекомендации, фрод, чат",
+                         "**Latency budget** ограничивает модель",
+                         "Нужны online features (Redis/DynamoDB)",
+                     ]},
+                    {"title": "Offline (batch)",
+                     "points": [
+                         "Расписание (раз в день / час)",
+                         "Скоринг базы пользователей, отчёты",
+                         "Свобода в размере модели",
+                         "Spark / Airflow / ClearML pipelines",
+                     ]},
+                    {"title": "Pre-computed (hybrid)",
+                     "points": [
+                         "Скоры пред-вычислены, в Redis",
+                         "Online — просто lookup",
+                         "Подходит для recommendations",
+                         "Освежается batch-job-ом",
+                     ]},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "End-to-end ML pipeline в проде",
+                "branches": [
+                    {"condition": "1. Запрос приходит",                  "outcome": "API → user_id, context → feature lookup"},
+                    {"condition": "2. Feature store (online)",            "outcome": "Redis/DynamoDB: precomputed user/item features"},
+                    {"condition": "3. Inference",                          "outcome": "Triton/vLLM/FastAPI → score/embedding"},
+                    {"condition": "4. Business logic",                     "outcome": "filters, dedup, diversity, fairness rules"},
+                    {"condition": "5. Response + logging",                 "outcome": "пользователю + лог запроса/ответа в Kafka"},
+                    {"condition": "6. Closed-loop",                         "outcome": "лог → labels → ретрейн → A/B → новый деплой"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Latency budget на инференс",
+                "headers": ["Сценарий", "Бюджет", "Что укладывается"],
+                "rows": [
+                    ["**Поиск (autocomplete)**",     "< 50 мс",   "BM25 + кеш, маленькая модель"],
+                    ["**Search ranking**",            "< 100 мс",  "two-tower retrieval + LightGBM ranker"],
+                    ["**Recommender**",               "< 200 мс",  "ANN + ranker + business logic"],
+                    ["**Fraud detection (online)**",   "< 100 мс",  "GBM на фичах, **lookup** в feature store"],
+                    ["**LLM chat**",                   "< 1с TTFT", "vLLM + prefix caching"],
+                    ["**Batch scoring**",              "часы",      "что угодно"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Feature store — ключевая роль",
+                "items": [
+                    {"k": "**Offline store**",       "v": "Parquet/Hive/S3 — для обучения, исторические данные"},
+                    {"k": "**Online store**",         "v": "Redis/DynamoDB/KeyDB — для inference, lookup < 10мс"},
+                    {"k": "**Same logic**",            "v": "одна и та же функция вычисляет фичу для train и prod → нет skew"},
+                    {"k": "**Point-in-time join**",     "v": "при обучении берём значения фич **на момент label** — не из будущего"},
+                    {"k": "**Версионирование**",         "v": "каждая фича имеет владельца, схему, тесты, observability"},
+                    {"k": "**Инструменты**",              "v": "Feast (open-source), Tecton, Hopsworks, in-house"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Замкнутый цикл обратной связи",
+                "items": [
+                    {"k": "**Logging**",            "v": "каждый запрос + features + ответ + impression — в Kafka"},
+                    {"k": "**Labels delay**",        "v": "клик пришёл сразу, покупка — через час, churn — через месяц"},
+                    {"k": "**Joining**",              "v": "Spark/Flink job собирает features × labels через event_id"},
+                    {"k": "**Retraining cadence**",  "v": "час/день/неделя в зависимости от drift"},
+                    {"k": "**Eval**",                  "v": "оффлайн на golden + shadow + A/B"},
+                    {"k": "**Bias риск**",              "v": "модель влияет на показы → label distribution меняется → bias на retrain"},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Shadow / Canary / A/B / Interleaving",
+                "items": [
+                    {"title": "Shadow",
+                     "points": [
+                         "Новая модель видит трафик",
+                         "Ответы **не идут пользователю**",
+                         "Сравниваем разницу с prod",
+                         "Безопасно для тестирования под нагрузкой",
+                     ]},
+                    {"title": "Canary / A/B",
+                     "points": [
+                         "5-10% пользователей → новая модель",
+                         "Метрики собираются параллельно",
+                         "Statistical test на бизнес-метрику",
+                         "**Стандарт** для роллаутов",
+                     ]},
+                    {"title": "Interleaving",
+                     "points": [
+                         "Один пользователь видит **смесь** из двух моделей",
+                         "Меньше variance — быстрее сходится",
+                         "Только для ranking/list-выдачи",
+                         "Сложнее в реализации",
+                     ]},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Чек-лист для ML SD-задачи",
+                "branches": [
+                    {"condition": "1. Бизнес → ML proxy",     "outcome": "framing задачи, метрики оффлайн + бизнес"},
+                    {"condition": "2. Архитектура inference",  "outcome": "online / offline / pre-computed"},
+                    {"condition": "3. Feature store",            "outcome": "online + offline + PIT join"},
+                    {"condition": "4. Capacity",                  "outcome": "RPS, latency budget, GPU/CPU vRAM"},
+                    {"condition": "5. Eval план",                 "outcome": "shadow → canary → A/B → rollout"},
+                    {"condition": "6. Closed-loop",                "outcome": "логирование + ретрейн + bias controls"},
+                    {"condition": "7. Monitoring",                  "outcome": "drift / quality / fairness / SLA"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**ML-задачу обсуждай как backend + блок про модель.** Backend-часть та же: API, кеш, БД, очередь, deployment. ML-специфика — это **только** model serving, feature store, eval/monitoring и closed-loop. Остальное знакомое."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Closed-loop bias — частая ловушка.** Модель показывает 80% контент A → пользователь кликает A → лог говорит «A популярный» → следующая модель ещё сильнее показывает A. Лечение: **exploration** + **inverse propensity scoring** + held-out random buckets."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Без shadow-mode каждый деплой — лотерея.** Перед canary новая модель должна **пройти тот же трафик** в shadow без влияния на пользователей. Сравниваем распределение скоров, latency, error rate. Только после — A/B."},
         ],
     },
     "sd_mock": {
@@ -2700,6 +2937,129 @@ TOPICS = {
             {"q": "Как устроен hash в Python?", "a": "Встроенная функция hash() возвращает int. Объекты с одинаковым hash могут быть разными (коллизия). Инвариант: a == b → hash(a) == hash(b). Mutable объекты не хешируются по умолчанию."},
             {"q": "Что такое Counter и defaultdict?", "a": "Counter — словарь с подсчётом: Counter('aab') → Counter({'a':2, 'b':1}). defaultdict(list) создаёт значение по умолчанию при обращении к несуществующему ключу, избавляя от KeyError."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Базовый раунд Python-собеса: типы, mutable/immutable, сложности операций, hash, копирование. Ключевые ловушки: **mutable default args**, `is` vs `==`, shallow vs deep copy, `dict` упорядочен с 3.7."},
+            {
+                "type": "table",
+                "title": "Сложности операций",
+                "headers": ["Операция", "list", "tuple", "dict", "set", "deque"],
+                "rows": [
+                    ["**`x[i]` (random access)**",  "**O(1)**",  "O(1)",       "O(1)",      "—",          "O(n)"],
+                    ["**`x in coll`**",              "O(n)",      "O(n)",       "**O(1)**",  "**O(1)**",   "O(n)"],
+                    ["**`append(x)`**",              "**O(1)***", "—",          "—",         "—",          "O(1)"],
+                    ["**`pop()` (right)**",           "**O(1)**",  "—",          "—",         "—",          "O(1)"],
+                    ["**`pop(0)` / `popleft()`**",    "**O(n)**",  "—",          "—",         "—",          "**O(1)**"],
+                    ["**`insert(0, x)`**",             "O(n)",      "—",          "—",         "—",          "O(1)"],
+                    ["**`del x[k]` / `del x[i]`**",    "O(n)",      "—",          "**O(1)**",  "**O(1)**",   "—"],
+                    ["**`min` / `max`**",                "O(n)",      "O(n)",       "O(n)",      "O(n)",       "O(n)"],
+                ],
+                "note": "* `list.append` — амортизированный O(1) (иногда переаллокация). `dict`/`set` — O(1) средний, O(n) худший при коллизиях.",
+            },
+            {
+                "type": "compare",
+                "title": "Mutable vs Immutable",
+                "items": [
+                    {"title": "Mutable",
+                     "points": [
+                         "`list`, `dict`, `set`, `bytearray`",
+                         "Можно менять после создания",
+                         "**Не hashable** — нельзя в set/dict-key",
+                         "Передаётся в функции как ссылка → side-effects",
+                     ]},
+                    {"title": "Immutable",
+                     "points": [
+                         "`int`, `float`, `str`, `bytes`, `tuple`, `frozenset`",
+                         "Нельзя изменить — только пересоздать",
+                         "**Hashable** (если содержат hashable элементы)",
+                         "Безопасно передавать, кешировать",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Mutable default arg — классическая ловушка",
+                "code": (
+                    "# ❌ ОПАСНО: список создаётся один раз при определении\n"
+                    "def add(x, items=[]):\n"
+                    "    items.append(x)\n"
+                    "    return items\n\n"
+                    "add(1)  # [1]\n"
+                    "add(2)  # [1, 2]   ← общий объект между вызовами!\n\n"
+                    "# ✅ ПРАВИЛЬНО\n"
+                    "def add(x, items=None):\n"
+                    "    if items is None:\n"
+                    "        items = []\n"
+                    "    items.append(x)\n"
+                    "    return items"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "`is` vs `==`",
+                "items": [
+                    {"k": "**`is`**",     "v": "проверка идентичности (тот же объект, тот же `id()`)"},
+                    {"k": "**`==`**",      "v": "проверка значения (вызывает `__eq__`)"},
+                    {"k": "**Когда `is`**", "v": "только для `None`, `True`, `False` или сравнения с sentinel"},
+                    {"k": "**Ловушка**",     "v": "малые `int` (-5..256) и короткие `str` кешируются → `is` может дать True случайно"},
+                    {"k": "**Правило**",     "v": "`if x is None`, `if x is True`, `if x is sentinel`. Иначе всегда `==`"},
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "shallow vs deep copy",
+                "items": [
+                    {"title": "Shallow (`a[:]`, `list(a)`, `copy.copy(a)`)",
+                     "points": [
+                         "Новый контейнер",
+                         "Элементы — те же ссылки",
+                         "Изменения вложенных объектов **видны в обоих**",
+                         "Дёшево",
+                     ]},
+                    {"title": "Deep (`copy.deepcopy(a)`)",
+                     "points": [
+                         "Рекурсивно копирует всё",
+                         "Полностью независимая копия",
+                         "Дорого по памяти и времени",
+                         "Нужно при mutation вложенных объектов",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Когда какую структуру",
+                "headers": ["Сценарий", "Структура", "Почему"],
+                "rows": [
+                    ["частый `in` поиск",                  "**`set`** / **`dict`**",        "O(1) lookup"],
+                    ["FIFO очередь",                        "**`collections.deque`**",      "appendleft / popleft за O(1)"],
+                    ["LIFO стек",                            "`list`",                      "append / pop с конца за O(1)"],
+                    ["подсчёт встречаемостей",               "**`Counter`**",                "`Counter('abc') → {'a':1, 'b':1, 'c':1}`"],
+                    ["dict со значением по умолчанию",       "**`defaultdict(list)`**",      "избегаем KeyError"],
+                    ["неизменяемая запись",                  "**`namedtuple`** / `dataclass(frozen=True)`", "hashable, читаемая"],
+                    ["приоритетная очередь / top-K",          "**`heapq`**",                  "min-heap, push/pop за O(log n)"],
+                    ["бинарный поиск в отсортированном",      "**`bisect`**",                  "insort/insort_left/bisect_left за O(log n)"],
+                    ["неизменяемый набор как ключ",            "**`frozenset`**",                "hashable аналог set"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "dict — внутренности (Python 3.7+)",
+                "items": [
+                    {"k": "**Compact representation**",  "v": "массив индексов + массив `(hash, key, value)` → меньше памяти"},
+                    {"k": "**Insertion order**",           "v": "сохраняется (гарантия с 3.7)"},
+                    {"k": "**Open addressing с perturbation**", "v": "при коллизии: `slot = (5*slot + 1 + perturb) % n; perturb >>= 5`"},
+                    {"k": "**Resize**",                       "v": "при load factor > 2/3 — увеличение в 2× (степень двойки)"},
+                    {"k": "**`__eq__` + `__hash__` invariant**", "v": "`a == b → hash(a) == hash(b)`. Нарушение = объект «потеряется» в dict"},
+                ],
+            },
+            {"type": "callout", "kind": "gotcha",
+             "content": "**`a = b = []`** — оба указывают на **один и тот же список**. Изменение через `a` видно в `b`. Чтобы получить два независимых: `a, b = [], []`."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Никогда `list` для FIFO.** `pop(0)` — O(n). `collections.deque` — O(1) с обоих концов. На больших объёмах это разница в порядки."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Mutable объекты не hashable.** `set([1, 2])` — `unhashable type: 'list'`. Используй `frozenset`. Аналогично, `list` нельзя как ключ dict — используй `tuple`."},
+        ],
     },
     "py_algorithms": {
         "title": "Алгоритмы и сложность",
@@ -2740,6 +3100,140 @@ TOPICS = {
             {"q": "Что такое descriptor protocol?", "a": "Объект — descriptor, если определяет __get__, __set__ или __delete__. property, classmethod, staticmethod — все дескрипторы. Pydantic Field — тоже дескриптор для валидации."},
             {"q": "Чем classmethod отличается от staticmethod?", "a": "classmethod получает первым аргументом класс (cls), используется для фабричных методов. staticmethod не получает ни self, ни cls — просто функция в пространстве имён класса."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Pydantic, SQLAlchemy, FastAPI стоят на **дескрипторах** и дандер-методах. Senior должен знать MRO с C3, как Python ищет атрибут, **`__slots__`** для экономии памяти, **`__eq__` / `__hash__`** в паре, **context managers** через `__enter__` / `__exit__`."},
+            {
+                "type": "kv",
+                "title": "Поиск атрибута (lookup chain)",
+                "items": [
+                    {"k": "1. **Data descriptors класса**",  "v": "`property`, классы с `__set__`/`__delete__`. Имеют приоритет"},
+                    {"k": "2. **`instance.__dict__`**",      "v": "обычные атрибуты экземпляра"},
+                    {"k": "3. **Non-data descriptors / class attrs**", "v": "методы, classmethod, staticmethod, обычные атрибуты класса"},
+                    {"k": "4. **MRO base classes**",            "v": "идём вверх по C3 linearization"},
+                    {"k": "5. **`__getattr__`**",                "v": "вызывается **только** если ничего не нашли"},
+                    {"k": "6. `AttributeError`",                  "v": "если и `__getattr__` не определён"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "MRO в diamond + super()",
+                "code": (
+                    "class A:\n"
+                    "    def hello(self): print('A')\n\n"
+                    "class B(A):\n"
+                    "    def hello(self): print('B'); super().hello()\n\n"
+                    "class C(A):\n"
+                    "    def hello(self): print('C'); super().hello()\n\n"
+                    "class D(B, C):\n"
+                    "    def hello(self): print('D'); super().hello()\n\n"
+                    "D().hello()\n"
+                    "# D B C A — линейный порядок по C3, super() идёт по нему\n\n"
+                    "print(D.__mro__)\n"
+                    "# (D, B, C, A, object)"
+                ),
+            },
+            {
+                "type": "compare",
+                "title": "`__slots__` vs обычный `__dict__`",
+                "items": [
+                    {"title": "С `__slots__`",
+                     "points": [
+                         "`__slots__ = ('x', 'y')`",
+                         "**Нет** `__dict__` у экземпляра",
+                         "Экономия памяти ~40-60%",
+                         "Атрибуты только из списка — нельзя добавить новый",
+                         "Проблемы с multiple inheritance",
+                     ]},
+                    {"title": "Без `__slots__`",
+                     "points": [
+                         "Обычный `__dict__`",
+                         "Любые атрибуты на лету",
+                         "Больше памяти и медленнее access",
+                         "Default — гибко",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "`__eq__` и `__hash__`",
+                "items": [
+                    {"k": "**Inv 1**",        "v": "если переопределяешь `__eq__`, Python ставит `__hash__ = None` → объект **не hashable**"},
+                    {"k": "**Inv 2**",        "v": "`a == b` обязательно влечёт `hash(a) == hash(b)`. Обратное необязательно"},
+                    {"k": "**Frozen dataclass**", "v": "автоматически генерирует `__hash__` на основе всех полей"},
+                    {"k": "**Mutable hashable**",  "v": "опасно: hash меняется → объект «потерян» в dict"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Декораторы методов класса",
+                "headers": ["Декоратор", "Что делает", "Пример use-case"],
+                "rows": [
+                    ["**`@property`**",        "превращает метод в атрибут (data descriptor)", "computed attributes, lazy evaluation"],
+                    ["**`@classmethod`**",     "первый аргумент `cls`",                          "фабричные методы (`from_dict`, `from_url`)"],
+                    ["**`@staticmethod`**",     "ни `self`, ни `cls`",                            "утилитарные функции в namespace класса"],
+                    ["**`@functools.cached_property`**", "computed + кеш на instance",              "дорогие вычисления один раз"],
+                    ["**`@dataclass`**",         "генерирует `__init__`, `__repr__`, `__eq__`",   "POPO без boilerplate"],
+                    ["**`@dataclass(frozen=True)`**", "+ `__hash__`, **immutable**",                  "value objects, ключи dict"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Context manager — два способа",
+                "code": (
+                    "# Способ 1: класс с __enter__/__exit__\n"
+                    "class Timer:\n"
+                    "    def __enter__(self):\n"
+                    "        self.start = time.monotonic()\n"
+                    "        return self\n"
+                    "    def __exit__(self, exc_type, exc, tb):\n"
+                    "        self.elapsed = time.monotonic() - self.start\n"
+                    "        # вернуть True — подавит исключение\n"
+                    "        return False\n\n"
+                    "# Способ 2: contextlib.contextmanager (короче)\n"
+                    "from contextlib import contextmanager\n"
+                    "@contextmanager\n"
+                    "def timer():\n"
+                    "    start = time.monotonic()\n"
+                    "    try:\n"
+                    "        yield                    # код внутри `with` выполняется здесь\n"
+                    "    finally:\n"
+                    "        print(time.monotonic() - start)\n\n"
+                    "with timer():\n"
+                    "    do_work()"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Dataclass / NamedTuple / TypedDict",
+                "items": [
+                    {"k": "**`@dataclass`**",       "v": "обычный класс + автогенерация __init__/__repr__/__eq__. Mutable по умолчанию"},
+                    {"k": "**`dataclass(frozen=True)`**", "v": "immutable + hashable. Аналог struct"},
+                    {"k": "**`NamedTuple`**",         "v": "tuple + именованные поля. Immutable, hashable, легче dataclass-frozen"},
+                    {"k": "**`TypedDict`**",           "v": "dict с проверкой ключей через mypy. Не runtime-проверка"},
+                    {"k": "**Pydantic `BaseModel`**",   "v": "dataclass + runtime-валидация + JSON. Стандарт для API"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Дескрипторы (фундамент Pydantic / SQLAlchemy)",
+                "items": [
+                    {"k": "**Data descriptor**",     "v": "класс с `__get__` + `__set__` / `__delete__`. Перехватывает ВСЁ через атрибут"},
+                    {"k": "**Non-data descriptor**", "v": "только `__get__`. Перебивается `instance.__dict__`"},
+                    {"k": "**`property`**",           "v": "data descriptor с тремя callback (`fget`, `fset`, `fdel`)"},
+                    {"k": "**`classmethod`/`staticmethod`**", "v": "non-data descriptors, реализованы как дескрипторы"},
+                    {"k": "**Pydantic Field**",       "v": "data descriptor с runtime-валидацией"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`super().__init__()` — идёт по MRO, а не к прямому родителю.** В diamond `D(B, C)` → `B.__init__` → `super()` в B вызовет `C.__init__`, не `A`. Это конкретно про cooperative inheritance в Python."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Переопределил `__eq__` — определи и `__hash__`.** Иначе объект перестаёт быть hashable. Для immutable value objects лучший вариант — `@dataclass(frozen=True)`: всё генерируется автоматически и согласованно."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`@cached_property` — однократное вычисление.** Хранится в `instance.__dict__`, на следующих обращениях лежит готовое. В отличие от `@property` — без overhead, в отличие от `@lru_cache` — на instance."},
+        ],
     },
     "py_async": {
         "title": "GIL, потоки, asyncio",
@@ -2759,6 +3253,160 @@ TOPICS = {
             {"q": "Как запустить блокирующий код в async?", "a": "loop.run_in_executor(None, sync_func, args) выполняет функцию в ThreadPoolExecutor не блокируя event loop. None означает дефолтный executor. Для CPU-bound: ProcessPoolExecutor."},
             {"q": "Как отменить asyncio Task?", "a": "task.cancel() посылает CancelledError в корутину на ближайшем await. Для защиты части кода от отмены: asyncio.shield(coro). Всегда обрабатывать CancelledError в cleanup коде."},
             {"q": "Что такое contextvars?", "a": "contextvars.ContextVar хранит значения, изолированные по контексту исполнения (аналог thread-local для asyncio). Используется для request-id, user-info, которые нужно пробрасывать через цепочку await без явной передачи параметров."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**GIL** разрешает только одному потоку исполнять Python bytecode → потоки **не параллельны** на CPU. IO-bound: threading или **asyncio** (легче). CPU-bound: **multiprocessing** (свой GIL у каждого процесса). FastAPI — async, любой блокирующий вызов в корутине **роняет throughput всего сервиса**."},
+            {
+                "type": "compare",
+                "title": "Threading / Multiprocessing / Asyncio",
+                "items": [
+                    {"title": "**Threading**",
+                     "points": [
+                         "Несколько OS-потоков, общая память",
+                         "GIL → **не параллелит CPU**",
+                         "Хорошо для **IO-bound** (GIL отпускается)",
+                         "Тяжелее корутин, но легко в legacy",
+                     ]},
+                    {"title": "**Multiprocessing**",
+                     "points": [
+                         "Отдельные процессы, **свой GIL**",
+                         "Параллелит **CPU-bound**",
+                         "Дорогая коммуникация (pickle через pipe)",
+                         "numpy, обработка данных, ML-предобработка",
+                     ]},
+                    {"title": "**Asyncio**",
+                     "points": [
+                         "Одиночный event loop, корутины кооперативно",
+                         "Тысячи одновременных IO без overhead",
+                         "**Любой блокирующий вызов = смерть**",
+                         "FastAPI, aiohttp, asyncpg",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Что брать под задачу",
+                "headers": ["Задача", "Решение", "Почему"],
+                "rows": [
+                    ["10K параллельных HTTP-запросов",   "**asyncio + aiohttp**",         "корутины дёшевы"],
+                    ["Numpy / pandas обработка",          "**multiprocessing**",            "GIL не пускает потоки"],
+                    ["Параллельный download файлов",     "asyncio (или ThreadPool)",      "IO-bound"],
+                    ["FastAPI endpoint (async def)",      "asyncio + asyncpg/httpx",       "не блокировать event loop"],
+                    ["Tight CPU loop в нейросети",         "PyTorch/numpy (C-библиотеки)",   "GIL отпускается в C-коде"],
+                    ["Существующая sync-библиотека",       "`run_in_executor`",              "потоки в фоне, async снаружи"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "asyncio.gather: параллельный fetch",
+                "code": (
+                    "import asyncio, httpx\n\n"
+                    "async def fetch(client, url):\n"
+                    "    r = await client.get(url, timeout=5.0)\n"
+                    "    r.raise_for_status()\n"
+                    "    return r.json()\n\n"
+                    "async def main(urls):\n"
+                    "    async with httpx.AsyncClient() as client:\n"
+                    "        # параллельно, не последовательно!\n"
+                    "        results = await asyncio.gather(\n"
+                    "            *(fetch(client, u) for u in urls),\n"
+                    "            return_exceptions=True,    # одна ошибка не отменяет остальные\n"
+                    "        )\n"
+                    "    return [r for r in results if not isinstance(r, Exception)]\n\n"
+                    "asyncio.run(main(urls))"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Блокирующий код → run_in_executor",
+                "code": (
+                    "import asyncio\n"
+                    "from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor\n\n"
+                    "executor = ProcessPoolExecutor(max_workers=4)\n\n"
+                    "def cpu_heavy(x):\n"
+                    "    return sum(i*i for i in range(x))\n\n"
+                    "async def handler(x):\n"
+                    "    loop = asyncio.get_running_loop()\n"
+                    "    # CPU-bound в отдельный процесс — не блокируем event loop\n"
+                    "    result = await loop.run_in_executor(executor, cpu_heavy, x)\n"
+                    "    return result\n\n"
+                    "# В FastAPI: async def endpoint(...): результат через executor"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Грабли в async-коде",
+                "items": [
+                    {"k": "❌ **`time.sleep(n)`**",        "v": "блокирует event loop. Использовать `await asyncio.sleep(n)`"},
+                    {"k": "❌ **`requests.get(...)`**",    "v": "sync HTTP — блокирует. Использовать `httpx.AsyncClient()` или `aiohttp`"},
+                    {"k": "❌ **`open()` / `os.read`**",  "v": "файловое IO sync — `aiofiles` или `run_in_executor`"},
+                    {"k": "❌ **`psycopg2`**",             "v": "sync DB driver — использовать `asyncpg`"},
+                    {"k": "❌ Долгий CPU-loop",             "v": "блокирует, даже если внутри `await`-ов нет"},
+                    {"k": "✅ **`run_in_executor`**",      "v": "для legacy sync-кода — отправь в thread pool"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "asyncio API — что когда брать",
+                "headers": ["API", "Что делает", "Когда"],
+                "rows": [
+                    ["**`asyncio.run(coro)`**",             "запустить main coro",                "точка входа"],
+                    ["**`asyncio.gather(*coros)`**",         "параллельно, в порядке аргументов",   "обычный fan-out"],
+                    ["**`asyncio.wait(coros, ...)`**",       "low-level, FIRST_COMPLETED / FIRST_EXCEPTION", "тонкий контроль"],
+                    ["**`asyncio.create_task(coro)`**",      "запустить корутину в фоне",            "fire-and-forget или background"],
+                    ["**`asyncio.TaskGroup`** (3.11+)",      "structured concurrency, exception handling", "**рекомендованный** способ для groups"],
+                    ["**`asyncio.timeout(s)`**",              "context manager с таймаутом",          "`async with timeout(5):`"],
+                    ["**`asyncio.shield(coro)`**",            "защита от отмены",                     "критичный cleanup-код"],
+                    ["**`asyncio.Queue`**",                    "producer-consumer",                    "fan-in / fan-out"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Structured concurrency: TaskGroup (Python 3.11+)",
+                "code": (
+                    "import asyncio\n\n"
+                    "async def main():\n"
+                    "    async with asyncio.TaskGroup() as tg:\n"
+                    "        t1 = tg.create_task(fetch_user())\n"
+                    "        t2 = tg.create_task(fetch_orders())\n"
+                    "        t3 = tg.create_task(fetch_recommendations())\n"
+                    "        # все три — параллельно\n"
+                    "    # после выхода из with все Task-и завершены\n"
+                    "    # если одна упала — остальные отменяются автоматически\n"
+                    "    return t1.result(), t2.result(), t3.result()"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Cancellation и shielding",
+                "items": [
+                    {"k": "**`task.cancel()`**",       "v": "посылает `CancelledError` в корутину на ближайшем `await`"},
+                    {"k": "**Обработка**",              "v": "`try: await ...; except CancelledError: cleanup; raise` — обязательно re-raise"},
+                    {"k": "**`asyncio.shield(coro)`**", "v": "защита кусочка от отмены — критичные транзакции, лог-флаш"},
+                    {"k": "**`asyncio.timeout(s)`**",    "v": "context manager — внутри отменит при превышении"},
+                    {"k": "**Не подавлять**",             "v": "не делай `except CancelledError: pass` — это сломает cancellation contract"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "contextvars — request-id через цепочку",
+                "items": [
+                    {"k": "**Что это**",   "v": "thread-local-аналог для asyncio. Изолирован по «контексту исполнения»"},
+                    {"k": "**Use-case**",  "v": "request_id / user_id / trace_id — пробрасываются неявно во все корутины"},
+                    {"k": "**API**",       "v": "`var = ContextVar('name'); var.set(value); var.get()`"},
+                    {"k": "**Logging**",    "v": "`logger.info('...', extra={'request_id': request_id_var.get()})`"},
+                ],
+            },
+            {"type": "callout", "kind": "warning",
+             "content": "**Один `time.sleep(2)` в корутине — кладёт весь сервис.** Event loop одиночный, пока sleep блокирует — никто другой не обрабатывается. На 1K RPS это сразу 2K ожидающих запросов и timeout-ы. **Только** `await asyncio.sleep`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**GIL отпускается в C-коде.** numpy, pytorch, requests внутри — это C-вызовы. Поэтому threading **полезен** для IO-bound и тяжёлой numpy-математики, хотя «не параллелит Python»."},
+            {"type": "callout", "kind": "tip",
+             "content": "**TaskGroup > gather для нового кода (3.11+).** Structured concurrency: исключения нормально пропагируются, при ошибке одной таски остальные корректно отменяются. `gather` оставляет «висящие» таски при ошибке без `return_exceptions`."},
         ],
     },
     "py_typing": {
