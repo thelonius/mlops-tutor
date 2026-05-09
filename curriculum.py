@@ -113,6 +113,64 @@ TOPICS = {
             {"q": "Зачем использовать непривилегированного пользователя в контейнере?", "a": "По умолчанию процесс работает как root внутри контейнера. USER nobody снижает риск при побеге из контейнера."},
             {"q": "Как пробросить секреты в build без записи в слой?", "a": "RUN --mount=type=secret позволяет прочитать файл секрета во время сборки, не сохраняя его в layer history."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Образ** — иммутабельный шаблон, **контейнер** — запущенный процесс. Базис всего MLOps. Главные приёмы: **multi-stage build** (10× меньше образ), **layer caching** (`COPY requirements.txt` до `COPY . .`), **`.dockerignore`** (без `.git`, без датасетов), **non-root USER**."},
+            {
+                "type": "compare",
+                "title": "Image vs Container",
+                "items": [
+                    {"title": "**Image**",
+                     "points": ["Иммутабельный шаблон", "Состоит из слоёв", "Хранится в registry", "Имеет тег: `app:1.2`"]},
+                    {"title": "**Container**",
+                     "points": ["Запущенный процесс из image", "Writable layer сверху", "Можно остановить/удалить", "Один image → много контейнеров"]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "dockerfile",
+                "caption": "Минимальный Dockerfile для ML-сервиса",
+                "code": (
+                    "FROM nvcr.io/nvidia/pytorch:23.10-py3\n\n"
+                    "WORKDIR /app\n"
+                    "COPY requirements.txt .\n"
+                    "RUN pip install --no-cache-dir -r requirements.txt\n\n"
+                    "COPY . .\n\n"
+                    "USER nobody\n"
+                    "EXPOSE 8000\n"
+                    'CMD ["python", "serve.py"]'
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Best practices",
+                "kind": "do",
+                "items": [
+                    "`COPY requirements.txt` **до** `COPY . .` — кеш не ломается",
+                    "Multi-stage build: компиляция в одном stage, артефакт в slim",
+                    "`.dockerignore`: `.git`, `__pycache__`, датасеты, `.env`",
+                    "Непривилегированный `USER`",
+                    "Прибивать версии: `python:3.11-slim`",
+                    "`RUN --mount=type=secret` для build-time секретов",
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Команды-шпаргалка",
+                "items": [
+                    {"k": "`docker build -t my:tag .`",         "v": "собрать"},
+                    {"k": "`docker run --gpus all my:tag`",     "v": "запустить с GPU"},
+                    {"k": "`docker exec -it <c> bash`",          "v": "зайти в контейнер"},
+                    {"k": "`docker logs -f <c>`",                "v": "стримить логи"},
+                    {"k": "`docker compose up -d --build`",      "v": "пересобрать стек"},
+                    {"k": "`docker system prune -a`",             "v": "вычистить неиспользуемое"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Multi-stage = 10× меньше образ.** Сборка с gcc и тестами в одном stage, результат копируется в `python:3.11-slim`. С 2 GB до 200 MB."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Cache busting на `COPY .`.** Любая правка кода инвалидирует все слои ниже. Поэтому `requirements.txt` копируется отдельно."},
+        ],
     },
     "k8s_basics": {
         "title": "Kubernetes: Pod, Deployment, Service",
@@ -132,6 +190,81 @@ TOPICS = {
             {"q": "Как сделать rollback Deployment?", "a": "kubectl rollout undo deployment/<name>. История хранится в аннотациях ReplicaSet, количество ревизий задаётся revisionHistoryLimit."},
             {"q": "Что такое ClusterIP vs NodePort vs LoadBalancer?", "a": "ClusterIP — только внутри кластера. NodePort — открывает порт на каждой ноде. LoadBalancer — создаёт внешний балансировщик у cloud provider."},
             {"q": "Как ограничить ресурсы пода?", "a": "resources.requests задаёт минимум для планировщика. resources.limits — жёсткий потолок. Под с превышением лимита по памяти убивается OOMKiller."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Pod** — одна копия, **Deployment** — N реплик с rolling-update, **Service** — стабильный endpoint через `selector`. **`requests`** для scheduler, **`limits`** для жёсткого потолка. **`readinessProbe`** обязателен."},
+            {
+                "type": "compare",
+                "title": "Pod / Deployment / Service",
+                "items": [
+                    {"title": "**Pod**",
+                     "points": ["Один или несколько контейнеров", "Общий network namespace", "Эфемерный, IP меняется", "Сам **не** перезапускается"]},
+                    {"title": "**Deployment**",
+                     "points": ["Управляет ReplicaSet", "N реплик одного Pod", "Rolling update + rollback", "Декларативный"]},
+                    {"title": "**Service**",
+                     "points": ["Стабильный virtual IP/DNS", "Балансирует трафик на поды", "Находит поды через `selector`", "ClusterIP / NodePort / LoadBalancer"]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "Минимальный Deployment + Service",
+                "code": (
+                    "apiVersion: apps/v1\n"
+                    "kind: Deployment\n"
+                    "metadata: { name: api }\n"
+                    "spec:\n"
+                    "  replicas: 3\n"
+                    "  selector:\n"
+                    "    matchLabels: { app: api }\n"
+                    "  template:\n"
+                    "    metadata: { labels: { app: api } }\n"
+                    "    spec:\n"
+                    "      containers:\n"
+                    "      - name: api\n"
+                    "        image: my-api:1.0\n"
+                    "        ports: [{ containerPort: 8000 }]\n"
+                    "        readinessProbe:\n"
+                    "          httpGet: { path: /health, port: 8000 }\n"
+                    "        resources:\n"
+                    "          requests: { cpu: 100m, memory: 256Mi }\n"
+                    "          limits:   { cpu: 500m, memory: 512Mi }\n"
+                    "---\n"
+                    "apiVersion: v1\n"
+                    "kind: Service\n"
+                    "metadata: { name: api }\n"
+                    "spec:\n"
+                    "  selector: { app: api }\n"
+                    "  ports: [{ port: 80, targetPort: 8000 }]"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Probes",
+                "items": [
+                    {"k": "**`readinessProbe`**", "v": "пока не пройдёт — под не получает трафик"},
+                    {"k": "**`livenessProbe`**",   "v": "при провале — kubelet перезапустит"},
+                    {"k": "**`startupProbe`**",     "v": "защита для медленного старта (модель грузится 2 минуты)"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "kubectl-шпаргалка",
+                "items": [
+                    {"k": "`kubectl get pods -A`",                   "v": "все поды"},
+                    {"k": "`kubectl logs <pod> -f`",                 "v": "стримить логи"},
+                    {"k": "`kubectl logs <pod> --previous`",          "v": "логи упавшего"},
+                    {"k": "`kubectl describe pod <pod>`",              "v": "events, причина CrashLoop"},
+                    {"k": "`kubectl exec -it <pod> -- sh`",            "v": "зайти в под"},
+                    {"k": "`kubectl rollout undo deploy/<name>`",      "v": "rollback"},
+                    {"k": "`kubectl port-forward <pod> 8000:8000`",    "v": "локальный туннель"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Resources обязательны.** `requests` — минимум для scheduler, `limits` — жёсткий потолок. Без requests планировщик не разместит под на нагруженной ноде. Превышение memory limit → OOMKilled."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Rolling update без `readinessProbe`** = трафик уходит на «ещё не готовый» под, пользователи видят 502. Probe критичен для zero-downtime."},
         ],
     },
     "k8s_storage": {
@@ -1144,6 +1277,88 @@ TOPICS = {
             {"q": "Что такое training-serving skew?", "a": "Расхождение между фичами при обучении и в продакшне. Возникает при разной логике препроцессинга или временных сдвигах. Feature store с общей логикой offline/online снижает риск."},
             {"q": "Как оценить ресурсы для GPU-кластера?", "a": "Считать: RPS × latency_target → сколько GPU нужно на пиковую нагрузку. Умножить на коэффициент запаса 1.3–1.5, учесть burst и autoscaling время реакции."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**ML System Design для MLOps** — финальный раунд Senior-собеседования. Структура ответа: requirements → capacity → high-level → deep-dive → monitoring + rollback. Главные оси: **latency budget**, **autoscaling** (KEDA), **HA** через несколько реплик + PDB, **model registry** + откат через Argo Rollouts."},
+            {
+                "type": "flow",
+                "title": "Структура ответа",
+                "branches": [
+                    {"condition": "1. Requirements",       "outcome": "функциональные + non-функциональные (latency, RPS, consistency)"},
+                    {"condition": "2. Capacity",            "outcome": "RPS, GPU memory, storage"},
+                    {"condition": "3. High-level",          "outcome": "training pipeline + feature store + serving"},
+                    {"condition": "4. Deep-dive",            "outcome": "одно узкое место подробно (Triton tuning, autoscaling)"},
+                    {"condition": "5. Monitoring + откат",   "outcome": "Prometheus + Grafana + alerting + Argo Rollouts"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Latency budget на инференс",
+                "items": [
+                    {"k": "**Сеть (LB → API)**",     "v": "5-10 мс"},
+                    {"k": "**Препроцессинг**",         "v": "5-30 мс (tokenization, image resize)"},
+                    {"k": "**Feature lookup**",         "v": "1-5 мс из online store (Redis/DynamoDB)"},
+                    {"k": "**Inference**",               "v": "20-100 мс (зависит от модели, GPU, batch)"},
+                    {"k": "**Постпроцессинг + biz logic**", "v": "5-20 мс"},
+                    {"k": "**SLO p99**",                  "v": "обычно 100-300 мс — целевой суммарный"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "yaml",
+                "caption": "KEDA autoscaling по очереди Triton",
+                "code": (
+                    "apiVersion: keda.sh/v1alpha1\n"
+                    "kind: ScaledObject\n"
+                    "metadata: { name: triton-scaler }\n"
+                    "spec:\n"
+                    "  scaleTargetRef:\n"
+                    "    name: triton-deploy\n"
+                    "  minReplicaCount: 2\n"
+                    "  maxReplicaCount: 20\n"
+                    "  triggers:\n"
+                    "  - type: prometheus\n"
+                    "    metadata:\n"
+                    "      serverAddress: http://prometheus.svc:9090\n"
+                    "      query: |\n"
+                    "        rate(nv_inference_queue_duration_us_sum[1m])\n"
+                    "          / rate(nv_inference_request_success[1m])\n"
+                    "      threshold: '50000'        # 50 мс среднего queue duration"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Чеклист SD по слоям",
+                "headers": ["Слой", "Что обсудить", "Метрики"],
+                "rows": [
+                    ["**Data**",         "источники, схема, версионирование (DVC), feature store", "data drift, schema validation"],
+                    ["**Training**",      "ClearML/Kubeflow pipeline, GPU кластер, retrain cadence", "качество модели, время на retrain"],
+                    ["**Registry**",      "версионирование, staging → prod, провенанс",          "lineage chain"],
+                    ["**Serving**",       "Triton, vLLM, vRAM, instance_group, dynamic batching", "RPS, latency p99, queue duration"],
+                    ["**Routing**",       "feature lookup, А/B/canary через Argo Rollouts",        "split rates, error rates"],
+                    ["**Monitoring**",     "Prometheus, Grafana, dcgm-exporter, Evidently",         "infra + service + model качество"],
+                    ["**Rollback**",       "Helm revision, model registry previous, Argo undo",     "MTTR"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "HA для инференса",
+                "items": [
+                    {"k": "**N replicas Triton**",    "v": "2+ за LoadBalancer, разные ноды через podAntiAffinity"},
+                    {"k": "**PodDisruptionBudget**",  "v": "не больше 1 пода вне игры одновременно при drain"},
+                    {"k": "**readinessProbe**",        "v": "не пускаем трафик до загрузки модели"},
+                    {"k": "**livenessProbe**",          "v": "перезапускаем зависшие"},
+                    {"k": "**circuit breaker**",         "v": "fallback на старую версию при error spike"},
+                    {"k": "**Multi-region**",             "v": "при критичной 99.99% — две зоны/региона"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**ML SD = backend SD + специфика.** Используй обычные приёмы (LB, кеш, очередь, репликация), но добавляй: feature store, model registry, drift monitoring, retraining loop. Не изобретай велосипед — большинство проблем решается стандартно."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Latency budget — главный инструмент.** Распиши целевой p99 по компонентам и в каждом считай маржу. Это сразу покажет, где оптимизировать (обычно — дольше всего prefill в LLM или длинный feature lookup)."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Без отката — без рассказа.** Любой production ML-сервис должен иметь способ откатить деплой за < 1 минуту. Argo Rollouts + Helm history + model registry previous version — стандартный набор."},
+        ],
     },
     "ml_linear": {
         "title": "Линейные модели и регуляризация",
@@ -1731,6 +1946,56 @@ TOPICS = {
             {"q": "Чем отличается underfitting от overfitting?", "a": "Underfitting (высокий bias): модель плохо работает и на train, и на val. Overfitting (высокий variance): отлично на train, плохо на val. Диагностика через разрыв train/val метрик."},
             {"q": "Как регуляризация влияет на bias-variance?", "a": "Сильная регуляризация ограничивает сложность модели → снижает variance, но увеличивает bias. Компромисс между ними — задача подбора силы регуляризации."},
             {"q": "Что такое double descent?", "a": "При очень большом числе параметров (interpolation threshold) тестовая ошибка снова начинает снижаться после роста. Объясняет, почему большие нейросети без регуляризации иногда обобщаются хорошо."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**MSE = bias² + variance + noise.** **High bias** = слишком простая модель. **High variance** = слишком сложная. Лечатся **разными** способами. Если перепутать — станет хуже."},
+            {
+                "type": "compare",
+                "title": "Bias vs Variance",
+                "items": [
+                    {"title": "**High Bias (underfit)**",
+                     "points": [
+                         "Train **и** val ошибки высокие",
+                         "Они близки друг к другу",
+                         "Модель упрощает задачу",
+                         "Лечение: усложнить, добавить признаки, убрать регуляризацию",
+                     ]},
+                    {"title": "**High Variance (overfit)**",
+                     "points": [
+                         "Train ошибка низкая",
+                         "Val ошибка высокая",
+                         "Большой gap между ними",
+                         "Лечение: регуляризация, больше данных, dropout, ансамбль",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Диагностика по learning curves",
+                "headers": ["Симптом", "Train", "Val", "Что это", "Что делать"],
+                "rows": [
+                    ["Обе кривые сошлись высоко",      "0.40", "0.45", "high bias",     "усложнить модель"],
+                    ["Низкий train, высокий val",     "0.05", "0.35", "high variance", "регуляризация / больше данных"],
+                    ["Val растёт после N эпох",        "↓",    "↑",   "overfit во времени", "early stopping"],
+                    ["Val плато, train не падает",    "↑",    "↑",   "проверь данные", "leakage? шум? баг в FE?"],
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Что делать",
+                "branches": [
+                    {"condition": "high bias",        "outcome": "сложнее модель / больше признаков / меньше регуляризации"},
+                    {"condition": "high variance",    "outcome": "больше данных / регуляризация / dropout / ансамбль"},
+                    {"condition": "оба плохо",        "outcome": "проверь данные: leakage, шум, баг в FE"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Больше данных помогает только при variance.** При bias модель не выучит зависимость даже с бесконечными данными — не хватает выразительности."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Регуляризация — рукоятка bias-variance.** Сильнее регуляризация → ниже variance, выше bias. Подбор силы — это поиск compromise по cross-validation."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Double descent.** При огромном числе параметров test ошибка снова падает. Это объясняет, почему большие сети без регуляризации иногда обобщаются хорошо."},
         ],
     },
     "ml_validation": {
@@ -2915,6 +3180,95 @@ TOPICS = {
             {"q": "Как рисовать диаграмму текстом?", "a": "Client → [Load Balancer] → [API Service] → [Cache (Redis)] → [DB (Postgres)]. Стрелки показывают поток данных. Квадратные скобки — компоненты. Пояснять цифры: '5k RPS на LB, 500 RPS на DB'."},
             {"q": "Когда делать deep dive?", "a": "После high-level дизайна спросить интервьюера: 'какой компонент разобрать подробнее?' Если не уточнил — выбрать самый нетривиальный (обычно БД или очередь). Показать, что понимаешь where the hard part is."},
             {"q": "Как считать capacity estimation быстро?", "a": "Запомнить базовые числа: 1 день = 86400 сек ≈ 10^5. 1M DAU × 10 запросов = 10M/день ≈ 100 RPS. 1 байт текста, 1KB JSON, 1MB фото, 100MB видео. Storage = RPS × размер × retention в секундах."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**SD-интервью** — это не «знаю ли я Cassandra», а **процесс**: 5 этапов за 45-60 минут. Структура важнее эрудиции. Ясно произносить trade-offs, выбирать deep-dive с интервьюером, рассуждать вслух при незнании."},
+            {
+                "type": "flow",
+                "title": "Шаблон 45-60 минут",
+                "branches": [
+                    {"condition": "1. Clarification (5 мин)",     "outcome": "функциональные / non-functional / границы. ЗАДАВАТЬ вопросы"},
+                    {"condition": "2. Capacity (5 мин)",            "outcome": "DAU → RPS → storage → bandwidth. Округлять до порядков"},
+                    {"condition": "3. High-level (10 мин)",        "outcome": "клиент → LB → API → кеш / БД / queue / worker. Текстовая диаграмма"},
+                    {"condition": "4. Data model + API (5 мин)",   "outcome": "ключевые таблицы / endpoints / события"},
+                    {"condition": "5. Deep-dive (15-20 мин)",       "outcome": "**один** компонент подробно. **Спрашиваем интервьюера** какой"},
+                    {"condition": "6. Trade-offs + scaling (5 мин)", "outcome": "что не идеально, как мониторить, как откатить"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Базовые числа для прикидок",
+                "items": [
+                    {"k": "**1 день**",          "v": "86400 сек ≈ 10⁵"},
+                    {"k": "**1M DAU × 10 действий**", "v": "10M/день ≈ 115 RPS, peak ×3-5"},
+                    {"k": "**1 байт текста**",     "v": "имя, email"},
+                    {"k": "**1 KB JSON**",          "v": "обычная запись"},
+                    {"k": "**1 MB фото**",          "v": "среднее изображение"},
+                    {"k": "**100 MB видео**",        "v": "1 минута 720p"},
+                    {"k": "**Storage = RPS × size × retention**", "v": "формула, всегда"},
+                    {"k": "**Replication factor**",  "v": "× 3 для безопасности"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Что говорить хорошо",
+                "kind": "do",
+                "items": [
+                    "«Уточнение перед дизайном — DAU, RPS, latency-target?»",
+                    "«Я выбираю Postgres, потому что нужны транзакции и сложные JOIN»",
+                    "«Это оптимизирует X ценой Y. Я готов пойти на это, потому что...»",
+                    "«Не уверен в этом, но рассуждал бы так: ... есть ли тут известный паттерн?»",
+                    "«Какой компонент углубить — БД или очередь?»",
+                    "«Как я буду откатить, если деплой пошёл не так?»",
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Что говорить плохо",
+                "kind": "dont",
+                "items": [
+                    "«Используем Cassandra, потому что я её знаю»",
+                    "Молчать при незнании",
+                    "Прыгать сразу в deep-dive без high-level",
+                    "Игнорировать trade-offs",
+                    "Считать capacity до знаков (нужно — до порядков)",
+                    "Дизайнить «на бумаге», не задавая вопросов 5 минут",
+                    "Не упомянуть мониторинг, alerting, rollback",
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "text",
+                "caption": "Текстовая диаграмма — пример",
+                "code": (
+                    "Client → [LB (L7, NLB)] → [API Service (5 replicas, async)]\n"
+                    "                              ↓\n"
+                    "                          [Redis cache (1KB items, TTL 5min)]\n"
+                    "                              ↓ miss\n"
+                    "                          [Postgres primary + 2 replicas]\n"
+                    "                              ↓ events\n"
+                    "                          [Kafka] → [worker] → [analytics]\n\n"
+                    "5K RPS на LB → ~500 RPS на DB после кеша"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "При незнании — что говорить",
+                "items": [
+                    {"k": "**Озвучь подход**",      "v": "«я бы начал с X, потому что...»"},
+                    {"k": "**Опиши известное**",      "v": "«знаю что есть Y и Z, разница в...»"},
+                    {"k": "**Спроси**",                 "v": "«какие constraints важнее: latency или consistency?»"},
+                    {"k": "**Не молчи**",                "v": "молчание = «не знаю». Рассуждение = «думаю»"},
+                    {"k": "**Признай ограничение**",       "v": "«в production я бы посмотрел detail, сейчас опишу high-level»"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Diagrm не в стороне.** Текстом или на whiteboard, всё равно — **рисуешь и проговариваешь одновременно**. Интервьюер видит, как ты думаешь, не только финальную картинку."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Deep-dive с интервьюером.** После high-level задай: «какой компонент углубить?» Это показывает, что ты готов слышать запрос, не только говорить. Если не уточнит — выбирай самый нетривиальный (обычно БД или очередь)."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Без trade-offs ответ не пройдёт.** «Используем X» — нет. «Используем X, потому что Y, ценой Z» — да. Интервьюер хочет видеть, что ты ВЫБИРАЕШЬ, а не угадываешь."},
         ],
     },
     "py_data_types": {
@@ -4320,6 +4674,102 @@ TOPICS = {
             {"q": "Мини-проект FastAPI: что должно быть?", "a": "Pydantic модели для request/response. async def роут. Depends для получения ресурса (сессии, auth). HTTPException для ошибок. response_model для документации. Покрытие основных edge cases."},
             {"q": "Как отвечать на 'а можно лучше'?", "a": "Назвать текущую сложность. Описать узкое место. Предложить улучшение с обоснованием нового Big-O. Упомянуть trade-off (память/время, читаемость/производительность)."},
             {"q": "Что проверяет интервьюер в Python-секции?", "a": "Знание языковых механизмов (GIL, MRO, descriptors). Умение писать чистый идиоматичный код с типами. Понимание async. Способность дебажить и находить проблемы в коде собеседника."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Python-интервью** = язык + структуры + одна live-coding + (часто) мини FastAPI/SD. Скорость на базовых ловушках важнее эрудиции. Главные test points: **GIL**, **mutable default**, **dict внутренности**, **async**, **dataclass/Pydantic**, идиоматичный код."},
+            {
+                "type": "table",
+                "title": "Топ-вопросы по разделам",
+                "headers": ["Раздел", "Что спросят", "Главное в ответе"],
+                "rows": [
+                    ["**GIL / async**",        "когда threading vs multiprocessing vs asyncio",  "**IO** → threading/asyncio, **CPU** → multiprocessing"],
+                    ["**Структуры**",            "сложности list/dict/set/deque, hash, mutable default", "table в голове"],
+                    ["**ООП / магия**",          "MRO, __slots__, __eq__/__hash__, descriptors",     "C3, инвариант eq+hash"],
+                    ["**Типизация**",             "TypedDict / Protocol / Annotated / generics",       "Pydantic читает аннотации"],
+                    ["**Pydantic v2**",            "model_validate, field_validator, BaseSettings",     "Rust-ядро, новые имена"],
+                    ["**FastAPI / async**",         "Depends, lifespan, не блокировать event loop",      "BackgroundTasks ≠ Celery"],
+                    ["**Live-coding**",              "two sum / sliding window / heap / LRU",            "проговаривать паттерн ДО кода"],
+                    ["**Тестирование**",              "fixtures, scope, parametrize, monkeypatch",        "patch там где **используется**"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Классические питфолы Python",
+                "items": [
+                    {"k": "**Mutable default arg**",     "v": "`def f(x=[])` — список общий между вызовами. `x=None`"},
+                    {"k": "**`is` vs `==`**",              "v": "`is` только для None / True / False / sentinel. `==` для значений"},
+                    {"k": "**`a = b = []`**",               "v": "оба указывают на ОДИН список"},
+                    {"k": "**Late binding в lambda**",       "v": "`fns = [lambda: i for i in range(3)]` — все вернут 2. Использовать default arg `i=i`"},
+                    {"k": "**`time.sleep` в async**",         "v": "блокирует event loop. `await asyncio.sleep`"},
+                    {"k": "**`int` 256 vs 257**",              "v": "is True для 256, False для 257 — int-кеш CPython"},
+                    {"k": "**`list.pop(0)` = O(n)**",           "v": "для FIFO — `collections.deque`"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Two sum — классика live-coding",
+                "code": (
+                    "def two_sum(nums: list[int], target: int) -> tuple[int, int] | None:\n"
+                    "    seen: dict[int, int] = {}\n"
+                    "    for i, x in enumerate(nums):\n"
+                    "        complement = target - x\n"
+                    "        if complement in seen:\n"
+                    "            return (seen[complement], i)\n"
+                    "        seen[x] = i\n"
+                    "    return None\n\n"
+                    "# Как ответ:\n"
+                    "# 1. Brute force O(n²) — два цикла\n"
+                    "# 2. Лучше: hash map, O(n) time / O(n) space\n"
+                    "# 3. Edge case: дубликаты, target = 2*x"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "FastAPI mini-project — что показать",
+                "code": (
+                    "from fastapi import FastAPI, Depends, HTTPException\n"
+                    "from pydantic import BaseModel, Field\n"
+                    "from typing import Annotated\n\n"
+                    "class TaskIn(BaseModel):\n"
+                    "    title: Annotated[str, Field(min_length=1, max_length=200)]\n"
+                    "    priority: int = Field(ge=1, le=5)\n\n"
+                    "class TaskOut(TaskIn):\n"
+                    "    id: int\n\n"
+                    "async def get_db(): ...      # Depends\n\n"
+                    "@app.post('/tasks', status_code=201, response_model=TaskOut)\n"
+                    "async def create_task(\n"
+                    "    task: TaskIn,\n"
+                    "    db: Annotated[Connection, Depends(get_db)],\n"
+                    ") -> TaskOut:\n"
+                    "    try:\n"
+                    "        row = await db.fetchrow('INSERT ... RETURNING *', task.title, task.priority)\n"
+                    "    except UniqueViolation:\n"
+                    "        raise HTTPException(409, detail='exists')\n"
+                    "    return TaskOut(**row)"
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Pre-flight чек-лист",
+                "kind": "do",
+                "items": [
+                    "Знаю table сложностей list/dict/set/deque наизусть",
+                    "Могу за 2 мин объяснить GIL и трёх его собратьев (threading/multiprocessing/asyncio)",
+                    "Mutable default arg — пример сразу",
+                    "MRO и super() — могу нарисовать diamond inheritance",
+                    "Pydantic v2 — model_validate/dump/field_validator/BaseSettings",
+                    "FastAPI — Depends + lifespan + не блокировать event loop",
+                    "8-10 LeetCode шаблонов — sliding window, two pointers, heap, BS, BFS/DFS, hash, prefix sum, monotonic stack",
+                    "Тесты с pytest fixtures + parametrize + AsyncClient",
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Проговаривай решение ДО кода.** Сначала: «я бы решил через hash-map, O(n) time, O(n) space, edge case — дубликаты». Потом 30 секунд на код. Это сильнее чем «давай запишем»."},
+            {"type": "callout", "kind": "fact",
+             "content": "**На вопрос «а можно лучше»** — назови текущую сложность, узкое место, предложи улучшение с новым Big-O и trade-off. Это идеальный сценарий для интервьюера."},
         ],
     },
     "algo_basics": {
@@ -6325,6 +6775,105 @@ TOPICS = {
             {"q": "Как ответить на 'можно ли быстрее'?", "a": "Назвать текущую сложность и её узкое место. Подумать: нужна ли сортировка (O(n log n) нижняя граница?). Можно ли использовать хеш-таблицу? Применить двоичный поиск? Показать ход мышления."},
             {"q": "Как делать trace (прогон кода на примере)?", "a": "Взять небольшой пример (n=4-5). Идти по коду шаг за шагом, записывая значения переменных. Вслух: 'left=0, right=4, mid=2, a[mid]=5 < target → left = 3'. Показывает, что код верный."},
             {"q": "Что интервьюер оценивает в алгоритмической секции?", "a": "Коммуникация (объясняет мышление). Корректность (код работает на примерах). Знание сложности (называет без подсказки). Edge cases (проверяет граничные условия). Адаптивность (улучшает по наводке)."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Алгоритмическое интервью** = LeetCode Medium за 30-45 минут. **Структура важнее IQ**: clarify → examples → approach → code → test → optimize. Главное правило — **проговаривать вслух**. Тишина = чёрный ящик."},
+            {
+                "type": "flow",
+                "title": "6 шагов идеального ответа",
+                "branches": [
+                    {"condition": "1. **Clarify** (3 мин)",        "outcome": "диапазон n, дубликаты, отсортирован, edge cases, формат входа/выхода"},
+                    {"condition": "2. **Examples** (2 мин)",        "outcome": "взять пример из условия, нарисовать руками, edge case"},
+                    {"condition": "3. **Approach** (5 мин)",        "outcome": "узнать паттерн, проговорить вслух, **назвать Big-O**"},
+                    {"condition": "4. **Code** (15 мин)",            "outcome": "комментировать каждое решение, не молчать"},
+                    {"condition": "5. **Test** (3 мин)",              "outcome": "прогнать на примере, шаг за шагом, **записывать значения**"},
+                    {"condition": "6. **Optimize** (опц.)",            "outcome": "узкое место, новый алгоритм с обоснованием Big-O"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Что уточнять в Clarify",
+                "headers": ["Вопрос", "Зачем"],
+                "rows": [
+                    ["**Диапазон n?**",                    "10⁴ → O(n²) ОК. 10⁶ → нужен O(n log n). 10⁹ → только O(n) или O(log n)"],
+                    ["**Значения int/str/...**",           "может быть отрицательным, MAX_INT, Unicode"],
+                    ["**Дубликаты?**",                      "влияет на set/dict логику"],
+                    ["**Отсортирован?**",                    "если да — бинпоиск или two pointers"],
+                    ["**Можно ли модифицировать input?**",   "если да — можно in-place"],
+                    ["**Что вернуть при пустом входе?**",     "0, None, [], исключение?"],
+                    ["**Format:** массив, граф, граф adjacency / matrix?", "сразу понятно как читать"],
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Edge cases — что всегда проверить",
+                "kind": "do",
+                "items": [
+                    "Пустой массив / строка / None",
+                    "Один элемент",
+                    "Все одинаковые элементы",
+                    "Отрицательные числа / нули",
+                    "Уже отсортированный (best/worst для quicksort)",
+                    "Обратно отсортированный",
+                    "Очень большие n (overflow в C/Java; в Python только TLE)",
+                    "Дубликаты при поиске пары",
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Если застрял",
+                "items": [
+                    {"k": "❌ Молчать",                "v": "интервьюер не знает, думаешь ты или сдался"},
+                    {"k": "✅ **Рассказать brute force**", "v": "«сначала покажу O(n²), потом оптимизируем»"},
+                    {"k": "✅ **Озвучить варианты**",     "v": "«знаю что есть hash и BS, какой сюда лучше?»"},
+                    {"k": "✅ **Спросить подсказку**",     "v": "«какая сложность ожидается?» — Big-O = подсказка к паттерну"},
+                    {"k": "✅ **Признать ограничение**",    "v": "«не уверен в Y, но рассуждаю так...»"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Шаблон вслух → код",
+                "code": (
+                    "# Two Sum — классика\n"
+                    "# 1. Brute force O(n²) — два цикла\n"
+                    "# 2. Hash map: для x проверяем (target - x) в seen\n"
+                    "# 3. O(n) time, O(n) space, один проход\n"
+                    "# 4. Edge case: дубликаты — хранить ИНДЕКС, не значение\n\n"
+                    "def two_sum(nums: list[int], target: int) -> tuple[int, int] | None:\n"
+                    "    seen: dict[int, int] = {}\n"
+                    "    for i, x in enumerate(nums):\n"
+                    "        if (target - x) in seen:\n"
+                    "            return (seen[target - x], i)\n"
+                    "        seen[x] = i\n"
+                    "    return None\n\n"
+                    "# Test trace на [2, 7, 11, 15], target=9:\n"
+                    "# i=0, x=2 → seen={2:0}\n"
+                    "# i=1, x=7 → 9-7=2 в seen → return (0, 1)"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Распознавание паттерна по условию",
+                "headers": ["Признак", "Паттерн"],
+                "rows": [
+                    ["«Подмассив с условием»",                 "**Sliding window**"],
+                    ["«Пара/тройка с суммой» в отсортированном",  "**Two pointers**"],
+                    ["«Range sum query (несколько раз)»",          "**Prefix sum**"],
+                    ["«Top-K / k-й наибольший»",                    "**Heap** size K"],
+                    ["«Минимальный X, при котором...»",              "**Binary search** по ответу"],
+                    ["«Ближайший больший слева/справа»",              "**Monotonic stack**"],
+                    ["«Кратчайший путь без весов»",                    "**BFS**"],
+                    ["«Все перестановки/подмножества/комбинации»",      "**Backtracking**"],
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Brute force без молчания.** Если паттерн не виден — назови brute force с О(n²) ВСЛУХ. Это даёт время подумать о паттерне И показывает интервьюеру, что ты в работе. После — оптимизируем."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Big-O = подсказка к паттерну.** Если интервьюер ждёт «O(n log n)» — это бинпоиск или сортировка. «O(n)» — hash map, two pointers, sliding. «O(log n)» — точно бинпоиск. Большой constraint в условии = ожидание быстрее."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Не пиши код перед approach.** Сразу писать → правишь несколько раз → запутываешься. **Сначала** проговори идею за 2-3 минуты, **потом** 10-15 минут на чистый код."},
         ],
     },
     "mlsd_framing": {
