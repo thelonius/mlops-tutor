@@ -4207,6 +4207,94 @@ TOPICS = {
             {"q": "Как оценить сложность по памяти?", "a": "Считать отдельно от времени. Рекурсия глубиной d — O(d) памяти на стек. Создание нового массива размером n — O(n). Memoization fib — O(n). Оценивать всегда явно."},
             {"q": "O(n log n) нижняя граница для сортировки — почему?", "a": "Дерево решений comparison sort имеет n! листьев (все перестановки). Высота дерева ≥ log₂(n!) ≈ n log n по формуле Стирлинга. Нельзя отсортировать быстрее без дополнительных предположений о данных."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Big-O** — общий язык алгоритмических интервью. Считается **по росту**, не по абсолютным значениям. Главные классы: `O(1)` < `O(log n)` < `O(n)` < `O(n log n)` < `O(n²)` < `O(2ⁿ)` < `O(n!)`. Память считается отдельно от времени."},
+            {
+                "type": "table",
+                "title": "Классы сложности",
+                "headers": ["O(...)", "Что это", "Пример", "n=1M справится за"],
+                "rows": [
+                    ["**O(1)**",        "константа",                       "hash lookup, dict get",     "мгновенно"],
+                    ["**O(log n)**",   "деление пополам",                  "binary search, дерево поиска", "20 шагов"],
+                    ["**O(n)**",        "линейный проход",                  "linear search, sum",         "1 секунда"],
+                    ["**O(n log n)**",  "сортировка сравнениями",            "merge sort, Timsort",        "20 секунд"],
+                    ["**O(n²)**",        "вложенные циклы",                   "bubble sort, наивные пары",  "**слишком долго** (10⁶ × 10⁶ = 10¹²)"],
+                    ["**O(2ⁿ)**",        "бинарная рекурсия",                  "naive Fibonacci, brute-force подмножества", "невозможно при n > 30"],
+                    ["**O(n!)**",         "все перестановки",                   "TSP brute-force",            "невозможно при n > 10"],
+                ],
+                "note": "Считай: `n=10^6` за разумное время → O(n log n) max. n=10^9 → только O(n) или O(log n).",
+            },
+            {
+                "type": "compare",
+                "title": "Best / Average / Worst case",
+                "items": [
+                    {"title": "**Best**",
+                     "points": [
+                         "Самый удачный вход",
+                         "Quicksort: уже отсортирован → O(n) с проверкой",
+                         "Часто бесполезен на интервью",
+                     ]},
+                    {"title": "**Average**",
+                     "points": [
+                         "На случайных входах",
+                         "Quicksort: O(n log n)",
+                         "Обычно то, что хочешь",
+                     ]},
+                    {"title": "**Worst**",
+                     "points": [
+                         "Худший вход",
+                         "Quicksort: уже отсортирован + bad pivot → O(n²)",
+                         "**На интервью обычно спрашивают это**",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Расчёт сложности",
+                "items": [
+                    {"k": "**Вложенные циклы**",          "v": "перемножай: O(n) × O(m) = O(n·m)"},
+                    {"k": "**Деление пополам в цикле**",   "v": "O(log n). `while x > 0: x //= 2`"},
+                    {"k": "**Рекурсия**",                   "v": "дерево вызовов × работа в узле. fib(n): O(2ⁿ) без memo, O(n) с"},
+                    {"k": "**Master theorem**",              "v": "T(n) = a·T(n/b) + f(n) → O(n^log_b a) или O(f(n)·log n)"},
+                    {"k": "**Memoization**",                  "v": "n уникальных аргументов × работа на узел = O(n) для fib"},
+                    {"k": "**Амортизированная**",              "v": "общая стоимость / число операций. dynamic array append = O(1) аморт."},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Master theorem — примеры",
+                "code": (
+                    "# Merge sort: T(n) = 2T(n/2) + O(n)\n"
+                    "# a=2, b=2, f(n)=n. n^log_b(a) = n^1 = n\n"
+                    "# f(n) = O(n^log_b a) → O(n log n)   ✓\n\n"
+                    "# Binary search: T(n) = T(n/2) + O(1)\n"
+                    "# a=1, b=2, f(n)=1. n^log_b(a) = n^0 = 1\n"
+                    "# f(n) = O(1) = O(n^log_b a) → O(log n) (с поправкой)\n\n"
+                    "# Karatsuba: T(n) = 3T(n/2) + O(n)\n"
+                    "# a=3, b=2. n^log_2(3) ≈ n^1.58\n"
+                    "# f(n) = O(n) << n^1.58 → O(n^1.58)\n"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Память — отдельно",
+                "items": [
+                    {"k": "**Время и память — разные оси**", "v": "иногда меняем одно на другое (memoization, lookup tables)"},
+                    {"k": "**Рекурсия глубины d**",            "v": "**O(d) памяти** на стек вызовов"},
+                    {"k": "**Создание нового массива**",         "v": "O(n)"},
+                    {"k": "**In-place алгоритм**",                "v": "O(1) дополнительной памяти (помимо input)"},
+                    {"k": "**Memo dict для DP**",                  "v": "O(n) или O(n²) в зависимости от key-space"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Запомни орудия пыток:** `n=10⁴` → O(n²) ОК (10⁸ ops). `n=10⁶` → нужен O(n log n) или быстрее. `n=10⁹` → только O(n) или O(log n). На LeetCode constraint в условии = подсказка к target complexity."},
+            {"type": "callout", "kind": "fact",
+             "content": "**O(log n) на 10⁶ = 20 шагов.** Очень быстро. Бинарный поиск в массиве из миллиона — это меньше операций, чем чтение этой подсказки. Не недооценивай log."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**`list.pop(0)` — это O(n), не O(1).** Сдвигает все элементы влево. Для FIFO используй `collections.deque` с `popleft()` — там O(1)."},
+        ],
     },
     "algo_memory": {
         "title": "Память: стек и куча",
@@ -4247,6 +4335,98 @@ TOPICS = {
             {"q": "Как работает динамическое удвоение?", "a": "Когда список заполнен, Python выделяет новый буфер вдвое больше и копирует элементы. Копирование O(n), но происходит log(n) раз за n операций. Амортизированная стоимость append — O(1)."},
             {"q": "Что такое memory-mapped array?", "a": "numpy.memmap позволяет работать с файлом как с numpy-массивом: файл хранится на диске, OS подгружает нужные страницы. Для датасетов, не помещающихся в RAM."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Массив** = непрерывный кусок памяти + арифметика указателей. Доступ по индексу за **O(1)**. Вставка/удаление в середине — **O(n)** (сдвиг). Cache-friendly: соседние элементы рядом → CPU cache работает. В Python: `list` — array of pointers, `numpy.ndarray` — typed contiguous buffer."},
+            {
+                "type": "table",
+                "title": "Сложности операций",
+                "headers": ["Операция", "list", "deque", "numpy", "array.array"],
+                "rows": [
+                    ["**`x[i]` (random access)**",  "**O(1)**",  "O(n)",      "**O(1)**",  "**O(1)**"],
+                    ["**`append(x)`**",               "**O(1)***", "O(1)",     "—",          "O(1)*"],
+                    ["**`insert(0, x)`**",             "**O(n)**",  "**O(1)**", "—",          "O(n)"],
+                    ["**`pop()`**",                     "O(1)",     "O(1)",     "—",          "O(1)"],
+                    ["**`pop(0)`**",                     "**O(n)**", "**O(1)**", "—",          "O(n)"],
+                    ["**`x in arr`**",                    "O(n)",     "O(n)",     "O(n)",       "O(n)"],
+                    ["**Память на элемент**",              "указатель + объект", "block list", "**4-8 байт** (typed)", "4-8 байт"],
+                ],
+                "note": "* — амортизированно (иногда realloc)",
+            },
+            {
+                "type": "compare",
+                "title": "list / array.array / numpy.ndarray",
+                "items": [
+                    {"title": "**`list`**",
+                     "points": [
+                         "Array of pointers на Python objects",
+                         "Гетерогенный (разные типы)",
+                         "Большая память на элемент",
+                         "Default для всего",
+                     ]},
+                    {"title": "**`array.array`**",
+                     "points": [
+                         "Однотипные примитивы (`'f'`, `'i'`)",
+                         "В разы меньше памяти чем list",
+                         "Нет векторизации",
+                         "Когда нужна память без numpy",
+                     ]},
+                    {"title": "**`numpy.ndarray`**",
+                     "points": [
+                         "Contiguous typed buffer + strides",
+                         "Векторизация на C",
+                         "Multi-dim через strides",
+                         "**Стандарт** для числовых вычислений",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Cache-locality",
+                "items": [
+                    {"k": "**CPU cache**",        "v": "L1 ~32KB, L2 ~256KB, L3 ~8MB. RAM в 100× медленнее L1"},
+                    {"k": "**Cache line**",        "v": "64 байта читаются за раз → array элементы рядом тоже подгружены"},
+                    {"k": "**Cache miss**",         "v": "элемент не в cache → RAM → 100× медленнее"},
+                    {"k": "**Linked list**",         "v": "элементы где попало в памяти → cache miss на каждом узле"},
+                    {"k": "**Array**",                "v": "соседние индексы — соседние адреса → **prefetcher работает**"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Row-major vs Column-major",
+                "headers": ["Order", "Где default", "Итерация по строкам", "Итерация по колонкам"],
+                "rows": [
+                    ["**Row-major (C order)**",     "C, Python, numpy default",   "**быстро** (соседние в памяти)",  "медленно (cache miss)"],
+                    ["**Column-major (F order)**",  "Fortran, MATLAB, R",           "медленно",                          "**быстро**"],
+                ],
+                "note": "В numpy: `arr.flags['C_CONTIGUOUS']` / `arr.flags['F_CONTIGUOUS']`. Транспонирование меняет только `strides`, не данные.",
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Динамическое удвоение и numpy strides",
+                "code": (
+                    "# Динамическое удвоение list (CPython)\n"
+                    "import sys\n"
+                    "a = []\n"
+                    "for i in range(20):\n"
+                    "    a.append(i)\n"
+                    "    print(i, sys.getsizeof(a))   # увидишь скачки при resize\n\n"
+                    "# numpy strides — транспонирование без копирования\n"
+                    "import numpy as np\n"
+                    "x = np.arange(12).reshape(3, 4)        # shape=(3,4), strides=(32, 8)\n"
+                    "y = x.T                                  # shape=(4,3), strides=(8, 32) — те же данные!\n"
+                    "y.flags['C_CONTIGUOUS']                  # False\n"
+                    "y.copy().flags['C_CONTIGUOUS']           # True"
+                ),
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Не итерируй numpy.array Python-циклом.** `for x in arr: ...` теряет всю пользу numpy. Используй векторные операции (`arr * 2`, `np.where`, `np.einsum`) — они на C, в 10-100× быстрее."},
+            {"type": "callout", "kind": "fact",
+             "content": "**numpy транспонирование за O(1).** `arr.T` не копирует данные — меняет только strides. То же для `reshape`, `flatten()` (но `copy()` копирует). Это фундамент эффективности numpy."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**`np.memmap` для файлов > RAM.** Файл маппится в virtual memory, OS подгружает нужные страницы. Удобно для датасетов 100GB+ на машине с 16GB RAM. Доступ как к обычному массиву."},
+        ],
     },
     "algo_search": {
         "title": "Поиск: линейный и бинарный",
@@ -4266,6 +4446,127 @@ TOPICS = {
             {"q": "Как использовать bisect в Python?", "a": "import bisect; bisect.bisect_left(sorted_list, x) → индекс вставки с сохранением порядка. Для поиска: if idx < len(a) and a[idx] == x: found. Работает только на отсортированном списке."},
             {"q": "Бинарный поиск на повёрнутом массиве?", "a": "Один из двух подмассивов гарантированно отсортирован. Проверить в каком: if a[left] <= a[mid] — левый отсортирован. Искать целевое значение в отсортированной части, иначе в другой."},
             {"q": "Почему бинпоиск требует отсортированности?", "a": "Алгоритм полагается на монотонность: если a[mid] < target, то target точно правее. Без сортировки это свойство не выполняется — можно пропустить элемент."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Бинарный поиск** — самая часто используемая идея в LeetCode Medium. Половина задач решается **бинпоиском по ответу**: ищем минимальный X, при котором условие становится истинным. Главное — **корректные границы** (`left <= right` vs `left < right`) и **монотонность** условия."},
+            {
+                "type": "compare",
+                "title": "Поиск конкретного значения / lower_bound",
+                "items": [
+                    {"title": "Найти `target`",
+                     "points": [
+                         "**`left <= right`** (закрытый диапазон)",
+                         "Возвращаем `mid` или -1",
+                         "Завершается когда `left > right`",
+                         "Default форма",
+                     ]},
+                    {"title": "**`lower_bound`** (первый ≥ x)",
+                     "points": [
+                         "**`left < right`** (полуоткрытый)",
+                         "`right = n` (за концом)",
+                         "Завершается когда `left == right`",
+                         "Стандарт для insertion point",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Базовый бинпоиск + lower_bound",
+                "code": (
+                    "# Поиск target — возвращает индекс или -1\n"
+                    "def binary_search(a, target):\n"
+                    "    left, right = 0, len(a) - 1\n"
+                    "    while left <= right:\n"
+                    "        mid = left + (right - left) // 2   # safe от int overflow\n"
+                    "        if a[mid] == target:\n"
+                    "            return mid\n"
+                    "        elif a[mid] < target:\n"
+                    "            left = mid + 1\n"
+                    "        else:\n"
+                    "            right = mid - 1\n"
+                    "    return -1\n\n"
+                    "# lower_bound — первый i где a[i] >= x\n"
+                    "def lower_bound(a, x):\n"
+                    "    left, right = 0, len(a)         # right = n!\n"
+                    "    while left < right:\n"
+                    "        mid = (left + right) // 2\n"
+                    "        if a[mid] < x:\n"
+                    "            left = mid + 1\n"
+                    "        else:\n"
+                    "            right = mid              # mid может быть ответом\n"
+                    "    return left"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "bisect — стандартная библиотека",
+                "code": (
+                    "import bisect\n\n"
+                    "a = [1, 3, 4, 4, 7, 9]\n"
+                    "bisect.bisect_left(a, 4)    # 2 — первый индекс где a[i] >= 4\n"
+                    "bisect.bisect_right(a, 4)   # 4 — первый индекс где a[i] > 4\n"
+                    "bisect.bisect(a, 4)          # = bisect_right\n\n"
+                    "# Поиск конкретного значения\n"
+                    "def find(a, x):\n"
+                    "    i = bisect.bisect_left(a, x)\n"
+                    "    return i if i < len(a) and a[i] == x else -1\n\n"
+                    "# Вставка с сохранением порядка\n"
+                    "bisect.insort(a, 5)          # a = [1, 3, 4, 4, 5, 7, 9]"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Бинпоиск по ответу — Koko eats bananas",
+                "code": (
+                    "# Минимальная скорость k чтобы съесть piles бананов за h часов\n"
+                    "from math import ceil\n\n"
+                    "def min_speed(piles: list[int], h: int) -> int:\n"
+                    "    def can_eat(k):\n"
+                    "        return sum(ceil(p / k) for p in piles) <= h\n\n"
+                    "    left, right = 1, max(piles)        # пространство ответов\n"
+                    "    while left < right:\n"
+                    "        mid = (left + right) // 2\n"
+                    "        if can_eat(mid):\n"
+                    "            right = mid                 # достаточно — пробуем меньше\n"
+                    "        else:\n"
+                    "            left = mid + 1              # мало — нужно больше\n"
+                    "    return left"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Когда бинпоиск",
+                "headers": ["Сценарий", "Что искать", "Сложность"],
+                "rows": [
+                    ["**Найти X в отсортированном**",   "конкретное значение",                "O(log n)"],
+                    ["**Insertion point**",                "lower_bound / upper_bound",          "O(log n)"],
+                    ["**Бинпоиск по ответу**",              "минимальный X, при котором условие true", "O(log V · check)"],
+                    ["**Повёрнутый отсортированный**",      "значение в rotated array",          "O(log n)"],
+                    ["**Median of two arrays**",             "k-й элемент в двух отсортированных", "O(log min(n,m))"],
+                    ["**Sqrt / квадратный корень**",          "целочисленный sqrt(n)",              "O(log n)"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Признаки задачи на бинпоиск по ответу",
+                "items": [
+                    {"k": "**«Минимальный/максимальный X»**", "v": "при котором условие выполняется"},
+                    {"k": "**Монотонное условие**",            "v": "если для X=10 ОК, то для X=11, 12, ... тоже ОК"},
+                    {"k": "**Можно проверить за O(n)**",        "v": "функция `can(X)`: пройти массив, посчитать"},
+                    {"k": "**Пространство ответов известно**",   "v": "можно ограничить `lo` и `hi`"},
+                    {"k": "**Финальная сложность**",              "v": "O(log V · O(check))"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**`mid = left + (right - left) // 2`** — привычка из C++/Java против переполнения. В Python `int` неограничен, но писать привычно правильно — не сломаешь при copy-paste в Java."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Половина LeetCode Medium = бинпоиск по ответу.** Если в задаче «минимизировать/максимизировать X при условии Y», и Y монотонно по X — это бинпоиск. Думай в терминах **«а можно за X?»**, не в терминах исходного массива."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Border-case `left <= right` vs `left < right`** — главный источник багов. Правило: если ищешь в `[l, r]` (closed), то `<=`. Если в `[l, r)` (half-open) — `<`. Будь последовательным внутри одного решения."},
         ],
     },
     "algo_recursion": {
@@ -4306,6 +4607,126 @@ TOPICS = {
             {"q": "Merge sort vs quicksort: что выбрать?", "a": "Merge sort: стабильный, гарантированный O(n log n), O(n) доп. памяти. Quicksort: in-place, лучший cache-performance из-за locality, O(n log n) в среднем. Python использует Timsort (merge-based) из-за стабильности."},
             {"q": "Что такое heap sort?", "a": "Строит max-heap за O(n). Поочерёдно извлекает максимум и помещает в конец. O(n log n) гарантированно, O(1) доп. памяти. Нестабильный, хуже cache-performance чем quicksort."},
             {"q": "Radix sort — когда применять?", "a": "Сортировка многоразрядных чисел по разрядам (от младшего). O(d × (n + b)) где d — число разрядов, b — основание. Для фиксированной длины ключей (IP-адреса, хеши) — линейная по n."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Comparison sort нижняя граница: O(n log n)** (по дереву решений). Python использует **Timsort** — merge sort + insertion sort, стабильный. Несравнительные (counting/radix) обходят O(n log n) при ограниченном диапазоне значений."},
+            {
+                "type": "table",
+                "title": "Сравнение алгоритмов",
+                "headers": ["Алгоритм", "Avg / Worst", "Память", "Стабильный", "In-place"],
+                "rows": [
+                    ["**Bubble / Insertion / Selection**", "O(n²) / O(n²)",        "O(1)",    "✓ / ✓ / ✗", "✓"],
+                    ["**Merge sort**",                       "O(n log n) / O(n log n)", "**O(n)**", "**✓**",      "✗"],
+                    ["**Quicksort**",                          "O(n log n) / **O(n²)**", "O(log n)", "✗",            "**✓**"],
+                    ["**Heap sort**",                            "O(n log n) / O(n log n)", "O(1)",    "✗",            "**✓**"],
+                    ["**Timsort** (Python `sorted`)",            "O(n log n) / O(n log n)", "O(n)",    "**✓**",        "✗"],
+                    ["**Counting sort**",                          "O(n + k)",            "O(n + k)", "✓",            "✗"],
+                    ["**Radix sort**",                              "O(d · (n + b))",      "O(n + b)", "✓",            "✗"],
+                ],
+                "note": "k — диапазон значений (counting). d — число разрядов, b — основание (radix). Counting/Radix обходят O(n log n) только для ограниченных диапазонов.",
+            },
+            {
+                "type": "compare",
+                "title": "Merge sort vs Quicksort",
+                "items": [
+                    {"title": "**Merge sort**",
+                     "points": [
+                         "Гарантированный O(n log n)",
+                         "**Стабильный**",
+                         "O(n) доп. памяти",
+                         "Хорош для linked lists",
+                     ]},
+                    {"title": "**Quicksort**",
+                     "points": [
+                         "Avg O(n log n), worst O(n²)",
+                         "Нестабильный",
+                         "O(log n) стек (in-place)",
+                         "**Cache-friendly** → быстрее на практике",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Стабильность — зачем",
+                "items": [
+                    {"k": "**Что значит**",         "v": "сохраняет относительный порядок элементов с равными ключами"},
+                    {"k": "**Use-case**",            "v": "сортировка по нескольким ключам последовательно. Сначала по age, потом по name → final ordered by name, age — сохранённое"},
+                    {"k": "**Стабильные**",            "v": "merge sort, Timsort, insertion, bubble"},
+                    {"k": "**Нестабильные**",           "v": "quicksort, heapsort, selection"},
+                    {"k": "**Python `sorted`**",         "v": "**стабильный** (Timsort), `key` поддерживается"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Timsort — почему быстр на практике",
+                "items": [
+                    {"k": "**Идея**",                  "v": "находит уже отсортированные **runs** в данных и сливает их"},
+                    {"k": "**Insertion для коротких**", "v": "при n < 64 — insertion sort быстрее (cache, low overhead)"},
+                    {"k": "**Merge для длинных**",       "v": "стандартный merge sort"},
+                    {"k": "**Galloping mode**",            "v": "при сильно несбалансированных runs — пропускает большие куски"},
+                    {"k": "**Adaptive**",                   "v": "на почти отсортированных данных O(n) (real-world выигрыш)"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Quicksort — корректный с random pivot",
+                "code": (
+                    "import random\n\n"
+                    "def quicksort(a, lo=0, hi=None):\n"
+                    "    if hi is None: hi = len(a) - 1\n"
+                    "    if lo >= hi: return\n\n"
+                    "    # random pivot — защита от worst case\n"
+                    "    pivot_idx = random.randint(lo, hi)\n"
+                    "    a[pivot_idx], a[hi] = a[hi], a[pivot_idx]\n"
+                    "    pivot = a[hi]\n\n"
+                    "    i = lo\n"
+                    "    for j in range(lo, hi):\n"
+                    "        if a[j] < pivot:\n"
+                    "            a[i], a[j] = a[j], a[i]\n"
+                    "            i += 1\n"
+                    "    a[i], a[hi] = a[hi], a[i]\n\n"
+                    "    quicksort(a, lo, i - 1)\n"
+                    "    quicksort(a, i + 1, hi)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Counting sort — несравнительная",
+                "code": (
+                    "def counting_sort(a):\n"
+                    "    if not a: return []\n"
+                    "    lo, hi = min(a), max(a)\n"
+                    "    counts = [0] * (hi - lo + 1)\n"
+                    "    for x in a:\n"
+                    "        counts[x - lo] += 1\n"
+                    "    out = []\n"
+                    "    for i, c in enumerate(counts):\n"
+                    "        out.extend([i + lo] * c)\n"
+                    "    return out\n\n"
+                    "# O(n + k) где k = max - min\n"
+                    "# Работает только для целых в ограниченном диапазоне"
+                ),
+            },
+            {
+                "type": "flow",
+                "title": "Какой выбрать",
+                "branches": [
+                    {"condition": "Python — sort()/sorted()",          "outcome": "**Timsort** (default)"},
+                    {"condition": "Целые в небольшом диапазоне",        "outcome": "**counting sort** O(n + k)"},
+                    {"condition": "Фиксированная длина ключа (IP, hash)", "outcome": "**radix sort**"},
+                    {"condition": "Малая память, in-place нужен",         "outcome": "**heap sort** O(1) доп.памяти"},
+                    {"condition": "Linked list",                            "outcome": "**merge sort** O(n log n) без random access"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Lower bound O(n log n) — по дереву решений.** Сравнительная сортировка делает comparison-выборы → дерево с n! листьев → высота ≥ log₂(n!) = Θ(n log n). Counting/radix обходят, потому что НЕ сравнивают."},
+            {"type": "callout", "kind": "tip",
+             "content": "**Quicksort быстрее merge sort на практике.** В теории оба O(n log n), но quicksort: in-place, cache-friendly, меньше копирований. Поэтому стандартные C-библиотеки используют quicksort с защитой от worst case (intro-sort = quicksort + heapsort fallback)."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Quicksort с фикс pivot + отсортированный вход = O(n²).** Без random pivot или median-of-three разбивка может быть [0, n-1] на каждом шаге. На вызов рекурсивно — стек переполнится."},
         ],
     },
     "algo_linked_lists": {
@@ -4366,6 +4787,131 @@ TOPICS = {
             {"q": "Когда реально случается O(n) в dict?", "a": "При hash flooding: специально подобранные ключи с одинаковым hash модулем размера таблицы. Python защищается: строки с Python 3.3 используют случайный hash seed (PYTHONHASHSEED)."},
             {"q": "Что такое load factor?", "a": "Отношение числа элементов к размеру таблицы. Python dict увеличивает таблицу при load factor > 2/3, чтобы сохранять низкое число коллизий. Размер всегда степень двойки."},
             {"q": "Как реализовать LRU-кеш?", "a": "OrderedDict: при обращении к ключу move_to_end. При вставке, если превышен capacity — popitem(last=False) удаляет самый старый. functools.lru_cache делает это автоматически."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Hash table** = массив + хеш-функция → O(1) средний lookup. Главные грабли: **коллизии** (chaining vs open addressing), **load factor** (когда resize), **`__eq__`/`__hash__` invariant**. Python `dict` — open addressing с perturb probing, упорядоченный с 3.7."},
+            {
+                "type": "compare",
+                "title": "Chaining vs Open addressing",
+                "items": [
+                    {"title": "**Chaining**",
+                     "points": [
+                         "Каждая ячейка — связный список",
+                         "При коллизии — добавляем в список",
+                         "Простой, allow load factor > 1",
+                         "Java HashMap, std::unordered_map",
+                     ]},
+                    {"title": "**Open addressing**",
+                     "points": [
+                         "Один массив, при коллизии — пробуем следующий слот",
+                         "Cache-friendly (всё в одном буфере)",
+                         "Load factor должен быть < 1",
+                         "**Python dict**, std::unordered_map (variants)",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Open addressing — стратегии probing",
+                "headers": ["Стратегия", "Формула", "Проблема"],
+                "rows": [
+                    ["**Linear probing**",      "`slot = (h + i) % n`",                 "primary clustering"],
+                    ["**Quadratic probing**",    "`slot = (h + i²) % n`",                 "secondary clustering"],
+                    ["**Double hashing**",        "`slot = (h₁ + i·h₂) % n`",              "медленнее, но равномернее"],
+                    ["**Perturb probing (Python)**", "`slot = (5·slot + 1 + perturb) % n; perturb >>= 5`", "**отлично распределяет**"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Инварианты __eq__ / __hash__",
+                "items": [
+                    {"k": "**Главный инвариант**",  "v": "`a == b` → `hash(a) == hash(b)`. Обратное необязательно"},
+                    {"k": "**Нарушение**",            "v": "объект «теряется» в dict/set — undefined behavior"},
+                    {"k": "**Mutable как ключ**",      "v": "если изменишь после вставки → hash меняется → объект «исчезает»"},
+                    {"k": "**Default**",                "v": "`__hash__` = `id()`, `__eq__` = `is`. Два разных экземпляра всегда не равны"},
+                    {"k": "**Переопределил `__eq__`**", "v": "Python ставит `__hash__ = None` → объект **не hashable**. Определи оба"},
+                    {"k": "**Frozen dataclass**",        "v": "генерирует оба автоматически согласованно"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Простая hash table с chaining",
+                "code": (
+                    "class HashTable:\n"
+                    "    def __init__(self, capacity=16):\n"
+                    "        self.capacity = capacity\n"
+                    "        self.size = 0\n"
+                    "        self.buckets = [[] for _ in range(capacity)]\n\n"
+                    "    def _bucket(self, key):\n"
+                    "        return self.buckets[hash(key) % self.capacity]\n\n"
+                    "    def put(self, key, value):\n"
+                    "        bucket = self._bucket(key)\n"
+                    "        for i, (k, v) in enumerate(bucket):\n"
+                    "            if k == key:\n"
+                    "                bucket[i] = (key, value)\n"
+                    "                return\n"
+                    "        bucket.append((key, value))\n"
+                    "        self.size += 1\n"
+                    "        if self.size / self.capacity > 0.75:\n"
+                    "            self._resize()\n\n"
+                    "    def get(self, key):\n"
+                    "        for k, v in self._bucket(key):\n"
+                    "            if k == key:\n"
+                    "                return v\n"
+                    "        raise KeyError(key)\n\n"
+                    "    def _resize(self):\n"
+                    "        old = self.buckets\n"
+                    "        self.capacity *= 2\n"
+                    "        self.buckets = [[] for _ in range(self.capacity)]\n"
+                    "        self.size = 0\n"
+                    "        for bucket in old:\n"
+                    "            for k, v in bucket:\n"
+                    "                self.put(k, v)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "LRU-кеш через OrderedDict",
+                "code": (
+                    "from collections import OrderedDict\n\n"
+                    "class LRUCache:\n"
+                    "    def __init__(self, capacity: int):\n"
+                    "        self.cache: OrderedDict[int, int] = OrderedDict()\n"
+                    "        self.capacity = capacity\n\n"
+                    "    def get(self, key: int) -> int:\n"
+                    "        if key not in self.cache:\n"
+                    "            return -1\n"
+                    "        self.cache.move_to_end(key)    # стал самым свежим\n"
+                    "        return self.cache[key]\n\n"
+                    "    def put(self, key: int, value: int) -> None:\n"
+                    "        if key in self.cache:\n"
+                    "            self.cache.move_to_end(key)\n"
+                    "        self.cache[key] = value\n"
+                    "        if len(self.cache) > self.capacity:\n"
+                    "            self.cache.popitem(last=False)   # удаляем самый старый\n\n"
+                    "# Альтернатива: @functools.lru_cache(maxsize=N)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Python dict внутренности",
+                "items": [
+                    {"k": "**Compact representation**",  "v": "массив индексов + массив `(hash, key, value)`. Меньше памяти, упорядочено по вставке"},
+                    {"k": "**Load factor**",               "v": "при > 2/3 — resize в 2× (степень двойки)"},
+                    {"k": "**Hash randomization**",          "v": "`PYTHONHASHSEED` — рандомный seed для строк (защита от hash flooding)"},
+                    {"k": "**Order-preserving (3.7+)**",      "v": "гарантия языка, не implementation detail"},
+                    {"k": "**`hash(-1)` ≠ `hash(0)`**",        "v": "CPython маппит -1 на -2, потому что -1 — sentinel"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**Python dict — упорядоченный с 3.7.** До этого — implementation detail. Сейчас гарантия языка. Если нужен явный `OrderedDict` — только из-за `move_to_end()`/`popitem(last=False)`."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Mutable как ключ — потерянный объект.** Положил в dict с hash=42, потом изменил — hash стал 17. Теперь объект «лежит в slot 42», а ищут его в slot 17. **Не находится**, хотя физически в таблице."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`functools.lru_cache(maxsize=N)`** делает то же что LRUCache в одну строку. Но не на класс — оборачивает функцию. Для метода — `@functools.cache` (Python 3.9+) или `cached_property` для атрибутов."},
         ],
     },
     "algo_trees": {
