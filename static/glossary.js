@@ -895,4 +895,57 @@ window.GLOSSARY = {
   "Kruskal": "MST через сортировку рёбер + DSU.",
   "Prim": "MST через жадный выбор + heap.",
   "bipartite": "Граф двудольный — вершины разбиваются на две группы без рёбер внутри.",
+
+  // ── Memory / GC ──
+  "reference counting": "Основной механизм GC в Python: счётчик ссылок у каждого объекта. 0 → удаление.",
+  "generational GC": "Дополнительный GC в Python для циклических ссылок. 3 поколения.",
+  "weakref": "Слабая ссылка, не увеличивающая refcount. Объект может быть собран.",
+  "tracemalloc": "Стандартный модуль Python для трейсинга утечек памяти.",
+  "int caching": "CPython кеширует int от -5 до 256 как singletons.",
+
+  // ── Shortest paths ──
+  "Dijkstra": "Кратчайшие пути из одного источника, ≥ 0 веса. O((V+E) log V) с heap.",
+  "Bellman-Ford": "Кратчайшие пути с любыми весами. O(V·E). Обнаруживает отрицательные циклы.",
+  "Floyd-Warshall": "All-pairs shortest paths. O(V³).",
+  "A*": "Dijkstra + эвристика. Для поиска от start к goal.",
+  "Johnson": "All-pairs для разреженных графов с любыми весами.",
+  "0-1 BFS": "BFS на графах с весами 0 и 1. O(V+E) с deque.",
+  "lazy deletion": "Приём в heapq Dijkstra: устаревшие записи пропускаются при pop.",
+  "admissible heuristic": "h(v) ≤ real_dist(v, goal) — гарантирует оптимальность A*.",
+  "Manhattan distance": "|dx| + |dy|. Допустимая эвристика на сетке без диагоналей.",
+  "Chebyshev distance": "max(|dx|, |dy|). Сетка с диагональю стоимости 1.",
+  "Euclidean distance": "sqrt(dx² + dy²). Реальное расстояние по прямой.",
+
+  // ── Greedy ──
+  "exchange argument": "Способ доказать корректность жадного алгоритма.",
+  "matroid": "Структура из теории графов, где жадный = оптимальный.",
+  "activity selection": "Классическая задача жадности: max непересекающихся интервалов.",
+  "Huffman coding": "Жадный алгоритм построения префиксного кода.",
+  "fractional knapsack": "Дробный рюкзак — жадность работает.",
+  "0/1 knapsack": "Дискретный рюкзак — нужна DP.",
+
+  // ── Combinatorics ──
+  "permutation": "Все упорядочения n объектов: n!",
+  "combination": "Выбор k из n без учёта порядка: C(n,k) = n!/(k!(n−k)!).",
+  "binomial coefficient": "C(n, k). Коэффициент при xᵏ в (1+x)ⁿ.",
+  "Pascal triangle": "Треугольник Паскаля для подсчёта C(n,k) через DP.",
+  "math.comb": "Python 3.8+: math.comb(n, k) — точный binomial.",
+  "math.perm": "Python 3.8+: math.perm(n, k) — n!/(n-k)!.",
+  "itertools": "Стандартный модуль Python для генерации перестановок/сочетаний/произведений.",
+  "permutations": "itertools.permutations — все упорядочения.",
+  "combinations": "itertools.combinations — все сочетания без повторений.",
+  "combinations_with_replacement": "itertools.combinations_with_replacement — с повторениями.",
+  "product": "itertools.product — декартово произведение.",
+  "accumulate": "itertools.accumulate — prefix sums (или другой reducer).",
+  "groupby": "itertools.groupby — группировка соседних элементов.",
+  "pairwise": "itertools.pairwise (3.10+) — соседние пары.",
+
+  // ── LeetCode patterns ──
+  "sliding window": "Паттерн: подмассив с условием. Two pointers, O(n) вместо O(n²).",
+  "two pointers": "Паттерн: пара в отсортированном или meet in the middle.",
+  "prefix sum": "Префиксные суммы для O(1) range queries.",
+  "top-K": "Top-K через heap размером K — O(n log k).",
+  "binary search by answer": "Бинпоиск по пространству ответов при монотонности check().",
+  "monotonic stack pattern": "Стек с монотонным порядком — Next Greater за O(n).",
+  "bitmask DP": "DP с состоянием как битовая маска подмножества. 2ⁿ × n.",
 };

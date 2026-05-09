@@ -3080,6 +3080,140 @@ TOPICS = {
             {"q": "Что такое prefix sum?", "a": "prefix[i] = sum(a[0..i]). Sum(a[l..r]) = prefix[r] - prefix[l-1] за O(1). Предвычисление за O(n) позволяет отвечать на range sum queries за O(1) вместо O(n)."},
             {"q": "Как выбрать структуру данных под задачу?", "a": "Частый поиск/вставка/удаление → dict/set. Порядок + поиск максимума → heapq. FIFO → deque. Отсортированный поиск → bisect + list. Граф → defaultdict(list) adjacency list."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "На live-coding скрининге за 30-45 минут решить LeetCode Easy/Medium. Без **готовых шаблонов** (sliding window, two pointers, prefix sum, heap, bisect, BFS/DFS) — теряешь время. Главное правило: **сначала distinguish паттерн**, потом писать код."},
+            {
+                "type": "table",
+                "title": "Распознавание задачи → паттерн",
+                "headers": ["Признак в условии", "Паттерн"],
+                "rows": [
+                    ["«Найти пару/подмассив с суммой»",          "**Hash map** prefix sums / **two pointers**"],
+                    ["«Подмассив/подстрока с условием»",          "**Sliding window**"],
+                    ["«Range sum query (несколько раз)»",          "**Prefix sum**"],
+                    ["«Top-K / k-й наибольший»",                    "**Heap** (size K)"],
+                    ["«Найти в отсортированном»",                   "**Binary search** / `bisect`"],
+                    ["«Минимальный X, при котором ...»",             "**Binary search по ответу**"],
+                    ["«Кратчайший путь без весов»",                  "**BFS**"],
+                    ["«Топсорт / зависимости»",                       "**Kahn / DFS topo**"],
+                    ["«Уникальные пары / комбинации»",                 "**Backtracking** (`itertools` если можно)"],
+                    ["«Часто встречающееся / счётчик»",                 "**Counter / hash map**"],
+                    ["«Палиндром / matching скобок»",                   "**Two pointers / Stack**"],
+                    ["«Связный список с указателями»",                   "**slow/fast pointer**"],
+                    ["«Min/max по скользящему окну»",                    "**Monotonic deque**"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Sliding window — длиннейшая подстрока без повторов",
+                "code": (
+                    "def length_of_longest_substring(s: str) -> int:\n"
+                    "    seen = {}\n"
+                    "    left = 0\n"
+                    "    best = 0\n"
+                    "    for right, ch in enumerate(s):\n"
+                    "        if ch in seen and seen[ch] >= left:\n"
+                    "            left = seen[ch] + 1\n"
+                    "        seen[ch] = right\n"
+                    "        best = max(best, right - left + 1)\n"
+                    "    return best\n\n"
+                    "# O(n) — каждый символ посещается дважды (left и right)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Two pointers + prefix sum",
+                "code": (
+                    "# Two pointers — пара с суммой target в отсортированном\n"
+                    "def two_sum_sorted(a: list[int], target: int) -> tuple[int, int]:\n"
+                    "    l, r = 0, len(a) - 1\n"
+                    "    while l < r:\n"
+                    "        s = a[l] + a[r]\n"
+                    "        if s == target: return (l, r)\n"
+                    "        if s < target: l += 1\n"
+                    "        else:           r -= 1\n"
+                    "    return (-1, -1)\n\n"
+                    "# Prefix sum — sum в произвольном диапазоне\n"
+                    "from itertools import accumulate\n"
+                    "prefix = list(accumulate(a, initial=0))\n"
+                    "def range_sum(l, r):     # включительно l..r\n"
+                    "    return prefix[r + 1] - prefix[l]"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Top-K через heapq",
+                "code": (
+                    "import heapq\n\n"
+                    "# Top-K через nlargest — простой\n"
+                    "def top_k_simple(nums: list[int], k: int) -> list[int]:\n"
+                    "    return heapq.nlargest(k, nums)\n\n"
+                    "# Top-K через min-heap размером K — для streaming\n"
+                    "def top_k_stream(stream, k: int) -> list[int]:\n"
+                    "    heap = []\n"
+                    "    for x in stream:\n"
+                    "        if len(heap) < k:\n"
+                    "            heapq.heappush(heap, x)\n"
+                    "        elif x > heap[0]:\n"
+                    "            heapq.heapreplace(heap, x)\n"
+                    "    return sorted(heap, reverse=True)\n\n"
+                    "# Memo с lru_cache — превращает O(2ⁿ) в O(n)\n"
+                    "from functools import lru_cache\n"
+                    "@lru_cache(maxsize=None)\n"
+                    "def fib(n):\n"
+                    "    if n <= 1: return n\n"
+                    "    return fib(n - 1) + fib(n - 2)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Структура → когда брать",
+                "items": [
+                    {"k": "**`set` / `dict`**",      "v": "частый поиск/вставка → O(1)"},
+                    {"k": "**`collections.deque`**",  "v": "FIFO / LIFO с обоих концов → O(1)"},
+                    {"k": "**`heapq`**",                "v": "min/max за O(log n), top-K, scheduler"},
+                    {"k": "**`bisect` + `list`**",       "v": "поиск в отсортированном за O(log n)"},
+                    {"k": "**`Counter`**",                "v": "подсчёт встречаемостей одной строкой"},
+                    {"k": "**`defaultdict(list)`**",       "v": "adjacency list графа без проверок на key"},
+                    {"k": "**`set` для `visited`**",        "v": "O(1) проверка посещённости в BFS/DFS"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Алгоритм решения LeetCode за 30 мин",
+                "branches": [
+                    {"condition": "1. **Уточнения** (5 мин)",   "outcome": "edge cases, размер n, формат входа, дубликаты"},
+                    {"condition": "2. **Brute force** (3 мин)",   "outcome": "сказать вслух «O(n²) очевидно», но не писать"},
+                    {"condition": "3. **Распознать паттерн** (3 мин)", "outcome": "по таблице — sliding window? two pointers? heap? BS?"},
+                    {"condition": "4. **Написать** (15 мин)",      "outcome": "код, четко декомпозирован"},
+                    {"condition": "5. **Тест на руках** (5 мин)",   "outcome": "пройди по примеру вручную"},
+                    {"condition": "6. **Сложность** (1 мин)",       "outcome": "O(?) time + O(?) space — вслух"},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Лайфхаки Python для LC",
+                "items": [
+                    {"k": "**`sorted(items, key=lambda x: x[0])`**", "v": "сортировка по полю"},
+                    {"k": "**`*nums, last = lst`**",                   "v": "распаковка с last"},
+                    {"k": "**`a, b = b, a`**",                          "v": "swap без temp"},
+                    {"k": "**`for i, x in enumerate(arr)`**",            "v": "индекс + значение"},
+                    {"k": "**`zip(a, b)`**",                              "v": "параллельный обход"},
+                    {"k": "**Walrus `:=`**",                                "v": "`while (x := input()):` — присвоение в выражении"},
+                    {"k": "**`int('1010', 2)`**",                            "v": "binary string → int"},
+                    {"k": "**`bin(5)[2:]`**",                                 "v": "int → binary string без префикса"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Сначала паттерн, потом код.** За первые 5 минут — узнай паттерн по условию. «Скользящее окно» / «two pointers» / «бинпоиск по ответу» — большинство Medium-задач сводится к 8-10 шаблонам."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`@lru_cache` без maxsize = unlimited memo.** Для рекурсивных задач с overlapping subproblems — `@lru_cache(maxsize=None)` или `@functools.cache` (3.9+) превращает O(2ⁿ) в O(n) за один декоратор."},
+            {"type": "callout", "kind": "warning",
+             "content": "**`list.pop(0)` в LeetCode = TLE.** На больших n O(n) сдвиг убьёт Solution. Если нужна FIFO — **`collections.deque`** с `popleft()`."},
+        ],
     },
     "py_oop": {
         "title": "ООП и магические методы",
@@ -4314,6 +4448,128 @@ TOPICS = {
             {"q": "Что такое утечка через циклические ссылки с __del__?", "a": "Если объект с __del__ участвует в цикле ссылок — старый GC не мог его собрать (до 3.4). С 3.4 это исправлено. __del__ в цикле всё равно плохой паттерн — непредсказуемый порядок вызова."},
             {"q": "Как посмотреть количество ссылок на объект?", "a": "import sys; sys.getrefcount(obj) — возвращает count + 1 (сам аргумент getrefcount добавляет ссылку). Для диагностики утечек: tracemalloc модуль."},
             {"q": "Что такое weak reference?", "a": "weakref.ref(obj) — ссылка, не увеличивающая reference count. Если объект больше нигде не держится — GC удалит его. Используется в кешах чтобы не мешать сборке мусора."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Стек** — фреймы вызовов, локальные переменные. **Куча** — сами объекты Python. В Python переменная — **всегда ссылка** в кучу. GC = **reference counting** + **generational GC** для циклов. Ловушки: int-кеш (-5..256), `RecursionError` при глубине > 1000."},
+            {
+                "type": "compare",
+                "title": "Стек vs Куча",
+                "items": [
+                    {"title": "**Стек (call stack)**",
+                     "points": [
+                         "Фреймы вызовов функций",
+                         "Локальные переменные (**ссылки**, не объекты)",
+                         "Аргументы, return address",
+                         "Ограничен: ~1000 фреймов в Python",
+                     ]},
+                    {"title": "**Куча**",
+                     "points": [
+                         "**Сами объекты** (int, str, list, классы)",
+                         "Динамическое выделение",
+                         "Управляется GC",
+                         "Размер ограничен только RAM",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Как Python хранит данные",
+                "items": [
+                    {"k": "**Все объекты в куче**",     "v": "даже int и str — объекты с заголовком (refcount, type)"},
+                    {"k": "**Переменная — ссылка**",     "v": "`x = 5` — `x` указывает на объект int(5) в куче"},
+                    {"k": "**int от -5 до 256**",         "v": "**кешированы** при старте интерпретатора (singleton)"},
+                    {"k": "**Маленькие строки**",          "v": "interned (одинаковые строки = один объект)"},
+                    {"k": "**`a = b = []`**",               "v": "оба указывают на **один** список. Меняешь через a — видно в b"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Reference vs copy",
+                "code": (
+                    "import copy\n\n"
+                    "# Копирование ссылки — оба указывают на один объект\n"
+                    "a = [1, 2, [3, 4]]\n"
+                    "b = a               # b — та же ссылка\n"
+                    "b.append(5)         # видно в a\n"
+                    "assert a == [1, 2, [3, 4], 5]\n\n"
+                    "# Shallow copy — новый внешний список, те же вложенные\n"
+                    "c = a.copy()        # или a[:], list(a), copy.copy(a)\n"
+                    "c[2].append(99)     # ВЛОЖЕННЫЙ список один!\n"
+                    "assert a[2] == [3, 4, 99]\n\n"
+                    "# Deep copy — рекурсивно всё\n"
+                    "d = copy.deepcopy(a)\n"
+                    "d[2].append(100)\n"
+                    "assert a[2] == [3, 4, 99]   # не повлияло"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "is vs == и int-кеш",
+                "code": (
+                    "a = 256\n"
+                    "b = 256\n"
+                    "a is b      # True — кешированный singleton\n\n"
+                    "a = 257\n"
+                    "b = 257\n"
+                    "a is b      # False — два разных объекта\n\n"
+                    "# Поэтому ВСЕГДА:\n"
+                    "if x == 5:    # сравниваем значения\n"
+                    "if x is None:  # ТОЛЬКО для None / True / False / sentinel"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Garbage Collection",
+                "items": [
+                    {"k": "**Reference counting**",      "v": "счётчик у каждого объекта. 0 → удаление. **Основной механизм**"},
+                    {"k": "**Generational GC**",          "v": "gc-модуль ловит **циклические** ссылки (`a → b → a`)"},
+                    {"k": "**3 поколения**",                "v": "молодые проверяются часто, старые редко"},
+                    {"k": "**`gc.collect()`**",              "v": "форсировать сбор сейчас"},
+                    {"k": "**`gc.disable()`**",               "v": "выключить generational GC (refcount остаётся)"},
+                    {"k": "**`weakref`**",                     "v": "ссылка БЕЗ ↑ refcount. Кеши, observer pattern"},
+                    {"k": "**`__slots__`**",                    "v": "экономия памяти — нет `__dict__` у instance"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Циклические ссылки и weakref",
+                "code": (
+                    "import gc, weakref\n\n"
+                    "# Циклическая ссылка — refcount никогда не дойдёт до 0\n"
+                    "a, b = {}, {}\n"
+                    "a['ref'] = b\n"
+                    "b['ref'] = a\n"
+                    "del a, b           # объекты живы — собирает только generational GC\n\n"
+                    "# weakref — кеш, не держащий объект\n"
+                    "class Heavy: pass\n"
+                    "obj = Heavy()\n"
+                    "ref = weakref.ref(obj)\n"
+                    "ref()              # <Heavy object>\n"
+                    "del obj            # удалили оригинал\n"
+                    "ref()              # None — объект собран"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Recursion + stack",
+                "items": [
+                    {"k": "**`sys.getrecursionlimit()`**",  "v": "по умолчанию 1000"},
+                    {"k": "**`sys.setrecursionlimit(n)`**",  "v": "увеличить, но осторожно — реальный стек ОС ограничен ~8 MB"},
+                    {"k": "**RecursionError**",               "v": "при превышении лимита"},
+                    {"k": "**Хвостовая рекурсия**",            "v": "не оптимизируется в Python (Гвидо хочет читаемый traceback)"},
+                    {"k": "**Решение для глубины**",            "v": "переписать в итерацию с явным стеком"},
+                ],
+            },
+            {"type": "callout", "kind": "fact",
+             "content": "**`a = 256; b = 256; a is b → True`, а для 257 — False.** CPython кеширует int от -5 до 256 как singletons. `is` сравнивает идентичность — потому совпадает. Для 257 — два разных объекта в куче."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Циклическая ссылка с `__del__` — антипаттерн.** До Python 3.4 такие циклы вообще не собирались. Сейчас собираются, но порядок `__del__` не гарантирован. Не пиши `__del__`, кроме как для очевидной cleanup-логики."},
+            {"type": "callout", "kind": "tip",
+             "content": "**`tracemalloc` — стандарт диагностики утечек.** `tracemalloc.start()`, потом `tracemalloc.take_snapshot()` и `compare_to()` между точками — покажет, где растёт память. Лучше `gc.get_objects()`."},
         ],
     },
     "algo_arrays": {
@@ -5652,6 +5908,141 @@ TOPICS = {
             {"q": "Bellman-Ford: как обнаружить отрицательный цикл?", "a": "После V-1 итераций запустить ещё одну. Если dist[v] уменьшается — достижим отрицательный цикл. Такие графы не имеют конечного кратчайшего пути для достижимых из цикла вершин."},
             {"q": "MST vs кратчайшие пути: в чём разница?", "a": "MST (Prim, Kruskal) — минимальное остовное дерево, соединяет все вершины с минимальным суммарным весом рёбер. Кратчайший путь (Дейкстра) — минимальный суммарный вес пути от источника. Это разные задачи."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Dijkstra** — heap + relax, O((V+E) log V). Только **неотрицательные** веса. **Bellman-Ford** O(V·E) — справится с отрицательными, найдёт отрицательные циклы. **Floyd-Warshall** O(V³) — all-pairs. **A*** = Dijkstra + эвристика — на сетках с целью."},
+            {
+                "type": "table",
+                "title": "Алгоритмы кратчайших путей",
+                "headers": ["Алгоритм", "Сложность", "Веса", "Single/All pairs"],
+                "rows": [
+                    ["**BFS**",                "O(V + E)",            "**только 1** (unweighted)",  "single source"],
+                    ["**Dijkstra**",            "O((V+E) log V)",       "**≥ 0**",                       "single source"],
+                    ["**Bellman-Ford**",        "O(V · E)",             "любые, **обнаруживает циклы**",  "single source"],
+                    ["**Floyd-Warshall**",       "O(V³)",                 "любые без отриц. циклов",         "**all pairs**"],
+                    ["**A***",                    "≤ Dijkstra на практике", "≥ 0 + допустимая h(v)",        "single source → goal"],
+                    ["**Johnson**",                "O(V·E + V·E log V)",  "любые без отриц. циклов",         "all pairs (sparse)"],
+                    ["**0-1 BFS**",                 "O(V + E)",            "только 0 и 1",                    "single source"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Dijkstra — стандартная реализация с heapq",
+                "code": (
+                    "import heapq\n"
+                    "from math import inf\n\n"
+                    "def dijkstra(graph: dict, src: int) -> dict[int, float]:\n"
+                    "    dist = {v: inf for v in graph}\n"
+                    "    dist[src] = 0\n"
+                    "    heap = [(0, src)]\n"
+                    "    while heap:\n"
+                    "        d, u = heapq.heappop(heap)\n"
+                    "        if d > dist[u]:                    # lazy deletion — устаревшая запись\n"
+                    "            continue\n"
+                    "        for v, w in graph[u]:\n"
+                    "            nd = d + w\n"
+                    "            if nd < dist[v]:\n"
+                    "                dist[v] = nd\n"
+                    "                heapq.heappush(heap, (nd, v))\n"
+                    "    return dist\n\n"
+                    "# graph: {u: [(v, weight), ...]}\n"
+                    "# O((V + E) log V)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Bellman-Ford с обнаружением отрицательного цикла",
+                "code": (
+                    "def bellman_ford(edges, V, src):\n"
+                    "    dist = [inf] * V\n"
+                    "    dist[src] = 0\n"
+                    "    # V-1 итераций relax\n"
+                    "    for _ in range(V - 1):\n"
+                    "        for u, v, w in edges:\n"
+                    "            if dist[u] + w < dist[v]:\n"
+                    "                dist[v] = dist[u] + w\n"
+                    "    # V-я итерация — если что-то меняется → отрицательный цикл\n"
+                    "    for u, v, w in edges:\n"
+                    "        if dist[u] + w < dist[v]:\n"
+                    "            raise ValueError('negative cycle')\n"
+                    "    return dist\n\n"
+                    "# O(V · E)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Floyd-Warshall — all pairs",
+                "code": (
+                    "def floyd_warshall(graph: list[list[float]]) -> list[list[float]]:\n"
+                    "    V = len(graph)\n"
+                    "    dist = [row[:] for row in graph]      # копия\n"
+                    "    for k in range(V):\n"
+                    "        for i in range(V):\n"
+                    "            for j in range(V):\n"
+                    "                if dist[i][k] + dist[k][j] < dist[i][j]:\n"
+                    "                    dist[i][j] = dist[i][k] + dist[k][j]\n"
+                    "    return dist\n\n"
+                    "# O(V³). Подходит при V ≤ 500"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "A* — Dijkstra + эвристика",
+                "code": (
+                    "def a_star(start, goal, neighbors, heuristic):\n"
+                    "    # f(v) = g(v) + h(v) → приоритет в heap\n"
+                    "    g = {start: 0}\n"
+                    "    heap = [(heuristic(start, goal), 0, start)]\n"
+                    "    while heap:\n"
+                    "        f, gv, u = heapq.heappop(heap)\n"
+                    "        if u == goal:\n"
+                    "            return gv\n"
+                    "        if gv > g.get(u, inf):  # устаревший\n"
+                    "            continue\n"
+                    "        for v, w in neighbors(u):\n"
+                    "            ng = gv + w\n"
+                    "            if ng < g.get(v, inf):\n"
+                    "                g[v] = ng\n"
+                    "                heapq.heappush(heap, (ng + heuristic(v, goal), ng, v))\n"
+                    "    return inf"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Эвристики для A*",
+                "items": [
+                    {"k": "**Допустимая (admissible)**", "v": "h(v) ≤ real_dist(v, goal). Гарантия оптимальности"},
+                    {"k": "**Manhattan distance**",       "v": "|dx| + |dy|. Допустима на сетке БЕЗ диагоналей"},
+                    {"k": "**Chebyshev**",                  "v": "max(|dx|, |dy|). Сетка С диагональю стоимости 1"},
+                    {"k": "**Euclidean**",                   "v": "sqrt(dx² + dy²). Любое направление, реальное расстояние"},
+                    {"k": "**Octile (sqrt(2))**",            "v": "сетка с диагональю стоимости √2"},
+                    {"k": "**h(v) = 0**",                     "v": "= обычный Dijkstra"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Какой алгоритм взять",
+                "branches": [
+                    {"condition": "невзвешенный граф (все рёбра = 1)",   "outcome": "**BFS**"},
+                    {"condition": "веса 0 и 1",                            "outcome": "**0-1 BFS** (deque, push_front для 0)"},
+                    {"condition": "≥ 0 веса, single source",                "outcome": "**Dijkstra**"},
+                    {"condition": "отрицательные веса",                      "outcome": "**Bellman-Ford**"},
+                    {"condition": "all-pairs, V малое",                       "outcome": "**Floyd-Warshall**"},
+                    {"condition": "поиск пути в сетке к цели",                "outcome": "**A*** с эвристикой"},
+                    {"condition": "DAG",                                       "outcome": "topo sort + relax — O(V + E)"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Lazy deletion в Python `heapq`.** `heapq` не поддерживает decrease-key. Вместо удаления старой записи — `heappush` новую и **проверяй на устаревшие** при `heappop`: `if d > dist[u]: continue`."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Bellman-Ford ловит отрицательные циклы.** После V-1 итераций релаксация должна закончиться. Если на V-й итерации что-то ещё уменьшается — есть достижимый отрицательный цикл, кратчайший путь не определён."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Dijkstra на отрицательных весах ломается.** Жадный выбор «извлечённый узел = окончательный» перестаёт быть верным — путь через ещё не посещённый узел может быть короче. **Только Bellman-Ford или Johnson**."},
+        ],
     },
     "algo_greedy": {
         "title": "Жадные алгоритмы",
@@ -5672,6 +6063,112 @@ TOPICS = {
             {"q": "0/1 рюкзак — почему жадность не работает?", "a": "Нельзя брать части. Жадный выбор по value/weight может не оставить места для комбинации, дающей больший суммарный value. Нужна DP: dp[i][w] = max value для первых i предметов и вместимости w."},
             {"q": "Задача о расписании с дедлайнами?", "a": "Задачи с весами и дедлайнами, минимизировать взвешенное время опоздания. Сортировать по дедлайну. Жадно выполнять в порядке дедлайнов. Доказуемо минимизирует максимальное опоздание."},
         ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Жадность** — на каждом шаге локально оптимальный выбор. Работает **не всегда**: нужно доказывать корректность через **exchange argument**. Классика: интервалы, дробный рюкзак, минимальная сортировка. Где жадность фейлит — обычно работает **DP**."},
+            {
+                "type": "table",
+                "title": "Жадность работает / не работает",
+                "headers": ["Задача", "Жадность", "Стратегия"],
+                "rows": [
+                    ["**Activity selection**",      "**✓**",      "сортировка по end-time, выбираем совместимые"],
+                    ["**Interval covering**",         "**✓**",      "по началу + жадно покрываем"],
+                    ["**Дробный рюкзак**",            "**✓**",      "сортировка по value/weight, брать полностью пока влезает"],
+                    ["**Huffman coding**",             "**✓**",      "merge двух минимальных"],
+                    ["**MST (Kruskal/Prim)**",          "**✓**",      "берём минимальное ребро без цикла"],
+                    ["**Размен монет (канонические)**", "**✓**",      "{1, 5, 10, 25} — берём максимум"],
+                    ["**Размен монет (произвольные)**", "**✗**",      "{1, 3, 4} → 6 = 3+3 < жадных 4+1+1. **DP**"],
+                    ["**0/1 рюкзак**",                   "**✗**",      "нельзя брать части. **DP** dp[i][w]"],
+                    ["**TSP**",                            "**✗**",      "Nearest neighbor дает в худшем O(log n) от оптимума. **DP / branch&bound**"],
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Activity selection — классика жадности",
+                "code": (
+                    "def activity_selection(intervals: list[tuple[int, int]]) -> int:\n"
+                    "    # Максимум непересекающихся интервалов\n"
+                    "    intervals.sort(key=lambda x: x[1])    # по END\n"
+                    "    count = 0\n"
+                    "    end_so_far = float('-inf')\n"
+                    "    for start, end in intervals:\n"
+                    "        if start >= end_so_far:\n"
+                    "            count += 1\n"
+                    "            end_so_far = end\n"
+                    "    return count\n\n"
+                    "# Сортировка O(n log n) → O(n) проход\n"
+                    "# Доказательство exchange argument:\n"
+                    "# любой swap последнего жадного с alt только ухудшит «хвост»"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Дробный рюкзак — жадность работает",
+                "code": (
+                    "def fractional_knapsack(items: list[tuple[float, float]], W: float) -> float:\n"
+                    "    # items: (value, weight)\n"
+                    "    items.sort(key=lambda x: x[0] / x[1], reverse=True)  # по value/weight\n"
+                    "    total = 0.0\n"
+                    "    for v, w in items:\n"
+                    "        if W >= w:\n"
+                    "            total += v\n"
+                    "            W -= w\n"
+                    "        else:\n"
+                    "            total += v * (W / w)            # дробная часть\n"
+                    "            break\n"
+                    "    return total"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "0/1 рюкзак — НЕ жадность, а DP",
+                "code": (
+                    "def knapsack_01(items: list[tuple[int, int]], W: int) -> int:\n"
+                    "    # items: (value, weight). Целочисленные веса.\n"
+                    "    n = len(items)\n"
+                    "    dp = [[0] * (W + 1) for _ in range(n + 1)]\n"
+                    "    for i in range(1, n + 1):\n"
+                    "        v, w = items[i - 1]\n"
+                    "        for cap in range(W + 1):\n"
+                    "            dp[i][cap] = dp[i - 1][cap]                       # не брать\n"
+                    "            if cap >= w:\n"
+                    "                dp[i][cap] = max(dp[i][cap], dp[i - 1][cap - w] + v)  # брать\n"
+                    "    return dp[n][W]\n\n"
+                    "# O(n · W). Псевдо-полиномиальное (W в условии)"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Как доказывать жадность",
+                "items": [
+                    {"k": "**Exchange argument**",      "v": "взять оптимум O, жадный G. Showed: swap O[i]→G[i] не ухудшает решение"},
+                    {"k": "**Greedy stays ahead**",      "v": "после k шагов жадность ≥ оптимум по выбранной метрике"},
+                    {"k": "**Matroid theory**",            "v": "если задача укладывается в matroid → жадный = оптимальный"},
+                    {"k": "**Контрпример**",                "v": "доказать **отсутствие** жадного — найти контрпример (3 строки)"},
+                    {"k": "**На интервью**",                "v": "произнеси «здесь exchange argument, потому что...» — даже без полного доказательства"},
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Когда жадность",
+                "branches": [
+                    {"condition": "Задача декомпозируется на независимые шаги",   "outcome": "**возможно жадность**"},
+                    {"condition": "Локальный выбор не влияет на оставшиеся опции", "outcome": "жадность работает"},
+                    {"condition": "Текущий выбор закрывает будущие возможности",    "outcome": "**не жадность** — нужно DP"},
+                    {"condition": "Optimal substructure без overlapping subproblems", "outcome": "жадность"},
+                    {"condition": "Overlapping subproblems",                          "outcome": "**DP**"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Сортировка — главный приём жадности.** Большинство жадных алгоритмов начинаются с `arr.sort(key=...)` по правильному критерию. Подбор критерия (по концу / по value/weight / по дедлайну) — половина дела."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Размен монет — учебный контрпример.** Для канонических наборов (1, 5, 10, 25) жадность работает. Для произвольных (1, 3, 4 с суммой 6) — нет. Это объясняет, почему банкоматы работают по жадности, а task scheduling по DP."},
+            {"type": "callout", "kind": "warning",
+             "content": "**На интервью «жадно» без доказательства = красный флаг.** Если решаешь жадно — обязательно скажи **почему именно эта стратегия**: exchange argument, matroid, или хотя бы интуицию. Иначе интервьюер подумает, что ты гадаешь."},
+        ],
     },
     "algo_combinatorics": {
         "title": "Комбинаторика",
@@ -5691,6 +6188,123 @@ TOPICS = {
             {"q": "Что такое правило суммы?", "a": "Если событие A или B (взаимоисключающие) — m+n вариантов. Число элементов объединения непересекающихся множеств."},
             {"q": "itertools.product — для чего?", "a": "Декартово произведение: product([0,1], repeat=n) генерирует все 2^n битовых строк длины n. Эквивалент n вложенных циклов. Используется для генерации всех комбинаций при переборе."},
             {"q": "Сложность генерации всех перестановок?", "a": "itertools.permutations(lst) генерирует n! перестановок. Просто генерация — O(n × n!). При n=12 это ~5×10^8 операций — предел за 1-2 секунды. При n>12 — только pruning или DP."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Комбинаторика** = подсчёт «сколько вариантов». На интервью используется для **оценки brute force** («n! → не пройдёт») и для **генерации в backtracking**. В Python — `itertools` + `math.comb`. Не выходи за O(2ⁿ) если n > 25, и за n! если n > 10."},
+            {
+                "type": "table",
+                "title": "Главные формулы",
+                "headers": ["Понятие", "Формула", "Пример"],
+                "rows": [
+                    ["**Перестановки P(n)**",        "**n!**",                "5 человек по местам: 5! = 120"],
+                    ["**Размещения A(n, k)**",         "**n! / (n−k)!**",        "5 человек на 3 места: 60"],
+                    ["**Сочетания C(n, k)**",            "**n! / (k!·(n−k)!)**",   "Команда из 5 (выбираем 3): 10"],
+                    ["**С повторениями (multiset)**",     "**C(n+k−1, k)**",        "k объектов из n типов с повторами"],
+                    ["**Биномиальный**",                    "**C(n, k)**",             "коэффициент при xᵏ в (1+x)ⁿ"],
+                    ["**Pascal**",                          "C(n,k) = C(n−1,k−1) + C(n−1,k)", "DP-подсчёт без переполнения"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Перестановка / Размещение / Сочетание",
+                "items": [
+                    {"title": "**Перестановка**",
+                     "points": [
+                         "Все элементы, **порядок важен**",
+                         "n!",
+                         "Например: 5 человек по 5 местам",
+                     ]},
+                    {"title": "**Размещение**",
+                     "points": [
+                         "k из n, **порядок важен**",
+                         "n!/(n−k)!",
+                         "5 человек на 3 призовых места",
+                     ]},
+                    {"title": "**Сочетание**",
+                     "points": [
+                         "k из n, **порядок не важен**",
+                         "C(n, k)",
+                         "Команда 3 из 5",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "itertools — стандартная библиотека",
+                "code": (
+                    "from itertools import permutations, combinations, product, combinations_with_replacement\n\n"
+                    "# n!\n"
+                    "list(permutations([1, 2, 3]))\n"
+                    "# [(1,2,3), (1,3,2), (2,1,3), (2,3,1), (3,1,2), (3,2,1)] — 6 = 3!\n\n"
+                    "# C(n, k)\n"
+                    "list(combinations([1, 2, 3, 4], 2))\n"
+                    "# [(1,2), (1,3), (1,4), (2,3), (2,4), (3,4)] — 6 = C(4,2)\n\n"
+                    "# Декартово произведение — все битовые строки длины n\n"
+                    "list(product([0, 1], repeat=3))\n"
+                    "# [(0,0,0), (0,0,1), ...] — 8 = 2³\n\n"
+                    "# С повторениями\n"
+                    "list(combinations_with_replacement([1, 2, 3], 2))\n"
+                    "# [(1,1), (1,2), (1,3), (2,2), (2,3), (3,3)] — 6 = C(3+2−1, 2)"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Биномиальный коэффициент",
+                "code": (
+                    "import math\n\n"
+                    "# Прямой способ — встроено в Python 3.8+\n"
+                    "math.comb(50, 5)         # 2118760\n"
+                    "math.perm(10, 3)         # 720\n\n"
+                    "# Через треугольник Паскаля (когда n большое и нужны все C(n,k))\n"
+                    "def pascal(n):\n"
+                    "    dp = [[0] * (n + 1) for _ in range(n + 1)]\n"
+                    "    for i in range(n + 1):\n"
+                    "        dp[i][0] = 1\n"
+                    "        for k in range(1, i + 1):\n"
+                    "            dp[i][k] = dp[i-1][k-1] + dp[i-1][k]\n"
+                    "    return dp\n\n"
+                    "# Modular arithmetic для больших C(n,k) % p\n"
+                    "def comb_mod(n, k, p):\n"
+                    "    return math.comb(n, k) % p     # для умеренных p"
+                ),
+            },
+            {
+                "type": "table",
+                "title": "Размер пространства — пройдёт ли brute-force",
+                "headers": ["Структура", "Размер", "n max за разумное время"],
+                "rows": [
+                    ["**n!** (перестановки)",          "1, 2, 6, 24, 120, 720...",  "**n ≤ 10-12**"],
+                    ["**2ⁿ** (подмножества)",          "1, 2, 4, 8, ..., 10⁹",       "**n ≤ 25-30**"],
+                    ["**3ⁿ**",                          "—",                          "n ≤ 18-20"],
+                    ["**C(n, k)** при k=5",              "C(50,5) = 2.1M",             "n ≤ 50, k мало"],
+                    ["**n²**",                            "10⁶ при n=10³",              "n ≤ 10⁴"],
+                    ["**n³**",                             "10⁹ при n=10³",              "n ≤ 500"],
+                ],
+                "note": "Прикинуть `O(?)` алгоритма по constraint в условии — обязательный шаг на LeetCode.",
+            },
+            {
+                "type": "kv",
+                "title": "Полезное в `itertools`",
+                "items": [
+                    {"k": "**`permutations(lst, r=None)`**",         "v": "все перестановки длины r (default = len(lst))"},
+                    {"k": "**`combinations(lst, r)`**",                "v": "все сочетания без повторений"},
+                    {"k": "**`combinations_with_replacement(lst, r)`**", "v": "с повторениями"},
+                    {"k": "**`product(*iterables, repeat=N)`**",         "v": "декартово произведение"},
+                    {"k": "**`accumulate(lst)`**",                        "v": "prefix sums"},
+                    {"k": "**`groupby(lst, key)`**",                       "v": "группировка соседних"},
+                    {"k": "**`chain(*iterables)`**",                        "v": "склеить"},
+                    {"k": "**`pairwise(lst)`** (3.10+)",                     "v": "(x[0],x[1]), (x[1],x[2]), ..."},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Все `itertools` ленивые.** `combinations(range(10⁶), 2)` не упадёт по памяти — генератор. Но `list(...)` — упадёт. Итерируй и сразу обрабатывай, без материализации."},
+            {"type": "callout", "kind": "fact",
+             "content": "**`math.comb` точный без переполнения.** Python integer неограничен, поэтому `math.comb(100, 50) = 100891344545564193334812497256` — без округления. В C/Java переполнит на C(20, 10) уже."},
+            {"type": "callout", "kind": "warning",
+             "content": "**n! при n=15 — это 10¹².** Если решение `O(n!)` для n=20 — это 2.4·10¹⁸ операций. Никогда не пройдёт. Нужен **bitmask DP** (2ⁿ × n) или **branch & bound**."},
         ],
     },
     "algo_mock": {
