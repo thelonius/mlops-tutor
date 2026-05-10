@@ -35,6 +35,7 @@ function restoreSession() {
     badge.textContent = cfg.label;
     badge.className   = `mode-badge ${cfg.badge}`;
     const isStatic = mode === 'cheatsheet' || mode === 'mcquiz';
+    document.getElementById("messages").style.display    = isStatic ? "none" : "";
     document.getElementById('input-row')?.style && (document.getElementById('input-row').style.display = isStatic ? 'none' : '');
     document.getElementById('quick-area').style.display  = isStatic ? 'none' : '';
     document.getElementById('cheatsheet-view').style.display = mode === 'cheatsheet' ? 'flex' : 'none';
