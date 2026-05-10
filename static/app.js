@@ -685,6 +685,17 @@ async function streamInto(response, bubble) {
   const reader  = response.body.getReader();
   const decoder = new TextDecoder();
   let full = '', buffer = '';
+  let thinking = '', thinkEl = null;
+
+  function ensureThinkEl() {
+    if (!thinkEl) {
+      thinkEl = document.createElement('div');
+      thinkEl.className = 'thinking-preview';
+      bubble.appendChild(thinkEl);
+    }
+    return thinkEl;
+  }
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -697,7 +708,13 @@ async function streamInto(response, bubble) {
       if (raw === '[DONE]') break;
       try {
         const parsed = JSON.parse(raw);
-        if (parsed.text) {
+        if (parsed.thinking) {
+          thinking += parsed.thinking;
+          ensureThinkEl().textContent = thinking;
+          scrollBottom();
+        } else if (parsed.text) {
+          // Реальный ответ начался — стираем preview рассуждения.
+          if (thinkEl) { thinkEl.remove(); thinkEl = null; thinking = ''; }
           full += parsed.text;
           bubble.innerHTML = renderMarkdown(full);
           attachCodeButtons(bubble);
@@ -706,6 +723,8 @@ async function streamInto(response, bubble) {
       } catch (_) {}
     }
   }
+  // Если поток закрылся, а текста так и не пришло (случай fallback не сработал) —
+  // оставляем preview как есть, пользователь хотя бы что-то видит.
   // Тултипы по терминам — один раз в финале, не на каждом чанке
   addTooltips(bubble);
   addTtsButton(bubble, full);
