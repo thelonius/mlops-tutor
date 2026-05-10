@@ -26,6 +26,10 @@ gemini_client = OpenAI(
 
 GEMINI_MODELS = {"gemma-4-31b-it", "gemma-4-26b-a4b-it"}
 
+# Модели с reasoning-каналом отдают рассуждения в парных тегах. Стрипаем их
+# в стриме перед отдачей пользователю. Qwen использует <think>, Gemma — <thought>.
+THINK_TAG_PAIRS = [("<think>", "</think>"), ("<thought>", "</thought>")]
+
 app = Flask(__name__)
 shares.init_db(os.getenv("SHARES_DB_PATH", "data/shares.db"))
 
@@ -74,7 +78,7 @@ def chat():
 
     system_prompt = build_system_prompt(topic_id, mode)
 
-    nim_messages = [{"role": "system", "content": system_prompt}] + [
+    chat_history = [
         {"role": m["role"] if m["role"] == "user" else "assistant", "content": m["content"]}
         for m in messages
     ]
@@ -84,47 +88,120 @@ def chat():
     model_chain = MODELS[start:] + MODELS[:start]
 
     def generate():
+        nim_messages = [{"role": "system", "content": system_prompt}] + chat_history
         for i, model in enumerate(model_chain):
             try:
-                api_client = gemini_client if model in GEMINI_MODELS else client
+                is_gemini = model in GEMINI_MODELS
+                api_client = gemini_client if is_gemini else client
+                # Gemma тратит ~600-800 токенов на <thought> до ответа,
+                # поэтому ей нужен больший бюджет, чтобы успеть закрыть тег.
+                max_tok = 2400 if is_gemini else 1024
                 stream = api_client.chat.completions.create(
                     model=model,
                     messages=nim_messages,
                     stream=True,
                     temperature=0.7,
-                    max_tokens=1024,
+                    max_tokens=max_tok,
                 )
                 if i > 0:
                     note = f"_(резервная модель: {model})_\n\n"
                     yield f"data: {json.dumps({'text': note})}\n\n"
+                # Стрипаем reasoning-теги: содержимое <thought>...</thought>
+                # отдаём отдельным каналом 'thinking', чтобы фронт мог показать
+                # его приглушённо «модель думает». Реальный ответ идёт как 'text'.
                 in_think = False
-                think_buf = ""
+                close_tag = ""
+                think_buf = ""           # для поиска close_tag через границу чанков
+                last_think_content = ""  # полное содержимое последнего thought-блока
+                yielded_text = False
+
+                def ev_text(s):
+                    nonlocal yielded_text
+                    yielded_text = True
+                    return f"data: {json.dumps({'text': s})}\n\n"
+
+                def ev_thinking(s):
+                    return f"data: {json.dumps({'thinking': s})}\n\n"
+
                 for chunk in stream:
                     text = chunk.choices[0].delta.content
                     if not text:
                         continue
                     if in_think:
-                        think_buf += text
-                        if "</think>" in think_buf:
+                        # Закрывающий тег может прийти на стыке чанков.
+                        candidate = think_buf + text
+                        if close_tag in candidate:
+                            inside, _, after = candidate.partition(close_tag)
+                            new_inside = inside[len(think_buf):]
+                            if new_inside:
+                                yield ev_thinking(new_inside)
+                            last_think_content += new_inside
                             in_think = False
-                            after = think_buf.split("</think>", 1)[1]
+                            close_tag = ""
                             think_buf = ""
                             if after:
-                                yield f"data: {json.dumps({'text': after})}\n\n"
-                    elif "<think>" in text:
-                        before, rest = text.split("<think>", 1)
+                                yield ev_text(after)
+                        else:
+                            # Часть текста, безопасную от частичного close_tag, отдаём.
+                            keep = max(len(close_tag) - 1, 0)
+                            safe_end = len(candidate) - keep
+                            if safe_end > len(think_buf):
+                                emit = candidate[len(think_buf):safe_end]
+                                if emit:
+                                    yield ev_thinking(emit)
+                                    last_think_content += emit
+                                think_buf = candidate[safe_end:]
+                            else:
+                                think_buf = candidate
+                        continue
+                    # Не в thought — ищем самый ранний открывающий тег.
+                    earliest = None
+                    for open_t, close_t in THINK_TAG_PAIRS:
+                        idx = text.find(open_t)
+                        if idx != -1 and (earliest is None or idx < earliest[0]):
+                            earliest = (idx, open_t, close_t)
+                    if earliest is not None:
+                        idx, open_t, close_t = earliest
+                        before = text[:idx]
+                        rest = text[idx + len(open_t):]
                         if before:
-                            yield f"data: {json.dumps({'text': before})}\n\n"
+                            yield ev_text(before)
                         in_think = True
-                        think_buf = rest
-                        if "</think>" in think_buf:
+                        close_tag = close_t
+                        think_buf = ""
+                        # Обработать остаток текущего чанка как «внутри thought».
+                        if close_tag in rest:
+                            inside, _, after = rest.partition(close_tag)
+                            if inside:
+                                yield ev_thinking(inside)
+                                last_think_content += inside
                             in_think = False
-                            after = think_buf.split("</think>", 1)[1]
+                            close_tag = ""
                             think_buf = ""
                             if after:
-                                yield f"data: {json.dumps({'text': after})}\n\n"
+                                yield ev_text(after)
+                        elif rest:
+                            keep = max(len(close_tag) - 1, 0)
+                            safe_end = len(rest) - keep
+                            if safe_end > 0:
+                                emit = rest[:safe_end]
+                                yield ev_thinking(emit)
+                                last_think_content += emit
+                                think_buf = rest[safe_end:]
+                            else:
+                                think_buf = rest
                     else:
-                        yield f"data: {json.dumps({'text': text})}\n\n"
+                        yield ev_text(text)
+
+                # Стрим закончился. Если наружу так ничего и не вышло,
+                # значит Gemma завернула весь ответ в <thought> или поток
+                # оборвался по max_tokens — отдаём накопленное как ответ.
+                if not yielded_text:
+                    fallback = (last_think_content + think_buf).strip()
+                    if fallback:
+                        yield ev_text(fallback)
+                    else:
+                        yield ev_text("_(модель не успела сформулировать ответ, попробуй ещё раз)_")
                 yield "data: [DONE]\n\n"
                 return
             except Exception as e:
