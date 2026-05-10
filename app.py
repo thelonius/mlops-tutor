@@ -19,6 +19,13 @@ client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
 )
 
+gemini_client = OpenAI(
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=os.getenv("GEMINI_API_KEY", ""),
+)
+
+GEMINI_MODELS = {"gemma-4-31b-it", "gemma-4-26b-a4b-it"}
+
 app = Flask(__name__)
 shares.init_db(os.getenv("SHARES_DB_PATH", "data/shares.db"))
 
@@ -39,6 +46,8 @@ MODELS = [
     "openai/gpt-oss-120b",                        # 120B, отдельная квота
     "meta-llama/llama-4-scout-17b-16e-instruct",  # ещё запас
     "llama-3.1-8b-instant",                       # последний — может давать иероглифы
+    "gemma-4-31b-it",                             # Gemma 4 31B via Gemini API
+    "gemma-4-26b-a4b-it",                         # Gemma 4 26B via Gemini API
 ]
 
 
@@ -77,7 +86,8 @@ def chat():
     def generate():
         for i, model in enumerate(model_chain):
             try:
-                stream = client.chat.completions.create(
+                api_client = gemini_client if model in GEMINI_MODELS else client
+                stream = api_client.chat.completions.create(
                     model=model,
                     messages=nim_messages,
                     stream=True,
