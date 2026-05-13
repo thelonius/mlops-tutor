@@ -722,14 +722,14 @@ async function streamInto(response, bubble) {
         if (parsed.thinking) {
           thinking += parsed.thinking;
           ensureThinkEl().textContent = thinking;
-          scrollBottom();
+          stickyScroll();
         } else if (parsed.text) {
           // Реальный ответ начался — стираем preview рассуждения.
           if (thinkEl) { thinkEl.remove(); thinkEl = null; thinking = ''; }
           full += parsed.text;
           bubble.innerHTML = renderMarkdown(full);
           attachCodeButtons(bubble);
-          scrollBottom();
+          stickyScroll();
         }
       } catch (_) {}
     }
@@ -969,6 +969,13 @@ function appendBubble(role, content) {
 
 function clearMessages() { document.getElementById('messages').innerHTML = ''; }
 function scrollBottom()  { const el = document.getElementById('messages'); el.scrollTop = el.scrollHeight; }
+// Скроллим вниз только если юзер уже у низа (в пределах 80px). Если он
+// отскроллился вверх читать — не дёргаем.
+function stickyScroll() {
+  const el = document.getElementById('messages');
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  if (nearBottom) el.scrollTop = el.scrollHeight;
+}
 function setSend(on) {
   document.getElementById('send-btn').disabled = !on;
   document.querySelectorAll('.qbtn').forEach(b => b.disabled = !on);
