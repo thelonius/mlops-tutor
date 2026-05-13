@@ -967,6 +967,8 @@ function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.sc
 
 // ── TTS / edge-tts ──
 let ttsAudio = null;
+let ttsBtn   = null;
+let ttsUrl   = null;
 
 function addTtsButton(bubble, rawText) {
   const btn = document.createElement('button');
@@ -990,24 +992,40 @@ function addNextButton(bubble) {
 
 function ttsSetState(btn, state) {
   if (!btn) return;
-  btn.classList.remove('tts-loading', 'tts-playing');
+  btn.classList.remove('tts-loading', 'tts-playing', 'tts-paused');
   if (state === 'idle')    btn.innerHTML = '🔊 <span>Слушать</span>';
-  if (state === 'loading') { btn.innerHTML = '⏳ <span>Загрузка…</span>'; btn.classList.add('tts-loading'); }
-  if (state === 'playing') { btn.innerHTML = '⏹ <span>Стоп</span>';      btn.classList.add('tts-playing'); }
+  if (state === 'loading') { btn.innerHTML = '⏳ <span>Загрузка…</span>';   btn.classList.add('tts-loading'); }
+  if (state === 'playing') { btn.innerHTML = '⏸ <span>Пауза</span>';        btn.classList.add('tts-playing'); }
+  if (state === 'paused')  { btn.innerHTML = '▶ <span>Продолжить</span>';   btn.classList.add('tts-paused');  }
+}
+
+function ttsReset() {
+  if (ttsAudio) { try { ttsAudio.pause(); } catch {} }
+  if (ttsUrl)   { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
+  ttsAudio = null;
+  if (ttsBtn)   { ttsSetState(ttsBtn, 'idle'); ttsBtn = null; }
 }
 
 async function speak(rawText, btn) {
-  if (ttsAudio) {
-    ttsAudio.pause();
-    ttsAudio = null;
-    ttsSetState(btn, 'idle');
+  // Тоггл паузы/возобновления для той же кнопки — без нового запроса.
+  if (ttsAudio && ttsBtn === btn) {
+    if (ttsAudio.paused) {
+      try { await ttsAudio.play(); ttsSetState(btn, 'playing'); } catch { ttsReset(); }
+    } else {
+      ttsAudio.pause();
+      ttsSetState(btn, 'paused');
+    }
     return;
   }
+  // Другая кнопка или ничего не играет — сбрасываем старое и грузим новое.
+  ttsReset();
+
   const plain = rawText
     .replace(/_\(резервная модель:[^)]+\)_/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/[#*`_~\[\]]/g, '')
     .replace(/\n+/g, ' ').trim();
+  ttsBtn = btn;
   ttsSetState(btn, 'loading');
   try {
     const res  = await fetch('/api/tts', {
@@ -1018,14 +1036,22 @@ async function speak(rawText, btn) {
     if (!res.ok) throw new Error(res.status);
     const blob = await res.blob();
     const url  = URL.createObjectURL(blob);
+    ttsUrl     = url;
     ttsAudio   = new Audio(url);
-    ttsAudio.onended = () => { ttsAudio = null; URL.revokeObjectURL(url); ttsSetState(btn, 'idle'); };
-    ttsAudio.onerror = () => { ttsAudio = null; URL.revokeObjectURL(url); ttsSetState(btn, 'idle'); };
+    const cleanup = () => {
+      if (ttsBtn === btn) {
+        if (ttsUrl) { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
+        ttsAudio = null;
+        ttsSetState(btn, 'idle');
+        ttsBtn = null;
+      }
+    };
+    ttsAudio.onended = cleanup;
+    ttsAudio.onerror = cleanup;
     await ttsAudio.play();
     ttsSetState(btn, 'playing');
   } catch (e) {
-    ttsAudio = null;
-    ttsSetState(btn, 'idle');
+    ttsReset();
   }
 }
 

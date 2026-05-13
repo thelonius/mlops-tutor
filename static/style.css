@@ -145,6 +145,7 @@ body {
 .tts-btn:hover { color: var(--text); }
 .tts-btn.tts-loading { opacity: 0.6; cursor: wait; }
 .tts-btn.tts-playing { background: #a78bfa20; color: #a78bfa; border-color: #a78bfa40; }
+.tts-btn.tts-paused  { background: #f59e0b20; color: #f59e0b; border-color: #f59e0b40; }
 .cs-q-row { display: flex; align-items: flex-start; gap: 4px; }
 
 /* ── Cheatsheet blocks ── плотная типографика, это шпаргалка ── */
