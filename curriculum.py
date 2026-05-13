@@ -9290,27 +9290,27 @@ TOPICS = {
 
 CURRICULUM = [
     {
-        "id": "week1",
+        "id": "mlops_containers",
         "section": "MLOps",
-        "title": "Неделя 1: Основы",
+        "title": "Контейнеры и K8s",
         "topics": ["containers", "k8s_basics", "k8s_storage", "k8s_gpu"],
     },
     {
-        "id": "week2",
+        "id": "mlops_inference",
         "section": "MLOps",
-        "title": "Неделя 2: Инференс",
+        "title": "Модели и Inference",
         "topics": ["model_formats", "triton_basics", "triton_advanced"],
     },
     {
-        "id": "week3",
+        "id": "mlops_practice",
         "section": "MLOps",
-        "title": "Неделя 3: Пайплайны",
+        "title": "ClearML, CI/CD, Мониторинг",
         "topics": ["clearml", "cicd", "monitoring"],
     },
     {
-        "id": "week4",
+        "id": "mlops_sysdesign_week",
         "section": "MLOps",
-        "title": "Неделя 4: Интервью",
+        "title": "System Design (MLOps трек)",
         "topics": ["system_design"],
     },
     {
