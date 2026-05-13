@@ -1,0 +1,121 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "created_at": "2026-05-01",
+    "user_level": {
+      "k8s": 0.68,
+      "tf": 0.38,
+      "cloud": 0.52,
+      "cicd": 0.60,
+      "obs": 0.55,
+      "sec": 0.45
+    },
+    "session_count": 1,
+    "last_session": {
+      "date": "2026-05-01",
+      "kind": "calibration",
+      "questions": 10,
+      "avg_score": 0.53
+    }
+  },
+  "k8s-001": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.5}]
+  },
+  "k8s-002": {
+    "stability": 2.5,
+    "difficulty": 4.5,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "good",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-03T12:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "correct", "score": 0.85}]
+  },
+  "tf-001": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.35}]
+  },
+  "tf-005": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.4}]
+  },
+  "cloud-001": {
+    "stability": 2.5,
+    "difficulty": 4.5,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "good",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-03T12:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "correct", "score": 0.85}]
+  },
+  "cloud-002": {
+    "stability": 0.5,
+    "difficulty": 5.0,
+    "reps": 0,
+    "lapses": 1,
+    "last_grade": "again",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-01T12:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "wrong", "score": 0.2}]
+  },
+  "cicd-001": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.6}]
+  },
+  "obs-001": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.65}]
+  },
+  "obs-003": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.45}]
+  },
+  "sec-001": {
+    "stability": 1.2,
+    "difficulty": 5.0,
+    "reps": 1,
+    "lapses": 0,
+    "last_grade": "hard",
+    "last_at": "2026-05-01T00:00:00Z",
+    "due": "2026-05-02T07:00:00Z",
+    "history": [{"at": "2026-05-01", "verdict": "partial", "score": 0.45}]
+  }
+}
