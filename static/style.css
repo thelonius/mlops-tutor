@@ -320,6 +320,19 @@ body {
   white-space: nowrap; flex-shrink: 0;
 }
 #model-select:hover { border-color: #a78bfa88; }
+#tts-speed-select {
+  font-size: 11px; font-weight: 500;
+  padding: 3px 8px; border-radius: 20px;
+  background: #1e1b2e; color: #06b6d4;
+  border: 1px solid #06b6d444;
+  cursor: pointer; outline: none;
+  appearance: none; -webkit-appearance: none;
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2306b6d4' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  white-space: nowrap; flex-shrink: 0;
+}
+#tts-speed-select:hover { border-color: #06b6d488; }
 .mode-badge {
   font-size: 11px; font-weight: 500;
   padding: 3px 10px; border-radius: 20px; white-space: nowrap;
@@ -330,6 +343,17 @@ body {
 .badge-cheatsheet { background: #34d39920; color: #34d399; }
 .badge-mcquiz     { background: #f472b620; color: #f472b6; }
 .badge-lecture    { background: #06b6d420; color: #06b6d4; }
+.lecture-restart-chip {
+  display: flex; align-items: center; gap: 12px; justify-content: center;
+  padding: 10px 16px; margin: 8px 16px 16px;
+  background: #06b6d410; border: 1px solid #06b6d440; border-radius: 10px;
+  font-size: 13px; color: var(--text-muted);
+}
+.lecture-restart-chip button {
+  background: transparent; border: 1px solid #06b6d488; color: #06b6d4;
+  padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.lecture-restart-chip button:hover { background: #06b6d420; }
 
 /* ── MC Quiz ── */
 .mc-wrap {

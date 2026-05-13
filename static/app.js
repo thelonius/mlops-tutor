@@ -17,6 +17,23 @@ function getPreferredModel() {
   const sel = document.getElementById('model-select');
   if (sel) sel.value = getPreferredModel();
 })();
+
+// ── TTS speed ──
+function getTtsSpeed() {
+  const v = parseFloat(localStorage.getItem('mlops_tts_speed'));
+  return (v >= 0.5 && v <= 4) ? v : 1;
+}
+function setTtsSpeed(val) {
+  const v = parseFloat(val) || 1;
+  localStorage.setItem('mlops_tts_speed', String(v));
+  // Применяем к текущему проигрыванию сразу, не дожидаясь следующей секции.
+  if (ttsAudio) ttsAudio.playbackRate = v;
+}
+(function initTtsSpeed() {
+  const sel = document.getElementById('tts-speed-select');
+  if (sel) sel.value = String(getTtsSpeed());
+})();
+
 let progress   = new Set(JSON.parse(localStorage.getItem('mlops_progress') || '[]'));
 
 // ── Session (per browser tab via sessionStorage) ──
@@ -991,7 +1008,16 @@ function addTtsButton(bubble, rawText) {
   btn.className = 'tts-btn';
   btn.innerHTML = '🔊 <span>Слушать</span>';
   btn.title = 'Прочитать вслух';
-  btn.onclick = () => speak(rawText, btn);
+  btn.onclick = () => {
+    // Если это секция лекции — пускаем через цепочку, чтобы после ёё окончания
+    // лекция продолжилась автоматически. Toggle play/pause тоже работает.
+    const idxStr = bubble.dataset.lectureIdx;
+    if (idxStr !== undefined && idxStr !== '') {
+      const idx = parseInt(idxStr, 10);
+      if (Number.isInteger(idx)) { lecturePlay(idx, lectureRunId); return; }
+    }
+    speak(rawText, btn);
+  };
   bubble.appendChild(btn);
 }
 
@@ -1085,8 +1111,13 @@ async function speak(rawText, btn, opts) {
 
     ttsUrl   = url;
     const audio = new Audio(url);
+    audio.playbackRate = getTtsSpeed();
     ttsAudio = audio;
     ttsAllAudios.add(audio);
+    // Хук для лекции — даёт ей повесить timeupdate/перематывать на сохранённую позицию.
+    if (opts && typeof opts.onAudioReady === 'function') {
+      try { opts.onAudioReady(audio); } catch {}
+    }
     // Все события сверяются с текущим ttsAudio — если нас успели сбросить,
     // обработчики просто молча выходят.
     audio.onplay  = () => { if (ttsAudio === audio) ttsSetState(btn, 'playing'); };
@@ -1119,11 +1150,82 @@ async function speak(rawText, btn, opts) {
 // чтобы при смене темы или режима не «доиграть» предыдущую лекцию.
 let lectureSections = null;
 let lectureRunId    = 0;
+let lectureTopicId  = null;
+let pendingResumeTime = 0;   // секунд — перемотать следующее audio.currentTime
+
+const LECTURE_STALE_MS = 7 * 24 * 3600 * 1000;
+const lectureKey = tid => `mlops_lecture_${tid}`;
+
+function loadLectureSaved(tid) {
+  try {
+    const raw = localStorage.getItem(lectureKey(tid));
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !Array.isArray(obj.sections) || !obj.sections.length) return null;
+    if (!obj.savedAt || (Date.now() - obj.savedAt) > LECTURE_STALE_MS) return null;
+    return obj;
+  } catch { return null; }
+}
+
+function saveLectureProgress(audio, idx) {
+  // throttle: не чаще раза в 2.5 секунды
+  const now = Date.now();
+  if (now - (saveLectureProgress.lastSave || 0) < 2500) return;
+  saveLectureProgress.lastSave = now;
+  if (!lectureTopicId || !lectureSections) return;
+  try {
+    localStorage.setItem(lectureKey(lectureTopicId), JSON.stringify({
+      sections:   lectureSections,
+      sectionIdx: idx,
+      currentTime: (audio && audio.currentTime) || 0,
+      savedAt:    now,
+    }));
+  } catch {}
+}
+
+function clearLectureProgress(tid) {
+  try { localStorage.removeItem(lectureKey(tid || lectureTopicId)); } catch {}
+}
+
+function restartLecture(tid) {
+  clearLectureProgress(tid);
+  startLecture(tid);
+}
+
+function renderLectureBubbles(sections, tid, fromSaved) {
+  clearMessages();
+  if (fromSaved) {
+    const chip = document.createElement('div');
+    chip.className = 'lecture-restart-chip';
+    chip.innerHTML = `<span>▶ Продолжаем с сохранённого места</span>
+      <button onclick="restartLecture('${tid.replace(/'/g, "\\'")}')">🔄 Начать заново</button>`;
+    document.getElementById('messages').appendChild(chip);
+  }
+  sections.forEach((s, i) => {
+    const md = `### ${i + 1}. ${s.title}\n\n${s.body}`;
+    const bub = appendBubble('ai', md);
+    bub.dataset.lectureIdx = String(i);
+    addDeepenButton(bub, i);
+  });
+}
 
 async function startLecture(tid) {
-  ttsReset();                       // на всякий случай гасим текущее аудио
+  ttsReset();
   const runId = ++lectureRunId;
   lectureSections = null;
+  lectureTopicId  = tid;
+  pendingResumeTime = 0;
+
+  // Попытка восстановить ранее сохранённую лекцию для этой темы.
+  const saved = loadLectureSaved(tid);
+  if (saved) {
+    lectureSections = saved.sections;
+    renderLectureBubbles(saved.sections, tid, /*fromSaved=*/true);
+    pendingResumeTime = saved.currentTime || 0;
+    lecturePlay(saved.sectionIdx || 0, runId);
+    return;
+  }
+
   clearMessages();
   const t = topics[tid];
   const intro = appendBubble('ai', null);
@@ -1142,30 +1244,24 @@ async function startLecture(tid) {
     }
     sections = data.sections;
   } catch (e) {
-    if (runId !== lectureRunId) return;  // нас уже отменили (сменили тему/режим)
+    if (runId !== lectureRunId) return;
     intro.innerHTML = `<em style="color:#ef4444">Не удалось сгенерировать лекцию: ${e.message}</em>`;
     return;
   }
   if (runId !== lectureRunId) return;
 
   lectureSections = sections;
-  clearMessages();
-
-  // Рендерим все секции как обычные ai-бабблы. Каждая получает свою TTS-кнопку
-  // через appendBubble — клик по ней просто проиграет конкретную секцию,
-  // а авто-цепочка повесится отдельно при старте.
-  sections.forEach((s, i) => {
-    const md = `### ${i + 1}. ${s.title}\n\n${s.body}`;
-    const bub = appendBubble('ai', md);
-    bub.dataset.lectureIdx = String(i);
-  });
-
+  renderLectureBubbles(sections, tid, /*fromSaved=*/false);
   lecturePlay(0, runId);
 }
 
 function lecturePlay(idx, runId) {
   if (runId !== lectureRunId) return;
-  if (!lectureSections || idx >= lectureSections.length) return;
+  if (!lectureSections || idx >= lectureSections.length) {
+    // Лекция закончилась — чистим сохранённый прогресс.
+    clearLectureProgress();
+    return;
+  }
 
   const bubble = document.querySelector(`[data-lecture-idx="${idx}"]`);
   if (!bubble) return;
@@ -1175,15 +1271,30 @@ function lecturePlay(idx, runId) {
   const s  = lectureSections[idx];
   const md = `### ${idx + 1}. ${s.title}\n\n${s.body}`;
 
-  // Прокрутить к текущей секции, чтобы она была в зоне видимости.
+  // Если эта же кнопка уже активна — клик трактуем как тоггл play/pause
+  // (без перезапуска цепочки и без лишнего prefetch). onComplete уже привязан
+  // к существующему audio, так что авто-переход после окончания всё равно сработает.
+  if (ttsAudio && ttsBtn === btn) {
+    speak(md, btn);
+    return;
+  }
+
   bubble.scrollIntoView({behavior: 'smooth', block: 'start'});
 
   speak(md, btn, {
     onComplete: () => lecturePlay(idx + 1, runId),
+    onAudioReady: (audio) => {
+      // Если восстанавливаемся из localStorage — проматываем на сохранённую секунду.
+      if (pendingResumeTime > 0) {
+        try { audio.currentTime = pendingResumeTime; } catch {}
+        pendingResumeTime = 0;
+      }
+      audio.addEventListener('timeupdate', () => saveLectureProgress(audio, idx));
+    },
   });
 
-  // Прелоад следующей секции — сервер кэширует mp3 по sha1(текст), так что
-  // когда дойдём до неё через speak(), отдадим из кэша мгновенно.
+  // Прелоад mp3 для следующей секции — сервер кэширует по sha1(text),
+  // так что при переходе speak() отдаст из кэша мгновенно.
   const next = lectureSections[idx + 1];
   if (next) {
     const nextMd = `### ${idx + 2}. ${next.title}\n\n${next.body}`;
@@ -1193,6 +1304,71 @@ function lecturePlay(idx, runId) {
       body: JSON.stringify({text: nextMd.slice(0, 4000)}),
     }).catch(() => {});
   }
+}
+
+function addDeepenButton(bubble, idx) {
+  const btn = document.createElement('button');
+  btn.className = 'next-q-btn';
+  btn.innerHTML = '🔍 <span>Углубить</span>';
+  btn.title = 'Расширенная версия этой секции — больше конкретики';
+  btn.onclick = () => deepenSection(idx, btn);
+  bubble.appendChild(btn);
+}
+
+async function deepenSection(idx, btn) {
+  if (!lectureSections || !lectureTopicId) return;
+  const s = lectureSections[idx];
+  if (!s) return;
+  const runId = lectureRunId;
+
+  const origLabel = btn.innerHTML;
+  btn.innerHTML = '⏳ <span>Генерирую…</span>';
+  btn.disabled = true;
+
+  let deep;
+  try {
+    const res = await fetch('/api/lecture-deepen', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        topic_id: lectureTopicId,
+        section_title: s.title,
+        section_body:  s.body,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.body) throw new Error(data.error || 'Пустой ответ');
+    deep = data;
+  } catch (e) {
+    btn.innerHTML = origLabel;
+    btn.disabled = false;
+    btn.title = 'Ошибка: ' + e.message;
+    return;
+  }
+  if (runId !== lectureRunId) return;
+
+  btn.innerHTML = origLabel;
+  btn.disabled = false;
+
+  // Вставляем новый баббл сразу под текущей секцией, помечаем его как
+  // «углублённый» — повторно жать «Углубить» на нём нельзя.
+  const md = `### 🔍 ${deep.title}\n\n${deep.body}`;
+  const newBub = appendBubble('ai', md);
+  // Углублённый баббл получает только TTS-кнопку (из appendBubble) и не
+  // получает свою «🔍 Углубить» — углублять углубление не нужно.
+  newBub.dataset.lectureDeepened = String(idx);
+
+  const originalRow = document.querySelector(`[data-lecture-idx="${idx}"]`)?.closest('.msg');
+  const newRow = newBub.closest('.msg');
+  if (originalRow && newRow) {
+    originalRow.parentNode.insertBefore(newRow, originalRow.nextSibling);
+  }
+  newBub.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+  // Проигрываем углублённый текст; по окончании — переходим к следующей оригинальной секции.
+  speak(md, newBub.querySelector('.tts-btn'), {
+    onComplete: () => lecturePlay(idx + 1, runId),
+  });
 }
 
 // ── Mic / Groq Whisper ──

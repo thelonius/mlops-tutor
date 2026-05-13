@@ -378,6 +378,69 @@ def lecture():
     return jsonify({"error": f"LLM failed: {last_error or 'unknown'}"}), 502
 
 
+LECTURE_DEEPEN_PROMPT = """Ты ведёшь аудио-лекцию для опытного MLOps/ML инженера. Сейчас тебя просят УГЛУБИТЬ конкретную секцию из этой лекции. Контекст темы и оригинальный текст секции придут в user-сообщении.
+
+Сделай расширенную версию секции — 200-350 слов разговорным русским. Это должно быть «то же, но глубже»:
+- Больше конкретики: цифры, тонкости, edge-cases.
+- Раскрой 1-2 термина, которые в оригинале просто упомянуты.
+- Можешь привести аналогию или пример из практики.
+- Не повторяй оригинал слово в слово — это РАСШИРЕННАЯ версия, а не пересказ.
+
+Те же правила аудио-формата:
+- Никакого кода и LaTeX. Формулы зачитывай словами: «сумма i от одного до n».
+- Никакого markdown.
+- Списки в связную речь («во-первых», «также»).
+
+Верни СТРОГО JSON: {"title":"Короткий заголовок","body":"Текст 200-350 слов..."}.
+title — 2-5 слов, можно повторить оригинальный или сделать более узкий.
+body — связный разговорный текст без переносов строк."""
+
+
+@app.route("/api/lecture-deepen", methods=["POST"])
+def lecture_deepen():
+    data = request.json or {}
+    topic_id = (data.get("topic_id") or "").strip()
+    section_title = (data.get("section_title") or "").strip()
+    section_body  = (data.get("section_body")  or "").strip()
+    topic = TOPICS.get(topic_id)
+    if not topic or not section_body:
+        return jsonify({"error": "missing topic or section"}), 400
+
+    user_msg = (
+        f"Тема лекции: {topic.get('title', '')}.\n"
+        f"Контекст темы: {topic.get('what', '')}.\n\n"
+        f"Оригинальная секция:\n"
+        f"Заголовок: {section_title}\n"
+        f"Текст: {section_body}\n\n"
+        "Углуби эту секцию."
+    )
+
+    last_error = None
+    for model in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b"):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": LECTURE_DEEPEN_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                temperature=0.6,
+                max_tokens=1500,
+                response_format={"type": "json_object"},
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            obj = json.loads(raw)
+            title = str(obj.get("title", "")).strip()
+            body  = str(obj.get("body",  "")).strip()
+            if body:
+                return jsonify({"title": title or section_title, "body": body, "model": model})
+            last_error = "empty body"
+        except Exception as e:
+            last_error = str(e)
+            continue
+    return jsonify({"error": f"LLM failed: {last_error or 'unknown'}"}), 502
+
+
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
     audio = request.files.get("audio")
