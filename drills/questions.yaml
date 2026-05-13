@@ -1,0 +1,1064 @@
+# Банк вопросов. Senior-уровень. Растёт по мере сеансов.
+# Domains: k8s, tf, cloud, cicd, obs, sec
+
+# ─────────────────────────────────────────────────────────────
+# KUBERNETES
+# ─────────────────────────────────────────────────────────────
+
+- id: k8s-001
+  domain: k8s
+  difficulty: 2
+  kind: recall
+  prompt: |
+    Объясни разницу между Deployment, StatefulSet и DaemonSet.
+    Для каждого приведи реальный сценарий из MLOps/инфраструктуры,
+    где он единственно правильный выбор.
+  rubric:
+    must:
+      - Deployment — stateless, ReplicaSet под капотом, поды взаимозаменяемы
+      - StatefulSet — стабильные имена pod-N, стабильное хранилище, упорядоченный rollout
+      - DaemonSet — по одному поду на каждой подходящей ноде
+      - сценарии — например inference (Deployment), Kafka/etcd (STS), node-exporter/dcgm-exporter (DS)
+    bonus:
+      - StatefulSet headless service для DNS pod-N.svc
+      - PodManagementPolicy OrderedReady vs Parallel
+      - DS tolerations для master/GPU нод
+    pitfall:
+      - путать STS с просто «Deployment+PVC»
+  refs: [kubernetes.io/docs/concepts/workloads/controllers]
+
+- id: k8s-002
+  domain: k8s
+  difficulty: 3
+  kind: debug
+  prompt: |
+    Под в CrashLoopBackOff. Опиши последовательность диагностики —
+    какие команды, в каком порядке, что ищешь на каждом шаге.
+    Минимум 5 шагов.
+  rubric:
+    must:
+      - kubectl describe pod — Events, Last State, exit code
+      - kubectl logs <pod> --previous — лог предыдущего падения
+      - проверить liveness/readiness probe (timeout, initialDelay)
+      - проверить ресурсы — OOMKilled (exit 137), reason в describe
+      - проверить ConfigMap/Secret монтирование, env
+    bonus:
+      - kubectl debug ephemeral container для отладки image без shell
+      - проверить imagePullBackOff отдельно как другой класс
+      - exit 1 vs exit 137 vs exit 139
+    pitfall:
+      - смотреть только current logs без --previous
+  refs: [kubectl-debugging-runtime]
+
+- id: k8s-003
+  domain: k8s
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Чем отличаются HPA, VPA и KEDA? Можно ли использовать вместе?
+    Когда выбираешь KEDA, а не HPA на custom metrics?
+  rubric:
+    must:
+      - HPA — горизонтальный по CPU/mem/custom metrics
+      - VPA — вертикальный, рекомендации/автоприменение request/limit
+      - KEDA — event-driven, скалирует по очередям/Kafka/SQS/Prometheus
+      - HPA+VPA конфликтуют по тому же метрику; VPA в recommend-only ок
+      - KEDA удобнее когда нужен scale-to-zero и event sources
+    bonus:
+      - KEDA ScaledObject vs ScaledJob
+      - HPA stabilizationWindowSeconds
+      - VPA updateMode: Off/Initial/Auto
+    pitfall:
+      - думать что KEDA заменяет HPA, а не оборачивает
+  refs: [keda.sh/docs]
+
+- id: k8s-004
+  domain: k8s
+  difficulty: 4
+  kind: design
+  prompt: |
+    Нужно деплоить inference-сервис с моделями на GPU.
+    Поды должны попадать ТОЛЬКО на GPU-ноды, и не больше одного на ноду.
+    Опиши: nodeSelector/affinity, taint/toleration, resources, anti-affinity.
+    Покажи фрагмент манифеста.
+  rubric:
+    must:
+      - GPU-ноды taint типа nvidia.com/gpu=true:NoSchedule
+      - в подах toleration на этот taint
+      - resources.limits "nvidia.com/gpu": 1
+      - podAntiAffinity по labelSelector + topologyKey kubernetes.io/hostname
+      - либо nodeSelector с node label nvidia.com/gpu.present=true
+    bonus:
+      - requiredDuringSchedulingIgnoredDuringExecution для anti-affinity
+      - MIG profile через resource name nvidia.com/mig-1g.5gb
+      - PriorityClass для вытеснения low-priority workloads
+    pitfall:
+      - забыть toleration — поды pending
+      - использовать только nodeSelector без taint — другие workloads попадут на GPU
+  refs: [nvidia gpu operator, k8s scheduling]
+
+- id: k8s-005
+  domain: k8s
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    В namespace prod стоит NetworkPolicy default-deny на ingress и egress.
+    Сервис app-a должен ходить в Postgres в namespace data,
+    и наружу только в registry.example.com:443.
+    Напиши/опиши NetworkPolicy(s), которые это разрешат.
+  rubric:
+    must:
+      - default-deny отдельно ingress и egress
+      - egress allow на namespaceSelector data + podSelector postgres + port 5432
+      - egress allow на 0.0.0.0/0:443 ИЛИ через DNS (но NetworkPolicy не умеет DNS-имена напрямую)
+      - egress allow для DNS: kube-dns в kube-system на UDP 53
+      - на Postgres-стороне ingress allow от app-a podSelector
+    bonus:
+      - CIDR-блок для конкретного IP registry, или CNP/Cilium FQDN policy
+      - egress block на 169.254.169.254 (metadata) для безопасности
+    pitfall:
+      - забыть про DNS — приложение «висит» на резолве
+      - думать что NetworkPolicy умеет hostnames в стандарте
+  refs: [k8s networkpolicy, cilium fqdn]
+
+- id: k8s-006
+  domain: k8s
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что такое readiness, liveness и startup probe? Что произойдёт,
+    если только liveness настроен на /health, а приложение стартует 60 сек?
+  rubric:
+    must:
+      - readiness — выкидывает pod из Service endpoints когда не готов
+      - liveness — рестартует контейнер если не отвечает
+      - startup — даёт время стартануть, выключает другие probes
+      - сценарий — liveness начнёт убивать под до старта, CrashLoopBackOff
+      - решение — startupProbe с большим failureThreshold или initialDelaySeconds
+    bonus:
+      - terminationGracePeriodSeconds + preStop hook
+      - exec vs httpGet vs tcpSocket
+    pitfall:
+      - использовать одну /health для readiness и liveness — связывает разные семантики
+  refs: [k8s probes]
+
+- id: k8s-007
+  domain: k8s
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    Нужно дать поду доступ к S3-бакету в AWS, без хранения access keys
+    в Secret. EKS-кластер. Опиши IRSA — что настраивается на стороне
+    AWS IAM, что в кластере, что в манифесте пода.
+  rubric:
+    must:
+      - OIDC provider у EKS — берётся из cluster, регистрируется в IAM
+      - IAM Role с trust policy на этот OIDC + condition по sub:system:serviceaccount:ns:sa-name
+      - IAM policy на доступ к S3 на этой роли
+      - ServiceAccount с annotation eks.amazonaws.com/role-arn=...
+      - под использует этот SA, AWS SDK подхватывает creds через web identity token file
+    bonus:
+      - projected service account token + audience sts.amazonaws.com
+      - regional STS endpoint для скорости
+      - сравнение с EC2 instance role — IRSA дает least privilege per-pod
+    pitfall:
+      - давать роль на ноду и думать что хватит — все поды получат доступ
+  refs: [aws eks irsa]
+
+- id: k8s-008
+  domain: k8s
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что такое Pod Disruption Budget (PDB) и когда он спасает,
+    а когда нет? Приведи min/maxUnavailable пример.
+  rubric:
+    must:
+      - PDB ограничивает добровольные disruptions (drain, eviction)
+      - не защищает от недобровольных (нода умерла, OOM)
+      - minAvailable: 2 или maxUnavailable: 1
+      - selector matchLabels по подам
+    bonus:
+      - PDB в связке с rollout — помогает избежать одновременного падения
+      - Karpenter/cluster-autoscaler уважают PDB при downscale
+    pitfall:
+      - надеяться что PDB предотвратит падение от node failure
+  refs: [k8s pdb]
+
+- id: k8s-009
+  domain: k8s
+  difficulty: 4
+  kind: design
+  prompt: |
+    Спроектируй rolling update inference-сервиса на 20 GPU-подах
+    так, чтобы p99 latency не просел во время деплоя. Что в Deployment
+    spec? Что в Service? Что в probes?
+  rubric:
+    must:
+      - strategy.rollingUpdate.maxSurge=1, maxUnavailable=0 — всегда полный capacity
+      - readinessProbe с реальной проверкой загрузки модели, не TCP
+      - terminationGracePeriodSeconds + preStop sleep чтобы Service успел убрать endpoint
+      - minReadySeconds — пауза между подами
+    bonus:
+      - Argo Rollouts canary вместо стандартного RollingUpdate
+      - PodDisruptionBudget minAvailable=20 страхует ручной drain
+      - prestop: drain in-flight requests, флаг shutdown
+    pitfall:
+      - readiness=TCP — приложение принимает соединения до прогрева модели, p99 взлетает
+  refs: [argo rollouts canary]
+
+- id: k8s-010
+  domain: k8s
+  difficulty: 5
+  kind: debug
+  prompt: |
+    Сервис стал недоступен снаружи. ClusterIP резолвится из других подов,
+    но через Ingress (nginx) — 502. Опиши диагностику от endpoint
+    до dataplane. Минимум 6 шагов.
+  rubric:
+    must:
+      - kubectl get endpoints <svc> — есть ли pods в endpoints
+      - проверить readiness — если все not ready, Service пустой
+      - kubectl logs ingress-controller — что nginx видит, upstream
+      - проверить Ingress resource правильность service name/port
+      - проверить NetworkPolicy — может блокировать ingress namespace
+      - curl изнутри pod на ClusterIP — работает ли вообще backend
+    bonus:
+      - проверить ingress class аннотацию и совпадение с controller
+      - tcpdump на ingress поде
+      - описать externalTrafficPolicy Local/Cluster и source IP
+    pitfall:
+      - смотреть только Ingress, не проверив endpoints
+  refs: [k8s service debugging]
+
+- id: k8s-011
+  domain: k8s
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Чем RoleBinding отличается от ClusterRoleBinding? Можно ли
+    привязать ClusterRole через RoleBinding? Зачем так делают?
+  rubric:
+    must:
+      - Role — namespaced, ClusterRole — cluster-wide
+      - RoleBinding+ClusterRole — даёт права из ClusterRole, но scope ограничен namespace RB
+      - используется чтобы переиспользовать общую ClusterRole без копирования
+    bonus:
+      - aggregated ClusterRoles через aggregationRule
+      - встроенные view/edit/admin/cluster-admin
+    pitfall:
+      - давать cluster-admin сервис-аккаунту «на всякий случай»
+  refs: [k8s rbac]
+
+- id: k8s-012
+  domain: k8s
+  difficulty: 4
+  kind: design
+  prompt: |
+    Как ты подходишь к multi-tenant кластеру (несколько команд DS делят GPU)?
+    Что используешь для изоляции, квот и честности?
+  rubric:
+    must:
+      - namespace per team
+      - ResourceQuota (cpu, memory, nvidia.com/gpu, count/pods)
+      - LimitRange — default request/limit
+      - NetworkPolicy между namespaces
+      - RBAC per namespace
+    bonus:
+      - PriorityClass для preemption
+      - Kueue/Volcano для batch fairness и queueing
+      - hierarchical namespaces (HNC)
+      - vCluster для жёсткой изоляции control plane
+    pitfall:
+      - полагаться только на RBAC без сетевой изоляции
+  refs: [kueue, vcluster]
+
+# ─────────────────────────────────────────────────────────────
+# TERRAFORM
+# ─────────────────────────────────────────────────────────────
+
+- id: tf-001
+  domain: tf
+  difficulty: 2
+  kind: recall
+  prompt: |
+    Что такое remote state? Зачем нужен state locking?
+    Что произойдёт при двух параллельных `terraform apply` без locking?
+  rubric:
+    must:
+      - state — описание реальной инфры, маппинг ресурс→atributes
+      - remote — S3/GCS/Azure Blob/Terraform Cloud, доступен команде
+      - locking — DynamoDB для S3, чтобы одновременно не писать
+      - без lock — race, state file повреждён, ресурсы дрифтуют от истины
+    bonus:
+      - encryption at rest, versioning bucket для recovery
+      - terraform force-unlock когда лок завис
+    pitfall:
+      - хранить state в git — секреты в plaintext
+  refs: [terraform backend s3]
+
+- id: tf-002
+  domain: tf
+  difficulty: 3
+  kind: scenario
+  prompt: |
+    `terraform apply` упал в середине: 5 ресурсов создано, 5 нет.
+    State частично обновлён. Опиши что делать дальше пошагово.
+  rubric:
+    must:
+      - сначала прочитать ошибку, понять root cause до повторного apply
+      - terraform plan покажет что осталось — apply докатит
+      - если ресурс создан в облаке но НЕ в state — terraform import
+      - если ресурс в state но не существует — terraform state rm и apply создаст
+      - проверить нет ли side-effects (DNS, IAM привязки, billing)
+    bonus:
+      - terraform refresh для синхронизации state с реальностью (deprecated в favor of plan -refresh-only)
+      - taint/replace для пересоздания
+    pitfall:
+      - сразу прогонять apply ещё раз без анализа
+      - удалить state и пересоздать всё — потеря running resources
+  refs: [terraform import]
+
+- id: tf-003
+  domain: tf
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Чем count отличается от for_each? Когда выбирать что?
+    Что произойдёт при удалении середины списка с count?
+  rubric:
+    must:
+      - count — индекс по числу, ресурсы как resource[0..N]
+      - for_each — map/set строк, ресурсы как resource["key"]
+      - удаление середины списка с count → пересоздание всех после индекса
+      - for_each стабилен по ключу — удаляется только нужный
+    bonus:
+      - toset() для конверсии list→set для for_each
+      - count = var.enabled ? 1 : 0 паттерн для условных ресурсов
+    pitfall:
+      - использовать count для логически именованных ресурсов
+  refs: [terraform meta-arguments]
+
+- id: tf-004
+  domain: tf
+  difficulty: 4
+  kind: design
+  prompt: |
+    Как ты структурируешь monorepo c Terraform для 3 окружений
+    (dev, staging, prod) и 5 микросервисов? Модули, workspaces, terragrunt?
+  rubric:
+    must:
+      - модули в /modules/<name>, переиспользуемые
+      - окружения как отдельные root configs (envs/dev, envs/prod) — не workspaces
+      - state per env, state per service ИЛИ один state на env
+      - terragrunt для DRY конфигов backend и common vars
+    bonus:
+      - state per service для blast radius
+      - remote_state в terragrunt с автогенерацией backend.tf
+      - почему workspaces НЕ для окружений (Hashicorp сами не рекомендуют)
+    pitfall:
+      - один state на всё — apply на dev лочит prod
+      - workspaces для prod/dev — легко перепутать селект
+  refs: [terragrunt, terraform workspaces caveat]
+
+- id: tf-005
+  domain: tf
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    Кто-то поправил Security Group руками в консоли AWS.
+    Как обнаружить drift? Как починить, не потеряв ручные изменения,
+    если они валидны?
+  rubric:
+    must:
+      - terraform plan покажет diff — "drift detected"
+      - либо вернуть к коду (apply), либо закодить руками внесённое
+      - если оставлять — добавить правило в .tf, plan должен показать no changes
+      - terraform plan -refresh-only для обновления state без apply
+    bonus:
+      - lifecycle ignore_changes для атрибутов которые умышленно меняются вне TF
+      - драйфт-детект как cron в CI с алертом
+    pitfall:
+      - просто apply без анализа — затрёт изменения, которые могли быть нужны
+  refs: [terraform plan refresh-only]
+
+- id: tf-006
+  domain: tf
+  difficulty: 4
+  kind: recall
+  prompt: |
+    Что такое provider aliases? Приведи пример с двумя AWS-регионами
+    в одном root module.
+  rubric:
+    must:
+      - provider "aws" { alias = "us" region = "us-east-1" }
+      - resource блок ссылается через provider = aws.us
+      - модуль принимает providers через configuration_aliases в required_providers
+    bonus:
+      - multi-account через assume_role в provider
+      - провайдер для CN/GovCloud
+    pitfall:
+      - провайдер с alias не передан в модуль явно — берётся default
+  refs: [terraform provider aliases]
+
+- id: tf-007
+  domain: tf
+  difficulty: 5
+  kind: design
+  prompt: |
+    Опиши policy-as-code для Terraform: как блокировать опасные plans
+    (открытые SG, незашифрованные диски, public S3) до apply?
+    Что выберешь и почему?
+  rubric:
+    must:
+      - OPA/Conftest или Sentinel или tfsec/checkov в CI
+      - prerequisite — tfplan json (terraform show -json plan.out)
+      - правила: запрещён 0.0.0.0/0 в SG ingress кроме whitelist
+      - запрещён неэнкрипченный EBS, S3 public-read
+      - блокировка merge/apply при FAIL
+    bonus:
+      - sentinel по уровням advisory/soft/hard
+      - cost gate через Infracost
+      - Atlantis/TFC для PR-based workflow с policy gate
+    pitfall:
+      - проверять только terraform fmt/validate без security сканов
+  refs: [tfsec, checkov, opa-conftest]
+
+- id: tf-008
+  domain: tf
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что делает `terraform import`? Что НЕ делает? Какие у него
+    ограничения и что появилось как замена в новых версиях?
+  rubric:
+    must:
+      - привязывает существующий ресурс к адресу в state
+      - НЕ генерирует .tf код (до 1.5)
+      - надо вручную написать resource блок до import
+      - import блок (TF 1.5+) — import as code, может генерировать plan для импорта
+    bonus:
+      - terraform plan -generate-config-out для генерации .tf
+      - моменты с complex resources (security group rules, route tables)
+    pitfall:
+      - забыть написать .tf — после import конфиг разойдётся со state
+  refs: [terraform 1.5 import block]
+
+- id: tf-009
+  domain: tf
+  difficulty: 3
+  kind: scenario
+  prompt: |
+    Нужно передать секрет (DB password) в Terraform. Какие варианты
+    рассмотришь, что выберешь и почему? Что НЕ делать?
+  rubric:
+    must:
+      - не хранить в .tfvars в git
+      - использовать env TF_VAR_db_password или -var из CI secret
+      - либо source из AWS Secrets Manager / Vault через data source
+      - sensitive = true в variable — маскирует в plan output
+    bonus:
+      - state шифруется, но всё равно содержит секреты в plaintext
+      - external data source с Vault и dynamic credentials
+    pitfall:
+      - default value со секретом в variable
+      - terraform.tfvars commit
+  refs: [terraform sensitive variables]
+
+- id: tf-010
+  domain: tf
+  difficulty: 4
+  kind: debug
+  prompt: |
+    `terraform apply` висит 30 минут на «Still creating...» для
+    aws_db_instance. Что делать? Как ускорять/диагностировать?
+  rubric:
+    must:
+      - проверить в AWS console — реально ли создаётся
+      - timeout в resource блоке (timeouts { create = "60m" })
+      - cancel и terraform state list — посмотреть появился ли в state
+      - если в state но AWS не знает — terraform state rm
+    bonus:
+      - DB действительно долго создаётся (snapshot restore часами)
+      - TF_LOG=DEBUG для трассы провайдера
+    pitfall:
+      - Ctrl+C на середине — лок остаётся, force-unlock нужен
+  refs: [terraform timeouts]
+
+# ─────────────────────────────────────────────────────────────
+# CLOUD (AWS / GCP)
+# ─────────────────────────────────────────────────────────────
+
+- id: cloud-001
+  domain: cloud
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Объясни IAM в AWS на пальцах: User vs Role vs Policy vs Group.
+    Что такое assume role и зачем оно?
+  rubric:
+    must:
+      - User — постоянная identity (человек/CI)
+      - Role — временная identity, без long-lived creds, with trust policy
+      - Policy — JSON документ с allow/deny, attach к user/role/group
+      - Group — набор users для общих policy
+      - assume role — STS выдаёт временные credentials, основа cross-account и least-privilege
+    bonus:
+      - policy types: identity-based vs resource-based vs SCP
+      - permission boundary — лимит максимальных прав
+      - Access Analyzer
+    pitfall:
+      - использовать root account creds для CI
+  refs: [aws iam]
+
+- id: cloud-002
+  domain: cloud
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    GKE-под должен ходить в BigQuery без хранения JSON-ключа.
+    Опиши Workload Identity end-to-end: что в GCP IAM, что в кластере,
+    что в манифесте.
+  rubric:
+    must:
+      - GSA (Google Service Account) с ролью bigquery.dataViewer (или нужной)
+      - KSA (Kubernetes ServiceAccount) в namespace
+      - привязка KSA→GSA через iam.workloadIdentityUser на GSA
+      - аннотация iam.gke.io/gcp-service-account=GSA на KSA
+      - кластер с включённым Workload Identity (workload pool PROJECT.svc.id.goog)
+      - под использует этот KSA, GCP SDK подхватывает creds через metadata server
+    bonus:
+      - Federated workload identity (без GSA вообще, через RBAC на GCP-ресурсы)
+      - принцип «one GSA per workload»
+    pitfall:
+      - давать widevine роль на node SA — все поды получат
+  refs: [gke workload identity]
+
+- id: cloud-003
+  domain: cloud
+  difficulty: 3
+  kind: recall
+  prompt: |
+    VPC, subnet, route table, NAT gateway, internet gateway —
+    объясни как они работают вместе. Что такое private vs public subnet?
+  rubric:
+    must:
+      - VPC — сетевой контейнер с CIDR
+      - subnet принадлежит AZ, имеет CIDR-подмножество
+      - route table — куда идёт трафик; public subnet имеет route 0.0.0.0/0 → IGW
+      - private subnet → NAT GW (в public subnet) → IGW для исходящего
+      - IGW — for inbound/outbound с публичным IP, NAT — только outbound
+    bonus:
+      - VPC endpoints (gateway для S3/DDB, interface для других) экономит NAT-трафик
+      - Transit Gateway для multi-VPC
+    pitfall:
+      - запихивать всё в public subnet
+      - один NAT в одном AZ — single point of failure
+  refs: [aws vpc]
+
+- id: cloud-004
+  domain: cloud
+  difficulty: 4
+  kind: design
+  prompt: |
+    Спроектируй S3-хранилище для ML-датасетов: 100 TB, нужен версионинг,
+    разные классы доступа для hot/cold, доступ из EKS подов в той же VPC
+    без выхода в интернет, шифрование, audit.
+  rubric:
+    must:
+      - bucket с versioning enabled
+      - lifecycle rules: stdSTANDARD → IA через 30 дней → Glacier через 90
+      - VPC Gateway Endpoint для S3 — трафик не идёт через NAT/internet
+      - SSE-S3 или SSE-KMS, bucket policy с deny на unencrypted PUT
+      - доступ из подов через IRSA, не через access keys
+      - CloudTrail data events для S3
+    bonus:
+      - Object Lock для compliance/immutability
+      - Intelligent-Tiering для непредсказуемого доступа
+      - Access Points для разных команд
+    pitfall:
+      - public bucket policy
+      - забыть VPC Endpoint — большой billing на NAT
+  refs: [s3 vpc endpoint, s3 lifecycle]
+
+- id: cloud-005
+  domain: cloud
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    EC2 instance в private subnet не может скачать пакет с PyPI.
+    Опиши диагностику снизу-вверх.
+  rubric:
+    must:
+      - проверить route table subnet — есть ли default route на NAT
+      - проверить NAT GW — health, есть ли elastic IP
+      - проверить SG outbound — разрешён ли 443
+      - проверить NACL subnet — может блокировать
+      - DNS — VPC enableDnsSupport, /etc/resolv.conf
+      - curl https://pypi.org с verbose
+    bonus:
+      - VPC Flow Logs для подтверждения куда уходит/не уходит трафик
+      - SSM Session Manager как альтернатива SSH для диагностики
+    pitfall:
+      - проверять только SG, забыв NACL и route table
+  refs: [aws vpc flow logs]
+
+- id: cloud-006
+  domain: cloud
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Чем GCP IAM отличается от AWS IAM по модели? Что такое
+    Resource Hierarchy в GCP? Что такое Organization Policies?
+  rubric:
+    must:
+      - GCP — иерархия Organization → Folder → Project → Resource, IAM наследуется вниз
+      - AWS — flat accounts + Organizations с SCP сверху
+      - GCP роли — predefined/custom/basic; principals — user/group/SA/allUsers/allAuthenticatedUsers
+      - Org Policies — constraints (например запрет VM с public IP) поверх IAM
+    bonus:
+      - GCP service account как identity, не как user
+      - bindings vs policies (terraform terms)
+    pitfall:
+      - давать роль на Organization для одного сервиса
+  refs: [gcp iam, gcp resource hierarchy]
+
+- id: cloud-007
+  domain: cloud
+  difficulty: 4
+  kind: design
+  prompt: |
+    Multi-region active/active для inference API: AWS, два региона.
+    Что используешь для DNS, балансировки, реплика state? Какие риски?
+  rubric:
+    must:
+      - Route 53 latency-based или geolocation routing с health checks
+      - ALB per region + ACM cert per region
+      - shared state — Aurora Global Database или DynamoDB Global Tables
+      - модели/артефакты — S3 cross-region replication
+      - failover тестирование, chaos drills
+    bonus:
+      - Global Accelerator для anycast IP
+      - eventual consistency между регионами как риск
+      - split-brain при разрыве межрегиональной связности
+    pitfall:
+      - не учитывать разность latency репликации DB
+  refs: [aws multi-region]
+
+- id: cloud-008
+  domain: cloud
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Spot/Preemptible instances — что это, когда использовать в ML,
+    как минимизировать риск прерывания training job?
+  rubric:
+    must:
+      - spot — скидка 70-90%, instance может быть отозван за 2 минуты (AWS) или 30 сек (GCP)
+      - подходит для batch training с checkpointing
+      - не подходит для inference SLA-критичного без fallback
+      - checkpointing на S3/GCS каждые N шагов
+    bonus:
+      - spot fleet с разными типами для надёжности
+      - mixed instances policy в ASG
+      - Karpenter с consolidation для k8s
+    pitfall:
+      - inference-only на spot без on-demand fallback
+  refs: [aws spot, gcp preemptible, karpenter]
+
+# ─────────────────────────────────────────────────────────────
+# CI/CD
+# ─────────────────────────────────────────────────────────────
+
+- id: cicd-001
+  domain: cicd
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что такое OIDC между GitHub Actions и AWS? Зачем это вместо
+    long-lived access keys? Какие настройки на AWS-стороне?
+  rubric:
+    must:
+      - GitHub Actions выдаёт JWT (id_token) с claims о repo/branch/workflow
+      - в AWS — IAM OIDC provider с thumbprint token.actions.githubusercontent.com
+      - IAM Role с trust policy на этот provider, condition по sub:repo:org/name:ref:refs/heads/main
+      - в workflow — permissions id-token: write, configure-aws-credentials@v4 с role-to-assume
+      - короткоживущие creds (1 час), нет секретов в repo
+    bonus:
+      - condition по environment claim для prod-only роли
+      - GitHub Environments + protection rules
+    pitfall:
+      - sub без ref — любая ветка/PR может assume роль
+  refs: [github oidc aws]
+
+- id: cicd-002
+  domain: cicd
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Reusable workflow vs composite action в GitHub Actions —
+    в чём разница, когда что? Можно ли передавать секреты?
+  rubric:
+    must:
+      - reusable workflow — отдельный файл, вызывается через uses, имеет inputs/secrets/outputs
+      - composite action — набор шагов, вызывается как любой action
+      - reusable workflow запускается как отдельный job (свой runner), composite — внутри текущего step
+      - secrets надо явно прокидывать (secrets: inherit или per-name)
+    bonus:
+      - matrix не работает с composite action на jobs-уровне
+      - reusable workflow может вызывать другие reusable (до глубины)
+    pitfall:
+      - копировать workflows между repos вместо reusable
+  refs: [github reusable workflows]
+
+- id: cicd-003
+  domain: cicd
+  difficulty: 4
+  kind: design
+  prompt: |
+    Спроектируй pipeline для ML-сервиса: lint → test → build image →
+    security scan → push → deploy на staging → integration tests →
+    promote на prod. Какие гейты, какие environments, как откат?
+  rubric:
+    must:
+      - branch protection: PR → main с required checks
+      - build только из main или tag, push в registry с tag = git sha
+      - trivy/grype скан image, fail на critical
+      - deploy на staging автоматом, integration tests как required check
+      - prod deploy за manual approval (GitHub Environment с reviewers)
+      - rollback — re-deploy предыдущего git sha (immutable tags) или helm rollback
+    bonus:
+      - Argo CD pull-based deploy вместо push из CI
+      - canary через Argo Rollouts с auto-promote по метрикам
+      - SBOM генерация и attestation (cosign)
+    pitfall:
+      - latest tag — нельзя воспроизвести деплой
+      - доступ из CI напрямую в prod-кластер вместо GitOps
+  refs: [argo cd image updater]
+
+- id: cicd-004
+  domain: cicd
+  difficulty: 3
+  kind: recall
+  prompt: |
+    GitLab CI — что такое DAG (needs:) и чем отличается от stages?
+    Что такое child pipelines и когда их использовать?
+  rubric:
+    must:
+      - stages — последовательные группы, всё в stage параллельно, ждёт прошлый stage
+      - needs: — DAG, job стартует как только нужные зависимости готовы, игнорируя stages
+      - child pipeline — отдельный pipeline, триггерится из родителя через trigger:
+      - dynamic child — генерация .gitlab-ci.yml на лету
+    bonus:
+      - parent-child для monorepo с независимыми сервисами
+      - rules: vs only/except (rules — современный)
+    pitfall:
+      - всё в один stage — теряешь параллелизм и зависимости
+  refs: [gitlab needs, gitlab child pipelines]
+
+- id: cicd-005
+  domain: cicd
+  difficulty: 4
+  kind: recall
+  prompt: |
+    Argo CD vs Argo Workflows vs Argo Rollouts — что есть что,
+    когда какой нужен? Можно ли без Argo CD делать GitOps?
+  rubric:
+    must:
+      - Argo CD — GitOps continuous delivery, синхронизирует git→cluster, decларативный desired state
+      - Argo Workflows — engine для DAG/step workflows (CI, ML pipelines, ETL)
+      - Argo Rollouts — progressive delivery (canary, blue-green) controller вместо стандартного Deployment
+      - GitOps можно через Flux CD как альтернатива
+    bonus:
+      - Argo CD ApplicationSet для many-cluster
+      - Argo Events для триггеров
+      - Rollouts analysis с Prometheus как gate
+    pitfall:
+      - путать Argo CD и Argo Workflows
+  refs: [argo project]
+
+- id: cicd-006
+  domain: cicd
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    На GitHub Actions runner-е сборка Docker-образа занимает 12 минут,
+    хотя кода поменялась пара строк. Какие 5 оптимизаций применишь?
+  rubric:
+    must:
+      - BuildKit + cache-to/cache-from на registry или GHA cache
+      - multi-stage — отделить deps от code
+      - порядок слоёв: COPY requirements first, install, потом COPY .
+      - .dockerignore — не тащить .git, node_modules, model files
+      - matrix-параллелизация если многоархитектурно
+    bonus:
+      - depot.dev/buildjet для быстрых runners
+      - prebuilt base image с тяжёлыми зависимостями (CUDA, torch)
+      - actions/cache для pip/npm
+    pitfall:
+      - COPY . в начале — любое изменение инвалидирует все слои
+  refs: [docker buildx cache]
+
+# ─────────────────────────────────────────────────────────────
+# OBSERVABILITY
+# ─────────────────────────────────────────────────────────────
+
+- id: obs-001
+  domain: obs
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Объясни RED и USE methods. Какой когда применять?
+    Приведи 4 метрики для inference-сервиса по RED.
+  rubric:
+    must:
+      - RED — Rate, Errors, Duration (для request-driven сервисов)
+      - USE — Utilization, Saturation, Errors (для ресурсов: CPU, mem, disk, net)
+      - RED со стороны клиентских запросов, USE со стороны железа
+      - inference RED — RPS, error rate (5xx, model errors), latency p50/p95/p99, queue size
+    bonus:
+      - golden signals (Google SRE) — latency, traffic, errors, saturation
+      - p99 vs avg — почему avg врёт
+    pitfall:
+      - использовать только avg latency
+  refs: [google sre book]
+
+- id: obs-002
+  domain: obs
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что такое SLI, SLO, SLA, error budget? Как считается error budget
+    для SLO 99.9% за 30 дней?
+  rubric:
+    must:
+      - SLI — measurable indicator (например доля успешных запросов)
+      - SLO — целевое значение SLI (99.9%)
+      - SLA — внешний контракт со штрафом (обычно слабее SLO)
+      - error budget = (1 - SLO) * window = 0.1% * 30d = 43.2 минуты downtime / месяц
+      - сжёг бюджет → freeze фичи, фокус на reliability
+    bonus:
+      - burn rate alerts (multi-window multi-burn-rate)
+      - SLO как дверь между dev velocity и reliability
+    pitfall:
+      - 100% SLO — не оставляет space для деплоев
+  refs: [google sre slo]
+
+- id: obs-003
+  domain: obs
+  difficulty: 4
+  kind: design
+  prompt: |
+    Inference API. Спроектируй стек observability: metrics, logs, traces.
+    Что используешь, как связываешь, как алертишь?
+  rubric:
+    must:
+      - metrics — Prometheus scrape /metrics (или OTEL → Mimir/Cortex), Grafana дашборды
+      - logs — structured JSON, stdout → Loki/ELK, обогащение trace_id
+      - traces — OpenTelemetry SDK в коде, OTLP collector → Tempo/Jaeger
+      - связь — exemplars в Prometheus, trace_id в логах
+      - алерты — Alertmanager на SLO burn rate, не на raw metrics
+    bonus:
+      - eBPF для auto-instrumentation (Pixie, Cilium Tetragon)
+      - sampling traces, не 100%
+      - log levels controlled через env
+    pitfall:
+      - алерты на «CPU > 80%» вместо user-facing метрик
+      - 100% trace sampling в проде — стоимость
+  refs: [opentelemetry, grafana lgtm]
+
+- id: obs-004
+  domain: obs
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    Алерт «p99 latency > 500ms» сработал. Опиши 5 шагов диагностики
+    через стек observability.
+  rubric:
+    must:
+      - открыть Grafana дашборд сервиса — посмотреть RED + ресурсы
+      - определить начало проблемы по timeline, что коррелирует
+      - раскопать в трейсах какие spans долго (DB? downstream API? GPU?)
+      - логи в окне инцидента — exceptions, slow queries
+      - проверить deploy timeline — что меняли последним
+    bonus:
+      - проверить downstream сервисов их latency
+      - exemplars из метрики прыгнуть в конкретный trace
+      - rollback как быстрый mitigation, разбор после
+    pitfall:
+      - добавить мощностей не поняв root cause
+  refs: [grafana exemplars]
+
+- id: obs-005
+  domain: obs
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Чем Datadog отличается от open-source стека (Prom + Grafana + Loki + Tempo)?
+    Что выбрать стартапу, что энтерпрайзу? Какие подводные камни?
+  rubric:
+    must:
+      - Datadog — SaaS, всё в одном UI, агент с auto-instrumentation
+      - OSS — самохост, полный контроль, дешевле на масштабе
+      - Datadog для стартапа — быстрый старт, дорого на больших объёмах (custom metrics, log ingest)
+      - OSS для энтерпрайза — дешевле, требует команду на эксплуатацию
+      - DD billing подводные — host count, custom metrics, log ingest, indexed logs
+    bonus:
+      - hybrid — Prom для метрик, Datadog для APM
+      - cardinality explosion → blow up в обоих
+    pitfall:
+      - не контролировать cardinality custom metrics → DD биллинг улетает
+  refs: [datadog pricing]
+
+- id: obs-006
+  domain: obs
+  difficulty: 4
+  kind: recall
+  prompt: |
+    Cardinality в Prometheus. Что это, чем опасно, как контролировать?
+    Приведи пример плохой метки.
+  rubric:
+    must:
+      - cardinality = число уникальных комбинаций labels per metric name
+      - high cardinality → раздутие TSDB, OOM, медленные запросы
+      - плохой label — user_id, request_id, full URL с query
+      - хороший — http_status, method, route (нормализованный)
+      - контроль — relabeling, recording rules, лимиты в scrape config
+    bonus:
+      - Mimir/Cortex с per-tenant limits
+      - VictoriaMetrics с лучшей compression
+    pitfall:
+      - класть trace_id или uuid в метку
+  refs: [prometheus cardinality]
+
+# ─────────────────────────────────────────────────────────────
+# SECURITY-AS-CODE
+# ─────────────────────────────────────────────────────────────
+
+- id: sec-001
+  domain: sec
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Что такое SOPS и age? Как ты хранишь зашифрованные секреты в git?
+    Кто может их расшифровать в кластере?
+  rubric:
+    must:
+      - SOPS — Mozilla, шифрует значения в YAML/JSON, ключи остаются plain
+      - backends — age, GPG, AWS KMS, GCP KMS, Vault
+      - .sops.yaml — какие пути шифровать каким ключом
+      - в кластере — Flux/ArgoCD plugin или helm-secrets, дешифрует на месте
+      - ключи только у нужных identities (KMS IAM, age recipients)
+    bonus:
+      - SealedSecrets как альтернатива (cluster-bound)
+      - External Secrets Operator + Vault/AWS SM — секреты вообще не в git
+    pitfall:
+      - коммитить unencrypted .env
+  refs: [mozilla sops, age encryption]
+
+- id: sec-002
+  domain: sec
+  difficulty: 4
+  kind: design
+  prompt: |
+    OPA Gatekeeper vs Kyverno — что выбрать? Приведи правило,
+    которое запрещает образы не из своего registry.
+  rubric:
+    must:
+      - Gatekeeper — OPA Rego DSL, мощно но крутая кривая обучения
+      - Kyverno — YAML-based, проще, k8s-native
+      - Gatekeeper — ConstraintTemplate + Constraint
+      - Kyverno — ClusterPolicy с validate.pattern
+      - правило — deny если image не начинается с registry.example.com/
+    bonus:
+      - audit mode перед enforce
+      - mutate вебхуки (Kyverno умеет добавлять labels)
+      - admission vs background scan
+    pitfall:
+      - сразу enforce без audit — поломает существующие workloads
+  refs: [opa gatekeeper, kyverno]
+
+- id: sec-003
+  domain: sec
+  difficulty: 4
+  kind: recall
+  prompt: |
+    Supply chain security: SBOM, SLSA, Sigstore (cosign). Что эти
+    штуки решают? Как встроить в pipeline?
+  rubric:
+    must:
+      - SBOM — Software Bill of Materials, перечень компонентов (syft генерит)
+      - SLSA — уровни зрелости supply chain (build provenance, isolation)
+      - cosign — подписи и attestations к OCI artifacts
+      - в pipeline — syft → SBOM, cosign sign image, cosign attest --predicate sbom
+      - в кластере — admission controller (Kyverno/Connaisseur) проверяет подпись
+    bonus:
+      - Rekor transparency log
+      - keyless signing с GitHub OIDC — нет хранилища ключей
+      - vex для ложных срабатываний CVE
+    pitfall:
+      - сканить только final image без attestation — подмена возможна
+  refs: [sigstore, slsa.dev]
+
+- id: sec-004
+  domain: sec
+  difficulty: 3
+  kind: recall
+  prompt: |
+    Pod Security Standards (PSS) — Privileged, Baseline, Restricted.
+    Что в Restricted запрещено? Как применить namespace-wide?
+  rubric:
+    must:
+      - 3 уровня политики, заменили PodSecurityPolicy
+      - Restricted — non-root, read-only rootfs, drop ALL capabilities, no privileged, seccomp RuntimeDefault
+      - применение — labels на namespace pod-security.kubernetes.io/enforce=restricted
+      - audit/warn/enforce levels — постепенный rollout
+    bonus:
+      - Kyverno/Gatekeeper для расширения за пределы PSS
+      - per-version pinning (pod-security.kubernetes.io/enforce-version=v1.28)
+    pitfall:
+      - применять restricted на namespace где есть legacy workloads без аудита
+  refs: [k8s pod security]
+
+- id: sec-005
+  domain: sec
+  difficulty: 4
+  kind: scenario
+  prompt: |
+    Какой минимум статических security-чеков в CI для k8s + terraform
+    репозитория? Что пихаешь, в каком порядке, что блокирует merge?
+  rubric:
+    must:
+      - terraform — tfsec/checkov, terraform validate
+      - k8s YAML — kubeval/kubeconform (схема), kube-score/datree (best practices)
+      - Helm — helm lint, helm template + conftest с OPA политиками
+      - container images — trivy/grype для CVE
+      - secrets — gitleaks/trufflehog в pre-commit и CI
+      - блокировать merge на CRITICAL и HIGH (с исключениями через .checkovignore)
+    bonus:
+      - SARIF upload в GitHub Security tab
+      - SBOM как обязательный artifact
+    pitfall:
+      - сканы запускать только на main вместо PR
+  refs: [trivy, checkov, kubeconform]
+
+- id: sec-006
+  domain: sec
+  difficulty: 4
+  kind: recall
+  prompt: |
+    HashiCorp Vault — для чего нужен в k8s? Чем отличается от
+    обычных Secrets? Что такое dynamic secrets и зачем они?
+  rubric:
+    must:
+      - centralized secret management с auditing, rotation, lease
+      - k8s Secret — base64 в etcd, по умолчанию не зашифровано at rest
+      - Vault auth methods — k8s SA token review, AppRole
+      - dynamic secrets — Vault сам создаёт DB user на лету с TTL, после ttl revoke
+      - инжекция в под — Vault Agent Injector sidecar или CSI driver
+    bonus:
+      - encryption at rest (transit secrets engine) — encryption-as-a-service
+      - PKI engine для ACME-like cert issuance
+    pitfall:
+      - использовать static secrets там где можно dynamic
+  refs: [vault k8s auth, vault dynamic secrets]
