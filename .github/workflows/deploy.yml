@@ -69,6 +69,10 @@ jobs:
       # успел сделать scp поверх (либо что-то пошло не так с auto-deploy).
       # Это ловит ровно тот класс инцидентов, который у нас регулярно
       # повторялся: ручной scp с feature-веток затирал прод.
+      #
+      # Реализация: ОДИН ssh-вызов на весь whitelist. Раньше было 9
+      # отдельных подключений, fail2ban на проде их троттлил и часть
+      # падала по ConnectTimeout (run 25788858632 как пример).
       - name: Verify prod == main (md5)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -81,26 +85,39 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          FILES="app.py curriculum.py shares.py requirements.txt templates/index.html"
-          FILES="$FILES static/app.js static/style.css static/glossary.js static/share.js"
+          # ОДНО ssh-подключение, считаем все md5 одной командой.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=10 \
+              "$SSH_USER@$SSH_HOST" \
+              "cd /opt/mlops-tutor && md5sum \
+                app.py curriculum.py shares.py requirements.txt \
+                templates/index.html \
+                static/app.js static/style.css static/glossary.js static/share.js" \
+              > prod_md5.txt
 
-          fail=0
-          for f in $FILES; do
-            local_md5=$(md5sum "$f" | awk '{print $1}')
-            prod_md5=$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-              "$SSH_USER@$SSH_HOST" "md5sum /opt/mlops-tutor/$f" | awk '{print $1}')
-            if [ "$local_md5" = "$prod_md5" ]; then
-              echo "✅ $f  ($local_md5)"
-            else
-              echo "❌ $f  local=$local_md5  prod=$prod_md5"
-              fail=1
-            fi
-          done
+          md5sum \
+            app.py curriculum.py shares.py requirements.txt \
+            templates/index.html \
+            static/app.js static/style.css static/glossary.js static/share.js \
+            > local_md5.txt
 
-          if [ "$fail" = "1" ]; then
+          # Нормализуем: pwd-префиксы могут отличаться, оставляем только базовое имя.
+          # Формат: '<md5>  <path>' → '<md5>  <path>'. Сортируем и diff'им.
+          sort prod_md5.txt  > prod_md5.sorted
+          sort local_md5.txt > local_md5.sorted
+
+          echo "=== prod md5 ==="
+          cat prod_md5.sorted
+          echo "=== local md5 ==="
+          cat local_md5.sorted
+          echo "=== diff ==="
+          if diff -u prod_md5.sorted local_md5.sorted; then
+            echo "✅ Прод == main по всем 9 файлам."
+          else
             echo ""
-            echo "::error::Прод не равен main по md5. Это означает что кто-то"
-            echo "::error::делал scp вручную ИЛИ deploy шаг не докатил файлы."
-            echo "::error::Перезапусти workflow или проверь логи deploy шага выше."
+            echo "::error::Прод не равен main по md5."
+            echo "::error::Возможные причины: кто-то делал scp вручную поверх auto-deploy,"
+            echo "::error::либо предыдущий deploy шаг не докатил файлы."
+            echo "::error::Перезапусти workflow (gh run rerun <id>) или проверь логи Copy шага."
             exit 1
           fi
