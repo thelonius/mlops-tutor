@@ -8210,6 +8210,1082 @@ TOPICS = {
             {"q": "Что значит TTFT vs ITL и почему это разные оптимизации?", "a": "TTFT (time to first token) = время до первого токена ответа = prefill phase (вычислить KV-cache по всему prompt'у). ITL (inter-token latency) = время на каждый новый токен = decode phase. TTFT доминируется длиной prompt'а, ITL — KV-cache size и model parallelism. Streaming UI оптимизирует TTFT (быстрее начать отдавать), batch-приложения — ITL × output length."},
         ],
     },
+    "mcp": {
+        "title": "MCP: Model Context Protocol",
+        "emoji": "🔌",
+        "track": "mlops",
+        "what": "host/client/server, transport (stdio, HTTP+SSE, Streamable HTTP), capabilities (tools, resources, prompts, sampling), готовые серверы, безопасность",
+        "why": "Открытый стандарт от Anthropic (ноябрь 2024) для подключения внешних tools и данных к LLM-клиентам. До MCP связка N клиентов × M источников требовала отдельных интеграций для каждой пары. С MCP источник один раз становится сервером, и все совместимые клиенты (Claude Desktop, Claude Code, Cursor, Continue, Zed) подхватывают его автоматически",
+        "interview_focus": "архитектура host/client/server, отличие MCP от function calling, transport stdio vs HTTP, capability negotiation, как написать свой сервер на Python (FastMCP), безопасность",
+        "cheatsheet": [
+            {"q": "Что такое MCP и какую проблему решает?",
+             "a": "Открытый протокол от Anthropic для подключения LLM-приложений к внешним инструментам и данным. До MCP интеграция N клиентов с M источниками требовала N×M реализаций. MCP стандартизирует контракт: источник один раз пакуется в MCP-сервер, любой совместимый клиент его подхватывает."},
+            {"q": "Из каких ролей состоит MCP-архитектура?",
+             "a": "Host — приложение, в котором живёт LLM (Claude Desktop, Cursor, Claude Code). Client — модуль внутри хоста, по одному на каждое подключение, ведёт жизненный цикл соединения и протокол. Server — отдельный процесс или удалённый сервис, предоставляет tools/resources/prompts. Один host держит несколько клиентов к разным серверам."},
+            {"q": "Какие transport поддерживает MCP?",
+             "a": "stdio: host запускает сервер дочерним процессом, общение через stdin/stdout — стандарт для локальных серверов. HTTP+SSE: удалённый сервис, SSE для server→client streaming, POST для запросов. Streamable HTTP — newer revision, одно соединение в обе стороны, постепенно вытесняет SSE."},
+            {"q": "Что такое capabilities и какие они бывают?",
+             "a": "Tools — функции, которые LLM вызывает по необходимости (как function calling, но дискаверится автоматически). Resources — read-only данные по URI (file://, custom://). Prompts — именованные параметризованные шаблоны для UI хоста. Sampling — сервер просит хост сгенерировать LLM-ответ от своего имени, поддерживается редко."},
+            {"q": "Чем MCP отличается от function calling?",
+             "a": "Function calling — это API-фича OpenAI/Anthropic: ты объявляешь tools прямо в коде приложения, LLM их вызывает в рамках одного запроса. MCP — стандарт интеграции уровнем выше: tools живут в отдельном процессе, дискаверятся клиентом автоматически, один сервер переиспользуется разными LLM-клиентами без переписывания. Под капотом MCP-клиент часто использует function calling для самой LLM."},
+            {"q": "Как написать минимальный MCP-сервер на Python?",
+             "a": "Через FastMCP из официального SDK: декорировать функцию @mcp.tool(), написать docstring (станет описанием для LLM) и аннотации типов (превратятся в JSON schema). Запустить mcp.run(transport='stdio'). Хост подключает по конфигу с command и args."},
+            {"q": "Какие готовые MCP-серверы есть?",
+             "a": "От Anthropic: filesystem, github, slack, postgres, google-drive, puppeteer, memory. Community: десятки серверов в каталогах типа mcp.so и awesome-mcp-servers. Любой сторонний сервер запускает код у тебя на машине, с правами твоего пользователя — читай исходники перед использованием."},
+            {"q": "Как подключить MCP-сервер в Claude Desktop и Claude Code?",
+             "a": "Claude Desktop: добавить запись в mcpServers в claude_desktop_config.json (на macOS: ~/Library/Application Support/Claude/), указать command и args, перезапустить. Claude Code: команда `claude mcp add <name> <command>` или редактирование .mcp.json в проекте."},
+            {"q": "Какие риски безопасности у MCP?",
+             "a": "Локальный сервер выполняется с правами хоста: видит файлы, сеть, переменные окружения с токенами. Меры: allow-list директорий для filesystem, неprivileged user, аудит кода third-party серверов. Для удалённых серверов в спецификации добавили OAuth (2025) — без него передача токенов небезопасна."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**MCP** — стандарт от Anthropic для подключения tools и данных к LLM-клиентам. Архитектура: **host** (Claude Desktop / Code / Cursor) → **client** → **server**. Сервер декларирует **capabilities** (tools, resources, prompts), хост их дискаверит и отдаёт LLM. Transport: **stdio** локально или **HTTP+SSE** / **Streamable HTTP** удалённо. Главный выигрыш: один сервер работает со всеми совместимыми клиентами без переписывания."},
+            {
+                "type": "flow",
+                "title": "Жизненный цикл tool call через MCP",
+                "branches": [
+                    {"condition": "1. Initialize",         "outcome": "host запускает сервер (stdio) или открывает соединение (HTTP), client согласует версию протокола и capabilities"},
+                    {"condition": "2. List capabilities",   "outcome": "client запрашивает tools/list, resources/list — получает JSON-описания со схемами аргументов"},
+                    {"condition": "3. LLM решает вызвать tool", "outcome": "host добавляет описания tools в системный промпт, модель в ответе указывает имя tool и аргументы (через function calling)"},
+                    {"condition": "4. Tool call",            "outcome": "client отправляет tools/call серверу, тот исполняет и возвращает результат"},
+                    {"condition": "5. Результат в LLM",       "outcome": "host скармливает результат обратно модели, та продолжает генерацию"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Capabilities",
+                "headers": ["Capability", "Что это", "Когда брать"],
+                "rows": [
+                    ["**tools**",     "функции с аргументами, LLM вызывает по необходимости",   "действия с побочным эффектом, поиск, вычисления"],
+                    ["**resources**",  "read-only данные по URI (file://, custom://)",           "файлы, документы, выборки из БД, статический контекст"],
+                    ["**prompts**",    "именованные шаблоны промптов с параметрами",              "пользовательские слэш-команды и пресеты в UI"],
+                    ["**sampling**",   "сервер просит хост сгенерировать LLM-ответ",              "agent-like серверы, поддержка пока редкая"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "MCP / Function calling / REST API",
+                "items": [
+                    {"title": "MCP",
+                     "points": [
+                         "Стандарт интеграции tools+данных",
+                         "Сервер — отдельный процесс или сервис",
+                         "Автодискаверинг capabilities",
+                         "Один сервер ко многим клиентам",
+                         "Под капотом обычно использует function calling",
+                     ]},
+                    {"title": "Function calling",
+                     "points": [
+                         "API-фича OpenAI / Anthropic",
+                         "Tools объявлены в коде приложения",
+                         "Привязан к одному приложению",
+                         "Транспорт уровнем ниже MCP",
+                         "Подходит для собственных LLM-сервисов",
+                     ]},
+                    {"title": "REST API",
+                     "points": [
+                         "Произвольный HTTP-сервис",
+                         "Нужна обёртка-tool вокруг каждого вызова",
+                         "Ничего LLM-специфичного",
+                         "Подходит когда нет MCP-клиента",
+                     ]},
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Transport: когда какой",
+                "items": [
+                    {"k": "**stdio**",          "v": "локальный сервер, host запускает дочерним процессом — стандарт для desktop-клиентов и dev-инструментов"},
+                    {"k": "**HTTP + SSE**",     "v": "удалённый сервер, host подключается по URL, SSE для streaming — для shared/cloud сервисов"},
+                    {"k": "**Streamable HTTP**","v": "newer revision спецификации, одно HTTP-соединение в обе стороны — постепенно вытесняет SSE"},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Минимальный MCP-сервер на Python через FastMCP",
+                "code": (
+                    "# pip install mcp\n"
+                    "from mcp.server.fastmcp import FastMCP\n\n"
+                    "mcp = FastMCP('weather')\n\n"
+                    "@mcp.tool()\n"
+                    "def get_weather(city: str) -> str:\n"
+                    "    \"\"\"Текущая погода в городе.\"\"\"\n"
+                    "    # docstring уйдёт в description, аннотации типов — в JSON schema\n"
+                    "    return f'В {city} сейчас 22°C, ясно'\n\n"
+                    "@mcp.resource('weather://forecast/{city}')\n"
+                    "def forecast(city: str) -> str:\n"
+                    "    \"\"\"Прогноз на 7 дней.\"\"\"\n"
+                    "    return f'Прогноз для {city}: ...'\n\n"
+                    "if __name__ == '__main__':\n"
+                    "    mcp.run(transport='stdio')"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "json",
+                "caption": "Подключение в Claude Desktop (claude_desktop_config.json)",
+                "code": (
+                    "{\n"
+                    "  \"mcpServers\": {\n"
+                    "    \"weather\": {\n"
+                    "      \"command\": \"python\",\n"
+                    "      \"args\": [\"-m\", \"my_weather_server\"]\n"
+                    "    },\n"
+                    "    \"filesystem\": {\n"
+                    "      \"command\": \"npx\",\n"
+                    "      \"args\": [\n"
+                    "        \"-y\",\n"
+                    "        \"@modelcontextprotocol/server-filesystem\",\n"
+                    "        \"/Users/me/projects\"\n"
+                    "      ]\n"
+                    "    }\n"
+                    "  }\n"
+                    "}"
+                ),
+            },
+            {
+                "type": "list",
+                "title": "Готовые серверы (официальные от Anthropic)",
+                "kind": "do",
+                "items": [
+                    "**filesystem** — чтение и запись файлов с allow-list директорий",
+                    "**github** — PR, issues, commits, поиск кода",
+                    "**slack** — чтение каналов, поиск сообщений",
+                    "**postgres** — read-only SQL",
+                    "**google-drive**, **google-maps** — соответствующие API",
+                    "**puppeteer** / **playwright** — браузер для скрейпинга и автоматизации",
+                    "**memory** — persistent knowledge graph между сессиями",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "сервер не появляется в UI хоста",       "outcome": "проверь логи (Claude Desktop: ~/Library/Logs/Claude/), синтаксис конфига, абсолютный путь к интерпретатору"},
+                    {"condition": "tool вызывается, но падает",            "outcome": "запусти сервер вручную, читай stderr — там traceback; не пиши в stdout, сломаешь stdio-протокол"},
+                    {"condition": "LLM игнорирует tool",                    "outcome": "уточни docstring (станет description) и типы аргументов — без них модель не понимает когда вызывать"},
+                    {"condition": "удалённый сервер: timeouts",             "outcome": "переходи на Streamable HTTP, проверь keep-alive и SSE-прокси"},
+                    {"condition": "слишком много tools в LLM-промпте",      "outcome": "разбей на несколько серверов, host обычно даёт включать/выключать по группам"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**В stdio-сервере не печатай в stdout.** Stdin/stdout заняты под JSON-RPC протокол. Любой `print()` или библиотечный лог в stdout ломает фрейминг сообщений и хост перестаёт видеть сервер. Логируй в stderr или в файл."},
+            {"type": "callout", "kind": "fact",
+             "content": "**MCP стал межвендорным стандартом за полгода.** Анонс Anthropic — ноябрь 2024. К весне 2026 поддержан в Claude Desktop, Claude Code, Cursor, Continue, Zed, Cline. OpenAI добавила совместимость в Agents SDK в марте 2025."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Third-party сервер выполняет код у тебя.** MCP-сервер из чужого репозитория получает права твоего пользователя: видит файлы, сеть, переменные окружения с токенами. Перед запуском читай исходники. Для shared-серверов используй удалённый transport с OAuth, а не локальный stdio."},
+        ],
+    },
+    "llm_eval_frameworks": {
+        "title": "Eval-пайплайны: ragas, deepeval, promptfoo",
+        "emoji": "📋",
+        "track": "mlops",
+        "what": "golden datasets, reference-based и reference-free метрики, LLM-as-judge (single и pairwise), RAG-метрики (ragas), фреймворки (deepeval, promptfoo, opik), CI-интеграция, online eval и quality drift",
+        "why": "Без eval-пайплайна каждое изменение промпта или модели — игра в рулетку. Eval'ы дают регрессионное покрытие, ловят quality drift в проде, позволяют осознанно выбирать между моделями по cost/quality. На LLM-собеседованиях вопрос «как ты тестируешь свои промпты» задают почти всегда",
+        "interview_focus": "виды eval'ов (reference-based vs free, component-level vs end-to-end), LLM-as-judge bias и mitigation, pairwise vs pointwise, RAGAS метрики, как собирать golden dataset, online eval для drift detection",
+        "cheatsheet": [
+            {"q": "Чем eval'ы LLM отличаются от обычных юнит-тестов?",
+             "a": "Выход не детерминирован: нельзя сравнить с эталоном по строке. Эталона часто нет вовсе. Метрика — обычно непрерывная (faithfulness 0-1, не pass/fail). Один прогон шумный, нужно усреднять. Поэтому eval-пайплайн ближе к ML evaluation, чем к pytest: датасет, метрика, аггрегация, CI-gate по порогу."},
+            {"q": "Какие виды LLM-eval'ов бывают?",
+             "a": "Reference-based: есть ground truth (exact match, BLEU/ROUGE для переводов, embedding similarity). Reference-free: LLM-as-judge оценивает ответ по критериям. Component-level: метрики на части пайплайна (RAGAS — для retrieval). End-to-end: задача целиком (task success rate, business metric). В проде комбинируют несколько уровней."},
+            {"q": "Что такое LLM-as-judge и какие у него подводные камни?",
+             "a": "Вторая (обычно сильнее) LLM ставит оценку ответу первой по rubric. Bias'ы: позиционный (предпочитает первый ответ в pairwise), по длине (длиннее = лучше), по стилю своего семейства (GPT хвалит GPT). Mitigation: chain-of-thought-rubric, рандомизация порядка, judge-модель из другого семейства, калибровка на размеченном эталоне."},
+            {"q": "Чем pairwise judge лучше pointwise?",
+             "a": "Pointwise (оцени от 1 до 10) — judge даёт шумные абсолютные числа, плохо различает близкие версии. Pairwise (что лучше: A или B) — задача проще, согласие с человеком выше. Для регрессии новой версии vs baseline используй pairwise; для leaderboard'а с ELO — тоже. Pointwise оставляй для абсолютных порогов в проде."},
+            {"q": "Как собирать golden dataset?",
+             "a": "Стартовать с 30-100 примеров, размеченных вручную, покрывающих типовые и edge-кейсы. Расти за счёт продовых ошибок: пользовательские thumbs-down, error reports, низкие judge-оценки в online eval. Версионировать (golden_v1, v2). Хранить в git или DVC, не в Notion. Делить на dev / test, чтобы не переобучаться на dev."},
+            {"q": "Какие eval-фреймворки популярны?",
+             "a": "ragas — для RAG (faithfulness, answer relevancy, context recall/precision). deepeval — pytest-style для LLM, метрики G-Eval, hallucination, bias. promptfoo — CLI для prompt regression, удобный YAML, поддерживает много провайдеров. opik (Comet) — observability + evals. Inspect (UK AISI) — research-grade. LangSmith / Langfuse — встроенный eval-runner."},
+            {"q": "Что такое RAGAS и какие метрики даёт?",
+             "a": "Фреймворк для evaluation RAG-систем. Faithfulness — ответ основан на контексте (нет галлюцинаций). Answer relevancy — релевантен ли ответ запросу. Context precision — доля релевантных chunks среди retrieved. Context recall — все ли нужные документы нашли. Context entity recall — сущности из ground truth есть в контексте. Все метрики LLM-as-judge под капотом."},
+            {"q": "Как встроить eval'ы в CI?",
+             "a": "Прогон на golden_test при каждом изменении промпта/модели. Фиксированный seed, temperature=0 где возможно. Аггрегированные метрики vs пороги — fail при регрессии. Хранить историю прогонов (artifact). Для дорогих eval'ов — sample subset на PR, full на main. Pairwise vs предыдущей версии — сильный сигнал."},
+            {"q": "Что такое online eval и quality drift?",
+             "a": "Sampling прод-трафика (например 1%), фоновые judge'и проставляют оценки в реальных запросах. Метрики идут в дашборд, алерты на падение. Drift = распределение оценок ухудшилось со временем — обычно из-за изменений входных данных (новые типы запросов) или деградации модели у провайдера. Это рантаймовый аналог data drift из mlsd_skew."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**LLM-eval = ML-evaluation, не pytest.** Нужны: **golden dataset** (30-300 примеров), **метрики** (reference-based, LLM-as-judge, component-level), **аггрегация** и **порог в CI**. Главные паттерны: **pairwise** для сравнения версий, **RAGAS** для RAG, **online eval** для drift в проде. Без этого каждое изменение промпта — слепая рулетка."},
+            {
+                "type": "flow",
+                "title": "Eval-пайплайн в CI",
+                "branches": [
+                    {"condition": "1. Golden dataset",     "outcome": "версионированный набор примеров (input + ожидание / rubric), git или DVC, dev/test split"},
+                    {"condition": "2. Run",                "outcome": "прогон промпта/модели на dataset, temperature=0 где возможно, фиксированный seed"},
+                    {"condition": "3. Score",              "outcome": "метрики: reference (BLEU/embedding sim) или judge (LLM по rubric), component-level (RAGAS) или end-to-end"},
+                    {"condition": "4. Aggregate",           "outcome": "среднее, p10/p50/p90, разбивка по категориям; pairwise win-rate vs baseline"},
+                    {"condition": "5. Gate",               "outcome": "CI fail при регрессии относительно baseline; зелёный merge при улучшении"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Виды eval'ов",
+                "headers": ["Тип", "Что меряет", "Когда брать", "Минусы"],
+                "rows": [
+                    ["**Reference-based**", "близость к эталону (BLEU, ROUGE, embedding sim, exact match)",  "перевод, summarization с reference, классификация",      "не работает где много валидных ответов"],
+                    ["**LLM-as-judge (pointwise)**", "judge ставит оценку по rubric",                          "общее качество, нет эталона",                              "шумно, bias'ы, дорого"],
+                    ["**LLM-as-judge (pairwise)**",  "что лучше: A или B по rubric",                          "регрессия vs baseline, leaderboard",                       "не даёт абсолютной шкалы"],
+                    ["**Component-level (RAGAS)**",   "метрики на части пайплайна",                            "RAG: разделить retrieval и generation",                    "нужен RAG-аппарат, не для не-RAG"],
+                    ["**End-to-end / business**",     "task success rate, конверсия, retention",                "финальный sanity check",                                   "медленно, нужен прод-трафик"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Pointwise / Pairwise / Human",
+                "items": [
+                    {"title": "Pointwise judge",
+                     "points": [
+                         "Оценка от 1 до 5 или 0-1",
+                         "Дешевле (один проход)",
+                         "Шумно, плохо различает близкие версии",
+                         "Подходит для абсолютных порогов в проде",
+                     ]},
+                    {"title": "Pairwise judge",
+                     "points": [
+                         "Что лучше: A или B",
+                         "Согласие с человеком выше",
+                         "Дороже (два прогона + judge)",
+                         "Стандарт для регрессии и leaderboard",
+                     ]},
+                    {"title": "Human eval",
+                     "points": [
+                         "Эталон качества",
+                         "Дорого и медленно",
+                         "Берётся для калибровки judge",
+                         "Periodic, не на каждый PR",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "promptfoo — простейший regression test через YAML",
+                "code": (
+                    "# promptfooconfig.yaml\n"
+                    "prompts:\n"
+                    "  - 'Ответь на вопрос: {{question}}'\n"
+                    "providers:\n"
+                    "  - openai:gpt-4o-mini\n"
+                    "  - anthropic:claude-haiku-4-5\n"
+                    "tests:\n"
+                    "  - vars:\n"
+                    "      question: 'Столица Франции?'\n"
+                    "    assert:\n"
+                    "      - type: contains\n"
+                    "        value: Париж\n"
+                    "      - type: llm-rubric\n"
+                    "        value: ответ краткий и фактологически верный\n"
+                    "  - vars:\n"
+                    "      question: 'Что такое prompt caching?'\n"
+                    "    assert:\n"
+                    "      - type: factuality\n"
+                    "        value: prompt caching кеширует префикс промпта на стороне провайдера\n"
+                    "# запуск: npx promptfoo eval && npx promptfoo view"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "deepeval — pytest-style eval с G-Eval метрикой",
+                "code": (
+                    "# pip install deepeval\n"
+                    "from deepeval import assert_test\n"
+                    "from deepeval.test_case import LLMTestCase\n"
+                    "from deepeval.metrics import GEval, HallucinationMetric\n\n"
+                    "def test_summary():\n"
+                    "    case = LLMTestCase(\n"
+                    "        input='Сделай краткий пересказ статьи: ...',\n"
+                    "        actual_output=run_my_pipeline(...),\n"
+                    "        retrieval_context=[doc1, doc2],\n"
+                    "    )\n"
+                    "    relevancy = GEval(\n"
+                    "        name='Relevancy',\n"
+                    "        criteria='Ответ релевантен запросу и фактологически верен',\n"
+                    "        threshold=0.7,\n"
+                    "    )\n"
+                    "    halluc = HallucinationMetric(threshold=0.3)\n"
+                    "    assert_test(case, [relevancy, halluc])"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Eval-фреймворки",
+                "items": [
+                    {"k": "**ragas**",      "v": "для RAG: faithfulness, answer_relevancy, context_precision/recall — стандарт"},
+                    {"k": "**deepeval**",    "v": "pytest-style, G-Eval, hallucination, bias — удобно встраивать в существующий тест-сьют"},
+                    {"k": "**promptfoo**",   "v": "CLI + YAML, многопровайдерное A/B, web-viewer — для prompt regression"},
+                    {"k": "**opik** (Comet)","v": "observability + eval в одном продукте"},
+                    {"k": "**LangSmith / Langfuse**", "v": "eval-runner поверх их же трейсинга — если уже их используешь"},
+                    {"k": "**Inspect** (UK AISI)", "v": "research-grade, для оценки safety и capabilities"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Bias'ы LLM-judge и как с ними жить",
+                "kind": "do",
+                "items": [
+                    "**Позиционный bias**: рандомизируй порядок ответов в pairwise, считай win-rate с обоих сторон",
+                    "**Length bias**: judge любит длинное — добавь в rubric «brevity», нормализуй на длину",
+                    "**Self-preference**: GPT хвалит GPT — используй judge из другого семейства (Claude судит GPT, наоборот)",
+                    "**Verbosity in rubric**: длинная rubric = шум — режь до 3-5 чётких критериев",
+                    "**Калибровка**: 30-50 примеров с human-оценками, проверь корреляцию judge с человеком до прода",
+                    "**Chain-of-thought rubric**: проси judge сначала аргументировать, потом давать оценку — точнее",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "judge даёт высокую оценку, юзеры жалуются",     "outcome": "rubric не отражает реальные ошибки, добавь конкретные критерии или перейди на pairwise vs reference"},
+                    {"condition": "eval'ы зелёные, в проде регрессии",              "outcome": "golden dataset не покрывает реальные запросы — собери error cases из online eval"},
+                    {"condition": "результаты прогонов сильно прыгают",             "outcome": "temperature не нулевая, или judge нестабилен — добавь n=3 и median"},
+                    {"condition": "RAGAS faithfulness низкий",                      "outcome": "галлюцинации: ужесточи prompt («только контекст»), reranker, ↓ K — см. тему RAG"},
+                    {"condition": "pairwise win-rate ≈ 50% между двумя версиями",   "outcome": "разница в шуме, увеличь датасет или пиши более различительный rubric"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Pairwise + калибровка на 30 человеческих оценках — минимум для серьёзного eval-пайплайна.** Этот сетап ловит регрессии лучше любых pointwise-метрик и стоит один раз сделать на старте проекта."},
+            {"type": "callout", "kind": "fact",
+             "content": "**LLM-judge с GPT-4-class моделью коррелирует с человеком на ~0.8 в pairwise.** Это сильно лучше BLEU/ROUGE, и достаточно для регрессии. Но не достаточно для абсолютных claims о качестве — для этого нужен human eval."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Eval golden = utility, не ground truth.** Если ты переоптимизируешь промпт под golden, в проде он сломается на свежих типах запросов. Держи golden разнообразным, обновляй из реальных ошибок, и не используй один и тот же датасет для итераций и финальной оценки."},
+        ],
+    },
+    "llm_api_patterns": {
+        "title": "LLM API Patterns",
+        "emoji": "🔧",
+        "track": "mlops",
+        "what": "function calling / tool use, structured outputs (JSON schema, prefill, JSON mode), streaming SSE, retries с экспоненциальным backoff, rate limits (TPM/RPM), идемпотентность, async-клиенты, таймауты",
+        "why": "Прод-уровень работы с LLM API — это не «вызвал .chat.completions.create()». Без structured outputs ловишь сломанный JSON, без retries падаешь на любом 429, без правильных таймаутов streaming зависает. Эти паттерны спрашивают на интервью и пишут каждый день",
+        "interview_focus": "tool use loop с parallel calls, structured outputs (OpenAI strict mode, Anthropic prefill, gemini schema), парсинг partial JSON в streaming, экспоненциальный backoff с jitter, разница TPM/RPM лимитов, idempotency key",
+        "cheatsheet": [
+            {"q": "Как устроен tool use loop в OpenAI/Anthropic SDK?",
+             "a": "1. Объявляешь tools (name, description, input schema). 2. Зовёшь модель, в ответе stop_reason='tool_use' и список tool_calls. 3. Исполняешь каждый tool, добавляешь результаты обратно в messages. 4. Зовёшь снова — модель либо отвечает, либо просит ещё tools. Loop пока stop_reason != 'tool_use' или пока не превышен max_iter."},
+            {"q": "Что такое parallel tool calls?",
+             "a": "Современные модели (GPT-4o, Claude 3.5+) умеют возвращать несколько tool_use в одном ответе. Это ускоряет агентские циклы: вместо 5 sequential round-trip — один. SDK даёт массив tool_calls, исполняй параллельно через asyncio.gather. Можно отключить (parallel_tool_calls=False) если порядок важен."},
+            {"q": "Какие способы получать структурированный ответ от LLM?",
+             "a": "OpenAI: response_format={'type':'json_schema', 'json_schema':..., 'strict':True} — гарантия валидной схемы. Anthropic: prefill ассистента ('{') + остановка по '}' или tools с input schema. Gemini: response_schema. JSON mode (старый OpenAI) — гарантирует валидный JSON без схемы. vLLM/SGLang: guided decoding через outlines/jsonformer."},
+            {"q": "Чем strict mode у OpenAI отличается от обычного JSON mode?",
+             "a": "JSON mode — модель вернёт что-то парсящееся как JSON, но не обязательно по твоей схеме. Strict (response_format=json_schema, strict=true) — гарантия соответствия схеме на уровне декодера: невалидные токены маскируются. Латентность выше при первом запросе схемы (~prep), потом норм. Не все Pydantic-конструкции поддерживаются (no anyOf верхнего уровня, no default'ы)."},
+            {"q": "Какие подводные камни у streaming?",
+             "a": "Partial JSON: пока не пришёл весь chunk, JSON.parse падает — нужен инкрементальный парсер (partial-json, ijson). Tool calls стримятся по полям (name → arguments по кускам), нужно собирать. Errors после первого токена: connection drop в середине — провайдер не вернёт код, надо детектить по incomplete stream. Таймаут на time-to-first-token vs total — два разных бюджета."},
+            {"q": "Как делать retries для LLM API?",
+             "a": "Exponential backoff с jitter: delay = min(cap, base * 2^attempt) * (0.5..1.5). Ретраить только idempotent ошибки: 429 (rate limit), 500/502/503/504, ConnectionError. НЕ ретраить: 400 (bad request), 401 (auth), 422 (validation). Уважать Retry-After header при 429. SDK от OpenAI/Anthropic делают это сами по умолчанию (max_retries=2), увеличить если нужно."},
+            {"q": "Что такое TPM и RPM лимиты, чем отличаются?",
+             "a": "RPM — requests per minute, TPM — tokens per minute (input+output). Обычно упираешься в TPM первым на длинных промптах. Алгоритм: токены резервируются на запрос (по input + предполагаемый output), при ответе корректируются. Решения: token bucket на клиенте, batch API (50% дешевле, не считается в TPM), tier upgrade, model routing на менее загруженный."},
+            {"q": "Как сделать LLM-запрос идемпотентным?",
+             "a": "Anthropic: заголовок Idempotency-Key (UUID) — повторный запрос с тем же ключом в течение 24ч вернёт кешированный ответ. OpenAI: нет официального, но client-side можно через стабильный hash(prompt+params) в локальном кеше. Важно когда retry после неясного состояния (timeout, 502) — иначе double charge."},
+            {"q": "Какие таймауты ставить на LLM-запросы?",
+             "a": "Connect: 5-10s. Read (non-streaming): зависит от max_tokens, обычно 60-120s. Time-to-first-token (streaming): 10-30s — если дольше, сервер залип. Inter-chunk таймаут: 30-60s — если между чанками тишина, обычно дроп. Total streaming: 5-10 мин на длинные генерации. Не один глобальный — три отдельных."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Прод-LLM = больше чем .chat.completions.create().** Минимум: **structured outputs** (json_schema strict / prefill), **streaming** с partial JSON парсером, **retries** с экспоненциальным backoff и jitter, отдельные **таймауты** на connect / first-token / inter-chunk / total, и **rate-limit handling** через TPM/RPM bucket. Async-клиент по умолчанию."},
+            {
+                "type": "flow",
+                "title": "Tool use loop",
+                "branches": [
+                    {"condition": "1. Request",            "outcome": "messages + tools (с input_schema), модель отвечает либо текстом, либо tool_use"},
+                    {"condition": "2. stop_reason=tool_use", "outcome": "распарсить tool_calls, исполнить (async parallel если несколько), собрать результаты"},
+                    {"condition": "3. Append results",      "outcome": "tool_result в messages с тем же tool_use_id, отправить новый запрос"},
+                    {"condition": "4. Повтор",              "outcome": "модель либо отвечает (stop_reason=end_turn), либо просит ещё tools"},
+                    {"condition": "5. Guard",               "outcome": "max_iter (например 10) против бесконечных циклов; счётчик токенов; budget cap"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Structured outputs по провайдерам",
+                "headers": ["Провайдер", "Метод", "Гарантия", "Минусы"],
+                "rows": [
+                    ["**OpenAI**",     "response_format=json_schema, strict=true",       "соответствие схеме на уровне декодера",      "не все Pydantic-фичи (anyOf, default'ы)"],
+                    ["**OpenAI (legacy)**", "response_format=json_object",                  "валидный JSON без схемы",                    "схему модель может игнорить"],
+                    ["**Anthropic**",  "tools с input_schema, либо prefill '{'",           "через tools — строгая",                      "prefill — best effort, не гарантия"],
+                    ["**Gemini**",      "response_schema (Pydantic-like)",                  "соответствие схеме",                          "ограниченный набор типов"],
+                    ["**vLLM / SGLang**", "guided decoding (outlines, lm-format-enforcer)", "constrained decoding на инференсе",          "латентность выше, не все backends"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Streaming / Non-streaming",
+                "items": [
+                    {"title": "Non-streaming",
+                     "points": [
+                         "Один HTTP-ответ с целым completion'ом",
+                         "Простой error handling",
+                         "Latency = TTFT + completion",
+                         "Подходит: backend-only, batch, structured outputs",
+                     ]},
+                    {"title": "Streaming (SSE)",
+                     "points": [
+                         "Чанки по мере генерации",
+                         "Time-to-first-token ↓ ощутимо",
+                         "Partial JSON, partial tool calls",
+                         "Подходит: чаты, UI-фасад, длинные генерации",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Anthropic tool use loop с parallel calls (async)",
+                "code": (
+                    "import asyncio\n"
+                    "from anthropic import AsyncAnthropic\n\n"
+                    "client = AsyncAnthropic()\n"
+                    "tools = [\n"
+                    "    {'name': 'get_weather', 'description': '...',\n"
+                    "     'input_schema': {'type':'object',\n"
+                    "                      'properties':{'city':{'type':'string'}},\n"
+                    "                      'required':['city']}},\n"
+                    "]\n\n"
+                    "async def run_tool(tc):\n"
+                    "    if tc.name == 'get_weather':\n"
+                    "        return f\"22°C, ясно\"\n\n"
+                    "async def chat(messages):\n"
+                    "    for _ in range(10):  # max_iter guard\n"
+                    "        resp = await client.messages.create(\n"
+                    "            model='claude-haiku-4-5', max_tokens=1024,\n"
+                    "            tools=tools, messages=messages,\n"
+                    "        )\n"
+                    "        if resp.stop_reason != 'tool_use':\n"
+                    "            return resp\n"
+                    "        tool_calls = [b for b in resp.content if b.type=='tool_use']\n"
+                    "        results = await asyncio.gather(*(run_tool(tc) for tc in tool_calls))\n"
+                    "        messages.append({'role':'assistant', 'content': resp.content})\n"
+                    "        messages.append({'role':'user', 'content': [\n"
+                    "            {'type':'tool_result', 'tool_use_id': tc.id, 'content': r}\n"
+                    "            for tc, r in zip(tool_calls, results)\n"
+                    "        ]})"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "OpenAI structured output со strict-схемой через Pydantic",
+                "code": (
+                    "from openai import AsyncOpenAI\n"
+                    "from pydantic import BaseModel\n\n"
+                    "class Extraction(BaseModel):\n"
+                    "    name: str\n"
+                    "    age: int\n"
+                    "    skills: list[str]\n\n"
+                    "client = AsyncOpenAI()\n"
+                    "resp = await client.beta.chat.completions.parse(\n"
+                    "    model='gpt-4o-mini',\n"
+                    "    messages=[\n"
+                    "        {'role':'system', 'content':'Extract entities'},\n"
+                    "        {'role':'user',    'content':'Иван, 30, Python и Go'},\n"
+                    "    ],\n"
+                    "    response_format=Extraction,  # strict=true под капотом\n"
+                    ")\n"
+                    "data: Extraction = resp.choices[0].message.parsed"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Retry с экспоненциальным backoff и jitter (tenacity)",
+                "code": (
+                    "import random\n"
+                    "from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type\n"
+                    "from openai import RateLimitError, APIConnectionError, APITimeoutError\n\n"
+                    "@retry(\n"
+                    "    stop=stop_after_attempt(5),\n"
+                    "    wait=wait_exponential(multiplier=1, min=1, max=30) +\n"
+                    "         (lambda *_: random.uniform(0, 1)),  # jitter\n"
+                    "    retry=retry_if_exception_type((RateLimitError, APIConnectionError, APITimeoutError)),\n"
+                    "    reraise=True,\n"
+                    ")\n"
+                    "async def call_llm(messages):\n"
+                    "    return await client.chat.completions.create(\n"
+                    "        model='gpt-4o-mini', messages=messages,\n"
+                    "        timeout=60,  # total\n"
+                    "    )"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Что и когда ретраить",
+                "items": [
+                    {"k": "**429 Rate limit**",      "v": "ретраить, уважать Retry-After header, exp backoff"},
+                    {"k": "**500/502/503/504**",     "v": "ретраить, exp backoff с jitter"},
+                    {"k": "**ConnectionError / Timeout**", "v": "ретраить, но осторожно при non-idempotent (доплата за токены)"},
+                    {"k": "**400 Bad Request**",     "v": "НЕ ретраить — кривой запрос или промпт"},
+                    {"k": "**401 / 403**",            "v": "НЕ ретраить — auth"},
+                    {"k": "**422 Validation**",       "v": "НЕ ретраить — фикси schema/payload"},
+                    {"k": "**ContentFilter / Refusal**", "v": "НЕ ретраить с тем же промптом — переписывай"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Best practices",
+                "kind": "do",
+                "items": [
+                    "Async-клиент по умолчанию: AsyncOpenAI / AsyncAnthropic — без него теряешь параллелизм",
+                    "Три таймаута: connect (5-10s), first-token (10-30s), total (60-300s)",
+                    "Идемпотентность: Idempotency-Key (Anthropic) или client-side hash для retry-safety",
+                    "max_iter в tool use loop — иначе бесконечный цикл при странных tool_calls",
+                    "Structured outputs через Pydantic + .parse() — компилятор твой друг",
+                    "Token bucket клиентский: pre-flight reservation = input_tokens + max_tokens",
+                    "Логируй input_tokens / output_tokens / cached_tokens на каждый запрос — потом не воспроизведёшь",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "сломанный JSON в ответе",                "outcome": "перейти на strict structured output (json_schema strict / Pydantic .parse() / tools)"},
+                    {"condition": "regex 429 в логах",                       "outcome": "exp backoff с Retry-After, token bucket клиентский, batch API для оффлайна"},
+                    {"condition": "streaming зависает",                      "outcome": "inter-chunk таймаут отдельным числом, фиксированный idle timeout, переподключение"},
+                    {"condition": "tool use loop не заканчивается",          "outcome": "max_iter guard, логи tool_calls — модель повторяет один и тот же вызов = плохо описан tool"},
+                    {"condition": "double charge при retry",                 "outcome": "Idempotency-Key на каждый attempt в одной попытке, не на retry"},
+                    {"condition": "TPM упёрся, RPM свободен",                "outcome": "длинные промпты — кешируй prefix (см. llm_caching), переходи на роутинг по TPM"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Идиоматичный прод-вызов** = AsyncClient + structured output через Pydantic + tenacity-retry на сетевых ошибках + три таймаута + token-accounting в логи. Это пять строчек обвязки, которые экономят месяцы дебага."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Parallel tool calls сокращают агентский round-trip в 3-5 раз.** Современные модели стабильно возвращают 2-4 tool_use в одном ответе. Если твой агент серийный — большая часть времени уходит в network roundtrip, не в инференс."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Не ретрай 400/422.** Ошибка валидации не пройдёт во второй раз — ты просто платишь за HTTP-roundtrip и тратишь rate-limit бюджет. Делай whitelist кодов на retry: 429, 5xx, ConnectionError, Timeout. Всё остальное — fail fast."},
+        ],
+    },
+    "llm_caching": {
+        "title": "LLM Caching: prompt, semantic, output",
+        "emoji": "🧊",
+        "track": "mlops",
+        "what": "Anthropic explicit prompt caching (cache_control), OpenAI implicit caching, структурирование промпта под кеш, semantic cache (gptcache), output cache, embedding cache, инвалидация, метрики",
+        "why": "Длинный системный промпт + tools + few-shot examples в каждом запросе — это 5-50K повторяющихся токенов. Prompt caching у Anthropic срезает до 90% стоимости на cached read и ускоряет TTFT в 2-5 раз. Без кеша на агентских воркфлоу с длинным контекстом счёт за месяц увеличивается в разы",
+        "interview_focus": "Anthropic cache_control breakpoints и TTL, OpenAI implicit caching (≥1024 токенов), порядок частей промпта (stable prefix → variable suffix), semantic cache trade-offs, инвалидация при изменении контента",
+        "cheatsheet": [
+            {"q": "Что такое prompt caching и сколько экономит?",
+             "a": "Провайдер кеширует prefix промпта (system + tools + few-shot) на стороне инференса. При повторных запросах с тем же prefix он переиспользуется. Anthropic: cache write +25% к цене input, cache read -90%. OpenAI: cache read -50% автоматически. Экономия зависит от длины prefix и частоты hit — на типовых агентских циклах 50-80% от total cost."},
+            {"q": "Как работает Anthropic explicit caching?",
+             "a": "В messages.create передаётся cache_control: {'type':'ephemeral'} на блоке (system, tool, message content). До 4 breakpoints на запрос. Минимум 1024 токенов до breakpoint для cache write (для Haiku — 2048). Default TTL 5 минут (1h доступен с расширенным beta-флагом). При попадании цена снижается в ~10 раз, при промахе — повышается на 25%."},
+            {"q": "Как работает OpenAI implicit caching?",
+             "a": "Автоматически для промптов от 1024 токенов, не требует никакой разметки. Кеш живёт ~5-60 минут в зависимости от нагрузки. На совпадающем prefix цена input -50%, latency ниже. Видишь в response.usage.prompt_tokens_details.cached_tokens сколько токенов попало в кеш. Без явного управления — не гарантировано, но в проде обычно работает."},
+            {"q": "Как структурировать промпт под кеш?",
+             "a": "Сверху вниз — от стабильного к изменчивому. System prompt → tools → static knowledge / few-shot examples → текущая history → новый user message. Любая переменная часть в начале (текущая дата, user_id) убивает весь кеш ниже. Если нужны переменные — выносить вниз или передавать через {{template}} с фиксированным prefix."},
+            {"q": "Что такое semantic cache и когда его использовать?",
+             "a": "Кешируем пары (запрос_embedding, ответ). На новый запрос ищем в vector store ближайший по cosine; если sim > threshold — возвращаем закешированный ответ без вызова LLM. Экономит 100% (не 90% как prompt cache) на повторяющихся вопросах. Подходит для FAQ, типовых саппорт-запросов, классификации. Инструменты: gptcache, langchain semantic cache."},
+            {"q": "Когда semantic cache опасен?",
+             "a": "Если задача чувствительна к точной формулировке — два почти одинаковых запроса требуют разных ответов («какая погода в Москве» vs «какая погода была в Москве вчера»). Высокий threshold даёт мало hit'ов, низкий — даёт неправильные ответы. Не подходит для агентов с tools, для генерации с контекстом, для запросов с user-specific data."},
+            {"q": "Что такое embedding cache?",
+             "a": "Кеширование выходов embedding-модели по hash(text). Embeddings детерминированы при той же модели, поэтому exact-match cache работает идеально. Особенно полезен в RAG: повторный indexing документов, повторные запросы пользователей. Хранилище — Redis или просто sqlite по hash. Экономит инференс embedding-модели и латентность."},
+            {"q": "Как инвалидировать cache при изменении контента?",
+             "a": "Prompt cache — автоматически TTL'ом и by-prefix matching: меняешь system prompt → старый prefix больше не матчится. Semantic cache — версия в ключе (kbase_v1) или TTL по времени. Output cache — версионируешь промпт (включай prompt_version_id в ключ кеша). При обновлении документов в RAG — embedding cache по content hash, не по document_id."},
+            {"q": "Какие метрики снимать с кеша?",
+             "a": "Cache hit rate (отдельно для prompt и semantic), cost savings (cached_tokens × discount), latency improvement (TTFT cached vs uncached). Anthropic возвращает cache_creation_input_tokens и cache_read_input_tokens — собирай в дашборд. На агентских воркфлоу здоровый hit rate — 60-90%; ниже 30% — promptная структура неправильная."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Три уровня кеша**: **prompt cache** (Anthropic explicit / OpenAI implicit) — провайдер кеширует prefix; **semantic cache** — кешируем целиком ответ по embedding запроса; **output / embedding cache** — exact-match на детерминированных вызовах. Главное правило: **stable prefix → variable suffix**. Длинный системный промпт + tools без кеша = выкинутые деньги."},
+            {
+                "type": "flow",
+                "title": "Где прячутся кеши в LLM-приложении",
+                "branches": [
+                    {"condition": "Запрос пришёл",                  "outcome": "1) проверяем semantic cache по embedding запроса"},
+                    {"condition": "semantic miss",                  "outcome": "2) собираем промпт со стабильным prefix → отправляем в LLM API"},
+                    {"condition": "LLM API",                         "outcome": "3) provider матчит prefix с prompt cache → cached read или write"},
+                    {"condition": "RAG-этап",                       "outcome": "4) embedding-cache для query embedding'а (exact match по hash)"},
+                    {"condition": "Output detail",                  "outcome": "5) для детерминистичных промптов — output cache по hash(prompt+params)"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Prompt caching по провайдерам",
+                "headers": ["Провайдер", "Тип", "Минимум", "Цена / Скидка", "TTL"],
+                "rows": [
+                    ["**Anthropic**",       "explicit (cache_control)",        "1024 токенов (Haiku 2048)",   "write +25%, read -90%",    "5 мин (default), 1h (beta)"],
+                    ["**OpenAI**",          "implicit (auto)",                 "1024 токенов",                "input -50%",                "~5-60 мин, не гарантирован"],
+                    ["**Gemini**",           "explicit (cachedContent)",        "32K токенов (старт)",          "billed per hour storage",   "TTL задаётся при создании"],
+                    ["**Bedrock (Anthropic/Nova)**", "explicit (как у Anthropic)",      "1024 токенов",                "read -90%",                  "5 мин"],
+                    ["**Vertex AI**",        "explicit (context caching)",       "32K токенов",                  "billed per hour storage",    "до 1 часа default"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Prompt cache / Semantic cache / Output cache",
+                "items": [
+                    {"title": "Prompt cache",
+                     "points": [
+                         "Кеширует prefix на стороне провайдера",
+                         "Hit при совпадении prefix байт-в-байт",
+                         "Скидка 50-90% на input",
+                         "Подходит везде где есть длинный стабильный prefix",
+                     ]},
+                    {"title": "Semantic cache",
+                     "points": [
+                         "Хеширует целый ответ по embedding запроса",
+                         "Hit при cosine > threshold",
+                         "Экономия 100% (LLM не вызывается)",
+                         "Опасен на формулировка-чувствительных задачах",
+                     ]},
+                    {"title": "Output / embedding cache",
+                     "points": [
+                         "Exact-match по hash(input + params)",
+                         "Только для temperature=0 / детерминистичных вызовов",
+                         "100% экономия, нулевой риск",
+                         "Подходит для embedding-моделей и фиксированных промптов",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Anthropic prompt caching: длинный system + tools, переменный user",
+                "code": (
+                    "from anthropic import Anthropic\n"
+                    "client = Anthropic()\n\n"
+                    "LONG_SYSTEM = '... 5000 токенов инструкций, политик, glossary ...'\n"
+                    "TOOLS       = [ { ... }, { ... } ]   # ~2000 токенов\n\n"
+                    "resp = client.messages.create(\n"
+                    "    model='claude-sonnet-4-6',\n"
+                    "    max_tokens=1024,\n"
+                    "    system=[\n"
+                    "        {'type':'text', 'text': LONG_SYSTEM,\n"
+                    "         'cache_control': {'type':'ephemeral'}},   # breakpoint #1\n"
+                    "    ],\n"
+                    "    tools=[\n"
+                    "        *TOOLS[:-1],\n"
+                    "        {**TOOLS[-1], 'cache_control': {'type':'ephemeral'}},  # breakpoint #2\n"
+                    "    ],\n"
+                    "    messages=[{'role':'user', 'content': user_query}],  # variable\n"
+                    ")\n"
+                    "# resp.usage.cache_read_input_tokens   ← попадание\n"
+                    "# resp.usage.cache_creation_input_tokens ← запись"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Простой output-cache для детерминистичных вызовов",
+                "code": (
+                    "import hashlib, json, sqlite3\n\n"
+                    "db = sqlite3.connect('llm_cache.db')\n"
+                    "db.execute('CREATE TABLE IF NOT EXISTS c(k TEXT PRIMARY KEY, v TEXT)')\n\n"
+                    "def cached_call(prompt: str, **params):\n"
+                    "    key = hashlib.sha256(\n"
+                    "        json.dumps({'p': prompt, **params}, sort_keys=True).encode()\n"
+                    "    ).hexdigest()\n"
+                    "    if row := db.execute('SELECT v FROM c WHERE k=?', (key,)).fetchone():\n"
+                    "        return json.loads(row[0])\n"
+                    "    resp = client.chat.completions.create(\n"
+                    "        messages=[{'role':'user','content':prompt}],\n"
+                    "        temperature=0, **params,\n"
+                    "    )\n"
+                    "    db.execute('INSERT INTO c VALUES (?, ?)', (key, json.dumps(resp.model_dump())))\n"
+                    "    db.commit()\n"
+                    "    return resp.model_dump()"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Что класть в стабильный prefix",
+                "items": [
+                    {"k": "**System prompt**",        "v": "роль, политики, формат ответа — почти всегда стабильны"},
+                    {"k": "**Tools / function defs**", "v": "редко меняются, длинные — идеальный кандидат"},
+                    {"k": "**Few-shot examples**",     "v": "fixed examples — да; рандомизированные — нет"},
+                    {"k": "**Static knowledge**",      "v": "глоссарий, политика, документы — да"},
+                    {"k": "**RAG retrieved chunks**",   "v": "меняются от запроса — нет, кладём в variable suffix"},
+                    {"k": "**Текущая дата / user_id**", "v": "меняются — нет, в самый конец промпта"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Правила структурирования под кеш",
+                "kind": "do",
+                "items": [
+                    "**Стабильное сверху, изменчивое снизу.** Любой variable token в начале убивает весь кеш ниже.",
+                    "**Не кешируй то, что меняется чаще TTL.** Если документ перевыпускается каждые 2 минуты — prompt cache не успеет сработать.",
+                    "**Версионируй промпт** через `prompt_version: v3` в начале — при правке вручную инвалидируешь весь кеш.",
+                    "**Логируй cached_tokens** на каждый ответ — без этого не увидишь падение hit rate.",
+                    "**4 breakpoint'а — максимум.** Для Anthropic ставь после system, после tools, после static doc, перед current message.",
+                    "**Tools идут до variable user input.** Если перемешать — кеш будет читаться только до первой variable части.",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "cache_read_input_tokens=0 в каждом ответе",   "outcome": "проверь порядок: variable части просочились в prefix; или промпт меньше минимума (1024)"},
+                    {"condition": "hit rate падает по дням",                     "outcome": "system prompt непреднамеренно меняется (timestamp, random seed) — найди и убери"},
+                    {"condition": "semantic cache даёт неправильные ответы",      "outcome": "threshold слишком низкий или embedding-модель не различает важные нюансы (даты, отрицания)"},
+                    {"condition": "TTL истёк, но запросы редкие",                  "outcome": "переходи на 1h cache (Anthropic beta) или объединяй сессии в очередь"},
+                    {"condition": "cache write дороже выгоды",                     "outcome": "одиночные запросы без повторов — кеш не нужен; либо warm-up при старте сервиса"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Расположи блоки в промпте от стабильного к изменчивому: system → tools → static knowledge → conversation → новый user message.** Это правило одно даёт почти всю экономию prompt-кеширования. Без него ставить cache_control бесполезно."},
+            {"type": "callout", "kind": "fact",
+             "content": "**Anthropic cache read стоит 10% от обычной цены input.** При 50K-токенов system+tools и 90% hit rate ты платишь как за 5K токенов на каждом запросе. На агентских циклах с 5+ round-trip это превращает $0.50 за запрос в $0.07."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Semantic cache на личных данных = утечка между пользователями.** Если ключ кеша только embedding запроса, а ответ содержит чужие данные — отдашь юзеру B результат, сгенерированный для юзера A. Всегда добавляй user_id (или scope) в ключ semantic cache."},
+        ],
+    },
+    "llm_routing": {
+        "title": "LLM Routing: cascades, fallback, cost budgeting",
+        "emoji": "🛣️",
+        "track": "mlops",
+        "what": "model cascade (cheap → strong), confidence signals, router-типы (rule-based, classifier, embedding, LLM-judge), fallback chain, cost-per-request budgeting, A/B routing, SaaS-роутеры (OpenRouter, NotDiamond, Portkey, RouteLLM)",
+        "why": "Один промпт — одна модель = переплата. Простые запросы Haiku закроет за 1/30 цены Opus. Cascade и smart routing срезают cost-per-request в 3-10 раз без заметной потери качества. Fallback на резервного провайдера спасает от 429 и outage'ов",
+        "interview_focus": "паттерн cheap → check → strong, confidence signals (logprobs, self-eval), разница cascade vs fallback vs A/B routing, реализация router'а, как сравнить экономику cascade vs single model, OpenRouter / Portkey use cases",
+        "cheatsheet": [
+            {"q": "Что такое model cascade?",
+             "a": "Сначала зовём дешёвую модель. Если она уверена в ответе — отдаём пользователю. Если нет — поднимаем запрос на сильную модель. На типовых распределениях запросов 60-80% задач закрывает cheap-модель, 20-40% уходит выше. Total cost падает в 3-10 раз vs всегда-Opus, при сопоставимом качестве."},
+            {"q": "Какие сигналы говорят что нужна сильная модель?",
+             "a": "Logprobs (низкий avg log prob = неуверенность). Self-evaluation (вторым промптом просим cheap-модель оценить свой ответ от 1 до 5). Refusal / clarification request (модель сама пишет «не знаю»). Длина / heuristics (короткий вопрос → cheap, многошаговый → strong). Категория задачи через классификатор."},
+            {"q": "Какие подходы к routing бывают?",
+             "a": "Rule-based: по префиксу, длине, типу задачи (классификация → Haiku, code-gen → Sonnet). LLM-router: маленькая модель решает куда направить. Classifier router: BERT-class модель обучена на (запрос → лучшая модель). Embedding-router (RouteLLM): kNN по training-set из (запрос, model_choice). Cascade: всегда cheap первая, escalate по confidence."},
+            {"q": "Что такое cost-per-request budgeting?",
+             "a": "Учёт токенов и долларов на каждый запрос с разбивкой по user/feature/route. Метрики: median cost-per-request, p95, daily spend per user. Alerts на превышение порога или резкий рост (часто = baging RAG-контекста или зацикленный агент). Без budgeting один баговый цикл может сжечь месячный бюджет за час."},
+            {"q": "Как реализовать fallback chain?",
+             "a": "Список моделей по приоритету. На 429 / 5xx / провайдер down — переключаемся на следующую. Уже есть в твоём app.py — список MODELS, последовательная попытка с continue на rate_limit. Усиления: разделение на providers (Groq → Anthropic → OpenAI), exp backoff между попытками, метрика fallback_rate в дашборд."},
+            {"q": "Какие SaaS-роутеры популярны?",
+             "a": "OpenRouter — единый API ко всем провайдерам, авто-fallback, видны цены в реальном времени. Portkey — gateway с retries / cache / load balancing / observability. NotDiamond — ML-роутер, выбирает модель по запросу. Martian — то же, фокус на quality+cost оптимизации. RouteLLM — open-source роутер от LMSYS на BERT-class классификаторе."},
+            {"q": "Когда cascade проигрывает одной модели?",
+             "a": "Когда escalate-rate близок к 100% — на сложных задачах (deep reasoning, multi-step) cheap-модель почти всегда не уверена, и ты платишь дважды. Также когда ответ дешёвой модели уже отдан пользователю в streaming — её нельзя «отозвать». Cascade хорош на смешанном трафике с длинным хвостом простых запросов."},
+            {"q": "Что такое RouteLLM / embedding-router?",
+             "a": "Open-source роутер: для каждого нового запроса считается embedding, ищется kNN среди размеченных примеров, для них уже известна оптимальная модель. Модель выбирается голосованием соседей. Обучается на датасете (запрос, ответ_strong, ответ_weak, win) — нужен ground truth. Простой, дешёвый на инференсе, точность 80-90% от idealrouter на типовых распределениях."},
+            {"q": "Как сравнить экономику cascade vs одной модели?",
+             "a": "Прогнать репрезентативный набор запросов через обе схемы, замерить: total cost, escalate-rate, quality (через eval). Формула: cost_cascade = cost_cheap × N + cost_strong × N × escalate_rate. Если quality(cascade) ≈ quality(strong) при cost(cascade) < 0.5 × cost(strong) — стоит. Если escalate_rate > 70% — точно нет смысла."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**Routing = выбор модели под запрос.** Три паттерна: **cascade** (cheap → confidence check → strong) экономит cost-per-request в 3-10 раз; **fallback chain** (Groq → Anthropic → OpenAI) спасает от 429 и outage'ов; **A/B routing** для замера качества и медленной миграции. Без cost-budgeting один баговый цикл сожжёт месячный бюджет."},
+            {
+                "type": "flow",
+                "title": "Cascade-решение",
+                "branches": [
+                    {"condition": "1. Запрос → cheap model",     "outcome": "Haiku / GPT-4o-mini / Llama-3.3-70B — дешёвый и быстрый ответ"},
+                    {"condition": "2. Confidence check",         "outcome": "logprobs < threshold? self-eval ≤ 3/5? answer = 'I don't know'? → escalate"},
+                    {"condition": "3a. Уверенно",                 "outcome": "отдаём ответ cheap модели, лог метрика level=cheap"},
+                    {"condition": "3b. Не уверенно",               "outcome": "то же сообщение в strong model (Sonnet / Opus / GPT-4), отдаём её ответ"},
+                    {"condition": "4. Метрики",                   "outcome": "escalate_rate, cost_per_request, quality (через online eval) — в дашборд"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Подходы к routing",
+                "headers": ["Подход", "Как работает", "Когда брать", "Минусы"],
+                "rows": [
+                    ["**Rule-based**",         "if request.kind == 'classify': haiku else: sonnet",     "когда категории задач явные",            "не масштабируется на много задач"],
+                    ["**Cascade**",             "всегда cheap первая, escalate по confidence",            "длинный хвост простых запросов",          "double-cost при escalate"],
+                    ["**Classifier router**",   "BERT-class модель: запрос → выбор",                     "много задач, есть данные на обучение",     "нужен датасет и переобучение"],
+                    ["**Embedding router**",    "kNN среди размеченных примеров",                         "RouteLLM-style, простая интеграция",       "точность на out-of-distribution"],
+                    ["**LLM-router**",          "маленькая LLM решает куда направить",                    "сложные критерии, динамика",                "доп. round-trip и токены"],
+                    ["**SaaS router**",         "OpenRouter / NotDiamond / Portkey",                      "не хочется поддерживать самому",            "vendor lock-in, доп. latency"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "Cascade / Fallback / A/B routing",
+                "items": [
+                    {"title": "Cascade",
+                     "points": [
+                         "Всегда cheap первая, escalate по confidence",
+                         "Цель: снизить cost-per-request",
+                         "Платишь cheap+strong на escalate'ах",
+                         "Метрика: escalate_rate",
+                     ]},
+                    {"title": "Fallback chain",
+                     "points": [
+                         "Strong первая, fallback при 429 / 5xx / down",
+                         "Цель: reliability",
+                         "Качество ≈ strong, иногда хуже на fallback",
+                         "Метрика: fallback_rate, error_rate",
+                     ]},
+                    {"title": "A/B routing",
+                     "points": [
+                         "Split трафика 50/50 между двумя моделями",
+                         "Цель: замерить разницу в качестве",
+                         "Цена ≈ среднее двух моделей",
+                         "Метрика: win-rate, cost-per-request, latency",
+                     ]},
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Простой cascade с self-eval confidence",
+                "code": (
+                    "from anthropic import AsyncAnthropic\n"
+                    "client = AsyncAnthropic()\n\n"
+                    "async def cascade_answer(question: str) -> tuple[str, str]:\n"
+                    "    # 1. cheap первая\n"
+                    "    cheap = await client.messages.create(\n"
+                    "        model='claude-haiku-4-5', max_tokens=512,\n"
+                    "        messages=[{'role':'user', 'content': question}],\n"
+                    "    )\n"
+                    "    answer = cheap.content[0].text\n\n"
+                    "    # 2. self-eval тем же cheap (отдельный промпт)\n"
+                    "    judge = await client.messages.create(\n"
+                    "        model='claude-haiku-4-5', max_tokens=8,\n"
+                    "        messages=[{'role':'user', 'content':\n"
+                    "            f'Оцени уверенность в ответе по шкале 1-5. Только цифру.\\n'\n"
+                    "            f'Q: {question}\\nA: {answer}'}],\n"
+                    "    )\n"
+                    "    score = int(judge.content[0].text.strip()[:1])\n\n"
+                    "    if score >= 4:\n"
+                    "        return answer, 'cheap'\n\n"
+                    "    # 3. escalate на strong\n"
+                    "    strong = await client.messages.create(\n"
+                    "        model='claude-opus-4-7', max_tokens=1024,\n"
+                    "        messages=[{'role':'user', 'content': question}],\n"
+                    "    )\n"
+                    "    return strong.content[0].text, 'strong'"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Fallback chain (упрощённый паттерн из твоего app.py)",
+                "code": (
+                    "MODELS = [\n"
+                    "    ('groq',      'llama-3.3-70b-versatile'),\n"
+                    "    ('anthropic',  'claude-haiku-4-5'),\n"
+                    "    ('openai',     'gpt-4o-mini'),\n"
+                    "]\n\n"
+                    "async def call_with_fallback(messages):\n"
+                    "    last_err = None\n"
+                    "    for provider, model in MODELS:\n"
+                    "        try:\n"
+                    "            return await CLIENTS[provider].chat.completions.create(\n"
+                    "                model=model, messages=messages, timeout=30,\n"
+                    "            ), provider\n"
+                    "        except (RateLimitError, APIConnectionError, APIStatusError) as e:\n"
+                    "            log.warning('fallback', provider=provider, err=str(e))\n"
+                    "            last_err = e\n"
+                    "            continue\n"
+                    "    raise RuntimeError(f'все провайдеры упали: {last_err}')"
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "SaaS-роутеры",
+                "items": [
+                    {"k": "**OpenRouter**",   "v": "единый API ко всем провайдерам, авто-fallback, прозрачные цены, fallback на пуле моделей"},
+                    {"k": "**Portkey**",       "v": "gateway: retries, cache, load balancing, observability, semantic guardrails — батарейки в коробке"},
+                    {"k": "**NotDiamond**",    "v": "ML-роутер: выбирает оптимальную модель по запросу, обучен на quality+cost"},
+                    {"k": "**Martian**",       "v": "то же что NotDiamond, фокус на cost optimization"},
+                    {"k": "**RouteLLM**",       "v": "open-source роутер от LMSYS, embedding-based, можно self-host"},
+                    {"k": "**LiteLLM proxy**",  "v": "open-source proxy: единый OpenAI-совместимый API ко всем провайдерам, fallback, бюджеты"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Confidence signals для cascade",
+                "kind": "do",
+                "items": [
+                    "**Logprobs**: средний log prob по сгенерированным токенам, ниже threshold → не уверен (поддержка через `logprobs=True` у OpenAI; Anthropic — нет напрямую)",
+                    "**Self-evaluation**: второй промпт «оцени свой ответ 1-5» — простой, работает удивительно хорошо",
+                    "**Refusal pattern**: модель пишет «не знаю», «недостаточно информации» — escalate автоматически",
+                    "**Length heuristic**: короткий вопрос → cheap; длинный многошаговый → сразу strong, без cheap-попытки",
+                    "**Topic classifier**: маленький классификатор (DistilBERT) на (запрос → категория), категория → модель",
+                    "**Tool-use signal**: если запрос требует tools → берём модель с лучшим tool-use, не самую дешёвую",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "escalate-rate > 70%",            "outcome": "распределение запросов слишком сложное для cheap — отключи cascade, иди сразу на strong"},
+                    {"condition": "cost растёт линейно с трафиком", "outcome": "нет cache + нет cascade — сначала [llm_caching](#), потом routing"},
+                    {"condition": "fallback срабатывает >5%",        "outcome": "primary провайдер деградирует или TPM-лимит мал — увеличить tier или сменить порядок"},
+                    {"condition": "качество cascade хуже strong",    "outcome": "confidence signal слишком оптимистичный — поднять threshold или сменить self-eval промпт"},
+                    {"condition": "отдельный user съедает бюджет",   "outcome": "per-user budget cap, rate-limit по user_id, alert на p99 spend per user"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Сначала кешируй, потом роуть.** Prompt cache даёт 50-90% экономии без риска для качества. Cascade — 3-10×, но требует confidence-логики и eval'ов на падение качества. Если pipeline без кеша — routing отложи и сделай caching первым."},
+            {"type": "callout", "kind": "fact",
+             "content": "**На типовом продукте 60-80% запросов закрывает Haiku-class модель.** Распределение длинного хвоста: много простых вопросов, мало сложных. Cascade-метрика «доля cheap-ответов» прямо отражает форму трафика — если у тебя <30%, продукт сложнее обычного."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Self-eval в cascade — bias на оптимизм.** Та же модель оценивает свой ответ — склонна завышать. Калибруй threshold на размеченном наборе, либо используй для self-eval другую модель (например cheap из другого семейства). Иначе cascade пропускает плохие cheap-ответы в прод."},
+        ],
+    },
+    "llm_observability": {
+        "title": "LLM Observability: traces, metrics, logs",
+        "emoji": "🔭",
+        "track": "mlops",
+        "what": "что логировать (prompt, completion, tokens, cost, latency), trace/span структура для агентов, инструменты (LangSmith, Langfuse, Helicone, Arize Phoenix, Opik), OpenLLMetry и GenAI semantic conventions, интеграция с Prometheus/Grafana, защита от утечки PII",
+        "why": "LLM-приложение в проде — это распределённая система с непредсказуемым выходом. Без traces не воспроизведёшь баг (что за промпт привёл к галлюцинации), без token-метрик не поймёшь откуда счёт, без online eval не заметишь quality drift. Обычный APM не покрывает специфику: токены, кеш, tool calls, judge-оценки",
+        "interview_focus": "что обязательно логировать (input/output/tokens/cost/latency/trace_id), trace-структура агента (root → llm calls + tool calls), сравнение LangSmith/Langfuse/Helicone, OpenLLMetry conventions, как не утекать PII",
+        "cheatsheet": [
+            {"q": "Чем LLM observability отличается от обычного APM?",
+             "a": "Помимо latency и errors нужно: input/output prompt'ы (для воспроизведения), token usage с разбивкой на input/output/cached, cost-per-request, tool calls и их результаты, judge-оценки качества из online eval. Trace — это дерево из LLM-вызовов и tool-вызовов, не плоский список HTTP-запросов. Метрики: time-to-first-token, completion latency, escalate-rate, hallucination-rate."},
+            {"q": "Что обязательно логировать на каждый LLM-запрос?",
+             "a": "prompt (с маскированием PII), completion, model name, model version, провайдер, input_tokens, output_tokens, cached_tokens, cost (в долларах), latency (TTFT и total), trace_id, span_id, parent_span_id, user_id, session_id, prompt_version, tool_calls (если были). Без любого из этих полей теряется ключевой кусок при разборе инцидента."},
+            {"q": "Какие инструменты популярны?",
+             "a": "LangSmith — от LangChain, deep integration с langchain/langgraph, SaaS. Langfuse — open-source альтернатива, можно self-host, всё то же что LangSmith. Helicone — proxy-based (роутишь через них baseURL), низкий порог входа. Arize Phoenix — open-source, силён в evals и prompt experimentation. Opik (Comet) — observability + evals. Datadog LLM Observability — если уже на Datadog. OpenLLMetry — OpenTelemetry-based, vendor-agnostic."},
+            {"q": "Что такое trace и span в контексте LLM-приложения?",
+             "a": "Trace — целое дерево обработки одного запроса (от входящего HTTP до финального ответа). Span — один шаг (LLM вызов, tool call, retrieval, кешевый lookup). Root span = агентский цикл, дочерние = каждая итерация. Это та же модель, что в OpenTelemetry distributed tracing — но с LLM-специфичными атрибутами (gen_ai.usage.input_tokens и т.п.)."},
+            {"q": "Как интегрировать LLM-метрики с Prometheus и Grafana?",
+             "a": "Через OpenTelemetry Collector + Prometheus exporter. OpenLLMetry автоматически экспортирует gen_ai.* метрики (token counts, latency, cost). В Grafana — дашборды по model, route, user. Для самописных — prometheus_client с counter (tokens_total, cost_usd_total) и histogram (request_duration_seconds). Лейблы: model, provider, route, status."},
+            {"q": "Что такое OpenLLMetry и GenAI semantic conventions?",
+             "a": "OpenLLMetry — open-source SDK от Traceloop, добавляющий OpenTelemetry-инструментацию в популярные LLM-библиотеки (openai, anthropic, langchain). GenAI semantic conventions — стандартизованные имена атрибутов в OTel для LLM (gen_ai.system='openai', gen_ai.request.model, gen_ai.usage.input_tokens). Цель: vendor-agnostic трейсы, можно отправлять в любой OTel-совместимый backend."},
+            {"q": "Какие метрики критичны для прод-LLM?",
+             "a": "Latency: time-to-first-token (для streaming), total request duration, p50/p95/p99. Cost: spend per minute, cost-per-request avg/p95, daily spend per user. Reliability: error_rate, fallback_rate, retry_rate. Quality: online eval judge score (avg, drift), refusal_rate, hallucination_rate. Cache: cache_hit_rate (prompt и semantic). Tools: tool_call_count, tool_error_rate."},
+            {"q": "Как не залогировать PII?",
+             "a": "Маскирование на стороне приложения до отправки в observability backend (regex для email/phone/CC, NER-модель для имён). Allowlist/denylist полей. Хешировать user_id вместо plain. Анонимизация в env=prod, полные логи только в env=dev/staging. Compliance-режим в Langfuse/LangSmith прячет prompt content полностью, оставляя только метрики."},
+            {"q": "Как объединить logs, traces и evals в один pipeline?",
+             "a": "Trace_id связывает всё: лог-запись содержит trace_id → можно прыгнуть в trace UI и увидеть полное дерево; eval-runner получает trace_id с golden output и записывает score обратно в trace как атрибут; quality drift алерт ссылается на trace_id для воспроизведения. Один общий backend (Langfuse/LangSmith) даёт это из коробки; на самописе — общий trace_id через все слои."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "**LLM observability = APM + LLM-специфика.** Минимум на каждый запрос: **prompt+completion** (для воспроизведения), **tokens** (in/out/cached), **cost**, **latency** (TTFT и total), **trace_id**, **user_id**. Trace — дерево из LLM-вызовов и tool-вызовов. Стандарт: **OpenLLMetry** + **GenAI semantic conventions** в OpenTelemetry. SaaS: **LangSmith** / **Langfuse** / **Helicone**. Без trace не воспроизведёшь баг."},
+            {
+                "type": "flow",
+                "title": "Trace через агентский цикл",
+                "branches": [
+                    {"condition": "root span: agent.run",            "outcome": "входящий запрос, user_id, session_id, total_cost собирается в конце"},
+                    {"condition": "└─ retrieval span",                "outcome": "embedding запроса, vector search, top-K docs, latency"},
+                    {"condition": "└─ llm span (iter 1)",             "outcome": "model, prompt, completion, tokens, cost, stop_reason='tool_use'"},
+                    {"condition": "   └─ tool span: get_weather",     "outcome": "input args, output, latency, error если был"},
+                    {"condition": "└─ llm span (iter 2)",             "outcome": "продолжение с tool_result, finally stop_reason='end_turn'"},
+                    {"condition": "└─ eval span (async)",             "outcome": "judge оценил ответ, score прикрепился к root trace"},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Инструменты LLM observability",
+                "headers": ["Инструмент", "Тип", "Сильная сторона", "Когда брать"],
+                "rows": [
+                    ["**LangSmith**",        "SaaS",                 "глубокая интеграция с langchain/langgraph, evals в одном месте",  "если стек на LangChain"],
+                    ["**Langfuse**",          "open-source + SaaS",   "self-host, GDPR-friendly, evals + datasets + traces",             "когда нужен on-prem или контроль"],
+                    ["**Helicone**",           "SaaS proxy",           "просто переключаешь baseURL — и всё логируется",                   "минимум кода, быстрый старт"],
+                    ["**Arize Phoenix**",       "open-source",          "evals и prompt experiments сильнее чем у других",                  "data science / research"],
+                    ["**Opik (Comet)**",        "SaaS + open-source",   "observability + evals + experiments в одном продукте",            "если уже на Comet"],
+                    ["**Datadog LLM Obs**",     "SaaS (часть DD)",      "интеграция с остальной инфрой DD",                                  "если уже Datadog везде"],
+                    ["**OpenLLMetry**",         "open-source SDK",      "OpenTelemetry-based, vendor-agnostic",                              "когда хочешь стандарт и любой backend"],
+                ],
+            },
+            {
+                "type": "compare",
+                "title": "LangSmith / Langfuse / Helicone",
+                "items": [
+                    {"title": "LangSmith",
+                     "points": [
+                         "SaaS, от LangChain Inc",
+                         "Авто-инструментация LangChain / LangGraph",
+                         "Evals + datasets + playground в одном UI",
+                         "Минус: vendor lock-in, $$ при масштабе",
+                     ]},
+                    {"title": "Langfuse",
+                     "points": [
+                         "Open-source ядро, SaaS опционально",
+                         "Self-host под GDPR / compliance",
+                         "Decorator @observe() для Python",
+                         "Evals + prompt management + traces",
+                     ]},
+                    {"title": "Helicone",
+                     "points": [
+                         "Proxy-based: роутишь через их baseURL",
+                         "Нулевой код-чейндж на старте",
+                         "Caching, rate limiting, retries встроены",
+                         "Минус: добавляет hop в latency"],
+                     },
+                ],
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "Langfuse @observe — авто-traces для LLM-функций",
+                "code": (
+                    "# pip install langfuse openai\n"
+                    "from langfuse import observe\n"
+                    "from langfuse.openai import openai  # авто-инструментирует OpenAI SDK\n\n"
+                    "@observe()\n"
+                    "async def answer_question(question: str, user_id: str) -> str:\n"
+                    "    # каждый openai-вызов внутри попадёт в trace как child span\n"
+                    "    docs = await retrieve(question)\n"
+                    "    resp = await openai.chat.completions.create(\n"
+                    "        model='gpt-4o-mini',\n"
+                    "        messages=[\n"
+                    "            {'role':'system', 'content': f'Контекст: {docs}'},\n"
+                    "            {'role':'user',    'content': question},\n"
+                    "        ],\n"
+                    "        user=user_id,  # привяжется к trace metadata\n"
+                    "    )\n"
+                    "    return resp.choices[0].message.content"
+                ),
+            },
+            {
+                "type": "code",
+                "lang": "python",
+                "caption": "OpenTelemetry / OpenLLMetry: vendor-agnostic трейсинг",
+                "code": (
+                    "# pip install traceloop-sdk\n"
+                    "from traceloop.sdk import Traceloop\n"
+                    "from traceloop.sdk.decorators import workflow, task\n"
+                    "from openai import OpenAI\n\n"
+                    "Traceloop.init(\n"
+                    "    app_name='my-llm-app',\n"
+                    "    api_endpoint='https://otel.mybackend/',  # любой OTel-совместимый\n"
+                    ")\n\n"
+                    "client = OpenAI()\n\n"
+                    "@workflow(name='qa_pipeline')\n"
+                    "def answer(question: str) -> str:\n"
+                    "    docs = retrieve(question)            # станет child span\n"
+                    "    resp = client.chat.completions.create(\n"
+                    "        model='gpt-4o-mini',\n"
+                    "        messages=[{'role':'user','content': question}],\n"
+                    "    )  # авто-span с gen_ai.* атрибутами\n"
+                    "    return resp.choices[0].message.content\n\n"
+                    "@task(name='retrieve')\n"
+                    "def retrieve(q): ..."
+                ),
+            },
+            {
+                "type": "kv",
+                "title": "Ключевые метрики прода",
+                "items": [
+                    {"k": "**TTFT (time-to-first-token)**",   "v": "p50/p95 — UX-метрика для streaming, целевая 1-3s"},
+                    {"k": "**Total request duration**",       "v": "p50/p95/p99 — для алертов и SLA"},
+                    {"k": "**Cost per request**",              "v": "avg / p95 / sum по периодам — алерт на резкий рост"},
+                    {"k": "**Cache hit rate**",                "v": "prompt и semantic отдельно — отражает здоровье caching-слоя"},
+                    {"k": "**Fallback / retry rate**",         "v": "если >5% — провайдер деградирует или TPM мал"},
+                    {"k": "**Tool error rate**",               "v": "по name — какие tools чаще ломаются"},
+                    {"k": "**Online eval score**",             "v": "judge avg по rolling window — drift detection"},
+                    {"k": "**Refusal / clarification rate**", "v": "сколько раз модель отказалась — индикатор сложности трафика"},
+                ],
+            },
+            {
+                "type": "list",
+                "title": "Что логировать / что НЕ логировать",
+                "kind": "do",
+                "items": [
+                    "✅ **Prompt + completion** с маскированием PII (regex / NER)",
+                    "✅ **Token usage**: input, output, cached — иначе не воспроизведёшь cost",
+                    "✅ **Cost в долларах** на каждый запрос — не считай ретроспективно",
+                    "✅ **Trace_id** во всех логах и ответах — мостик logs ↔ traces",
+                    "✅ **Model + version + provider** — для разбора регрессий после смены",
+                    "❌ **Plain PII**: emails, phones, имена, адреса — маскируй до отправки в backend",
+                    "❌ **API keys и tokens** — отдельная ловушка, легко утекают через logged headers",
+                    "❌ **Полные документы из RAG в prod-логах** — храни doc_id, не текст",
+                ],
+            },
+            {
+                "type": "flow",
+                "title": "Симптом → что чинить",
+                "branches": [
+                    {"condition": "юзер жалуется, не могу воспроизвести",      "outcome": "нет trace_id в ответе или нет prompt в trace — добавь обязательным; либо trace TTL истёк (проверь retention)"},
+                    {"condition": "счёт прыгнул в N раз за день",               "outcome": "разрезай cost по route / user / model — найди отстающий, проверь на зацикленный агент"},
+                    {"condition": "p95 latency растёт без роста трафика",        "outcome": "разрезай по provider — деградация на стороне OpenAI/Anthropic; либо растёт длина промптов"},
+                    {"condition": "judge online eval падает по неделям",         "outcome": "quality drift — снять разметку с упавших примеров, проверь типы запросов на новизну"},
+                    {"condition": "cache_hit_rate упал с 80% до 40%",            "outcome": "кто-то добавил variable часть в начало промпта — diff system prompt по версиям"},
+                    {"condition": "случайные 'не залогированные' запросы",        "outcome": "sampling включён или async-запись падает — проверь dropped spans метрику"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**Trace_id наружу — обязательно.** Возвращай его в HTTP header или в response body. Когда юзер жалуется «вчера в 14:30 пришёл странный ответ», ты по trace_id находишь дерево за секунды вместо часа гадания по логам."},
+            {"type": "callout", "kind": "fact",
+             "content": "**OpenLLMetry + Langfuse — типовой self-host стек на 2026.** SDK инструментирует openai/anthropic/langchain автоматически, пишет в Langfuse через OTel-протокол, метрики экспортируются в Prometheus, дашборды в Grafana. Vendor-agnostic, без lock-in."},
+            {"type": "callout", "kind": "warning",
+             "content": "**Полный prompt в логи = риск compliance.** Промпт может содержать пользовательский PII, медицинские данные, секреты, которые юзер случайно вставил. Минимум: маскирование в проде, allowlist полей, отдельный compliance-режим (Langfuse/LangSmith умеют скрывать content полностью). GDPR/HIPAA-аудит этого специально проверяют."},
+        ],
+    },
 }
 
 CURRICULUM = [
@@ -8336,6 +9412,12 @@ CURRICULUM = [
         "section": "LLM",
         "title": "LLM Engineering",
         "topics": ["rag", "langchain", "langgraph"],
+    },
+    {
+        "id": "llm_production",
+        "section": "LLM",
+        "title": "LLM в проде",
+        "topics": ["mcp", "llm_eval_frameworks", "llm_api_patterns", "llm_caching", "llm_routing", "llm_observability"],
     },
     {
         "id": "llm_models",
