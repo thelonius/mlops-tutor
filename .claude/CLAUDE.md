@@ -3,17 +3,38 @@
 ## Деплой на прод
 
 Прод: https://91-84-112-120.sslip.io/
-Сервер: `root@91.84.112.120` (пароль в 1Password или у пользователя)
+Сервер: `root@91.84.112.120`
 Путь на сервере: `/opt/mlops-tutor/`
-Стек: Docker Compose (gunicorn + Caddy)
+Стек: Docker Compose (gunicorn + Caddy), файлы как bind-mount.
 
-```bash
-# Скопировать обновлённые файлы
-scp curriculum.py app.py root@91.84.112.120:/opt/mlops-tutor/
-scp templates/index.html root@91.84.112.120:/opt/mlops-tutor/templates/
+### Единственный способ деплоя — merge в main
 
-# Перезапустить приложение
-ssh root@91.84.112.120 "cd /opt/mlops-tutor && docker compose restart app"
-```
+Деплой автоматический через [GitHub Actions workflow](../.github/workflows/deploy.yml). Любой merge PR в `main` запускает:
 
-Файлы монтируются как bind-mount, поэтому пересборка образа не нужна — только restart.
+1. `pytest` gate (без зелёного — деплой не пойдёт);
+2. scp файлов на прод;
+3. `docker compose restart app`;
+4. md5-верификация что прод действительно равен main.
+
+Подробнее: [docs/DEPLOY.md](../docs/DEPLOY.md).
+
+### ⛔ Запрещено
+
+- **Никаких `scp` вручную с feature-веток** на прод. Каждый раз когда мы это делали — фича из ветки оставалась на проде, не попадала в main, и следующий merge в main её сносил. Регресс повторялся 10+ раз.
+- **Никаких `ssh root@... "echo ... > /opt/mlops-tutor/..."`** или прямой правки файлов на проде. То же самое.
+- **Никакого force-push в `main`.** Только через PR + merge.
+
+Если очень нужно срочно проверить что-то на проде вне обычного цикла — открой PR, дождись deploy (≤2 минуты). Workflow специально не пускает параллельные деплои (`concurrency: deploy-prod`), так что не сломаешь чужую работу.
+
+### Как продолжить деплой если упал
+
+Workflow на md5-verify шаге может вылететь с «прод не равен main». Это значит:
+
+1. Либо deploy шаг не докатил файлы — посмотреть логи `Copy files to server`.
+2. Либо кто-то делал scp вручную поверх (теперь это поймает verify-шаг).
+
+В обоих случаях: перезапустить workflow (`gh run rerun <run-id>`). Это просто перельёт main-state на прод.
+
+### Доступ для отладки
+
+`ssh mlops-tutor` (SSH-алиас, ключ `~/.ssh/mlops_tutor_deploy`) — только для **чтения логов и инспекции** (`docker compose logs`, `ls`, `cat`). НЕ для записи файлов.
