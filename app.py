@@ -308,6 +308,76 @@ def tts():
                     headers={"Cache-Control": "no-cache"})
 
 
+LECTURE_SYSTEM_PROMPT = """Ты ведёшь короткую аудио-лекцию для опытного инженера, который готовится к собеседованию на MLOps/ML-Engineer позицию. Тема лекции и контекст приходят в user-сообщении.
+
+Сделай обзорный слой темы — 4-5 секций, каждая 80-150 слов разговорным русским.
+Структура: введение (зачем нужна тема) → 2-3 ключевые подтемы → подводка к практике/итог.
+
+КРИТИЧЕСКИ ВАЖНО для аудио-формата:
+- Никакого кода, никакого LaTeX. Формулы зачитывай словами: «сумма i от одного до n».
+- Никакого markdown — звёздочки, решётки, бэктики не работают на слух.
+- Списки превращай в связную речь: «во-первых», «также», «и наконец».
+- Термины раскрывай: «PVC, persistent volume claim, это запрос на хранилище».
+- Конкретика и цифры — да, но без таблиц.
+- Связки между секциями: «Дальше посмотрим…», «Это подводит нас к…».
+
+Верни СТРОГО JSON в формате:
+{"sections":[{"title":"Короткий заголовок 1","body":"Текст секции 80-150 слов..."},{"title":"...","body":"..."}]}
+
+title — 2-5 слов, для визуального оглавления.
+body — связный разговорный текст без переносов строк."""
+
+
+@app.route("/api/lecture", methods=["POST"])
+def lecture():
+    topic_id = (request.json or {}).get("topic_id", "").strip()
+    topic = TOPICS.get(topic_id)
+    if not topic:
+        return jsonify({"error": "Unknown topic"}), 400
+
+    user_msg = (
+        f"Тема: {topic.get('title', '')}.\n"
+        f"О чём это: {topic.get('what', '')}.\n"
+        f"Зачем это знать: {topic.get('why', '')}.\n"
+        f"Что важно для интервью: {topic.get('interview_focus', '')}.\n\n"
+        "Сделай аудио-лекцию по этой теме."
+    )
+
+    last_error = None
+    for model in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b"):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": LECTURE_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                temperature=0.6,
+                max_tokens=3000,
+                response_format={"type": "json_object"},
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            data = json.loads(raw)
+            sections = data.get("sections") or []
+            sections = [
+                {"title": str(s.get("title", "")).strip(),
+                 "body":  str(s.get("body",  "")).strip()}
+                for s in sections
+                if isinstance(s, dict) and s.get("body")
+            ]
+            if sections:
+                return jsonify({"sections": sections, "model": model})
+            last_error = "empty sections"
+        except Exception as e:
+            msg = str(e).lower()
+            last_error = str(e)
+            if "rate_limit" in msg or "429" in msg:
+                continue
+            # Не-rate-limit ошибки — пробуем следующую модель один раз.
+            continue
+    return jsonify({"error": f"LLM failed: {last_error or 'unknown'}"}), 502
+
+
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
     audio = request.files.get("audio")

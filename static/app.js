@@ -34,10 +34,11 @@ function restoreSession() {
     const badge = document.getElementById('mode-badge');
     badge.textContent = cfg.label;
     badge.className   = `mode-badge ${cfg.badge}`;
-    const isStatic = mode === 'cheatsheet' || mode === 'mcquiz';
-    document.getElementById("messages").style.display    = isStatic ? "none" : "";
-    document.getElementById('input-row')?.style && (document.getElementById('input-row').style.display = isStatic ? 'none' : '');
-    document.getElementById('quick-area').style.display  = isStatic ? 'none' : '';
+    const hideChat  = mode === 'cheatsheet' || mode === 'mcquiz';        // полностью прячут чат
+    const hideInput = hideChat || mode === 'lecture';                     // лекция показывает чат, но без ввода
+    document.getElementById("messages").style.display    = hideChat ? "none" : "";
+    document.getElementById('input-row')?.style && (document.getElementById('input-row').style.display = hideInput ? 'none' : '');
+    document.getElementById('quick-area').style.display  = hideInput ? 'none' : '';
     document.getElementById('cheatsheet-view').style.display = mode === 'cheatsheet' ? 'flex' : 'none';
     document.getElementById('mcquiz-view').style.display     = mode === 'mcquiz'     ? 'flex' : 'none';
     renderQuickActions();
@@ -131,6 +132,7 @@ const MODES = {
   mock:       { label: 'Mock Interview', badge: 'badge-mock' },
   cheatsheet: { label: 'Чит-шит',       badge: 'badge-cheatsheet' },
   mcquiz:     { label: 'Тест',          badge: 'badge-mcquiz' },
+  lecture:    { label: 'Лекция',        badge: 'badge-lecture' },
 };
 const QUICK = {
   learn: [
@@ -251,6 +253,9 @@ function renderSidebar() {
 
 // ── Select topic ──
 function selectTopic(tid) {
+  // Останавливаем текущее TTS-проигрывание и инвалидируем in-flight лекцию.
+  ttsReset();
+  lectureRunId++;
   topic    = tid;
   messages = [];
   clearMessages();
@@ -263,6 +268,7 @@ function selectTopic(tid) {
 
   if (mode === 'cheatsheet') { renderCheatsheet(tid); return; }
   if (mode === 'mcquiz')     { renderMCQuiz(tid);     return; }
+  if (mode === 'lecture')    { startLecture(tid);     return; }
 
   const saved = loadHistory(tid, mode);
   if (saved && saved.length >= 2) {
@@ -322,16 +328,20 @@ async function autoStart(triggerMsg) {
 
 // ── Mode switch ──
 function setMode(m) {
+  // Сменили режим — гасим текущее TTS и инвалидируем in-flight лекцию.
+  ttsReset();
+  lectureRunId++;
   mode = m;
-  const isStatic = m === 'cheatsheet' || m === 'mcquiz';
+  const hideChat  = m === 'cheatsheet' || m === 'mcquiz';
+  const hideInput = hideChat || m === 'lecture';
   const chatMessages   = document.getElementById('messages');
   const inputRow       = document.getElementById('input-row');
   const quickArea      = document.getElementById('quick-area');
   const cheatsheetView = document.getElementById('cheatsheet-view');
   const mcquizView     = document.getElementById('mcquiz-view');
-  if (chatMessages)   chatMessages.style.display   = isStatic ? 'none' : '';
-  if (inputRow)       inputRow.style.display       = isStatic ? 'none' : '';
-  if (quickArea)      quickArea.style.display      = isStatic ? 'none' : '';
+  if (chatMessages)   chatMessages.style.display   = hideChat ? 'none' : '';
+  if (inputRow)       inputRow.style.display       = hideInput ? 'none' : '';
+  if (quickArea)      quickArea.style.display      = hideInput ? 'none' : '';
   if (cheatsheetView) cheatsheetView.style.display = m === 'cheatsheet' ? 'flex' : 'none';
   if (mcquizView)     mcquizView.style.display     = m === 'mcquiz'     ? 'flex' : 'none';
   if (cheatsheetView) cheatsheetView.style.flexDirection = 'column';
@@ -349,7 +359,8 @@ function setMode(m) {
   saveSession();
   if (m === 'cheatsheet' && topic) { renderCheatsheet(topic); return; }
   if (m === 'mcquiz'     && topic) { renderMCQuiz(topic);     return; }
-  if (!isStatic && topic) {
+  if (m === 'lecture'    && topic) { startLecture(topic);     return; }
+  if (!hideChat && topic) {
     messages = [];
     clearMessages();
     const saved = loadHistory(topic, m);
@@ -603,7 +614,7 @@ function renderQuickActions() {
     btn.onclick     = () => { if (a.action) a.action(); else send(a.msg); };
     el.appendChild(btn);
   }
-  const isStatic = mode === 'cheatsheet' || mode === 'mcquiz';
+  const isStatic = mode === 'cheatsheet' || mode === 'mcquiz' || mode === 'lecture';
   if (!isStatic && messages.length > 0) {
     const share = document.createElement('button');
     share.className = 'qbtn';
@@ -970,6 +981,10 @@ let ttsAudio = null;
 let ttsBtn   = null;
 let ttsUrl   = null;
 let ttsAbort = null;  // отмена in-flight fetch к /api/tts
+// Все когда-либо созданные нами <audio> — на случай если какое-то аудио
+// потерялось из глобального ttsAudio (race в старых версиях). При ttsReset
+// гасим всё подряд по этому списку.
+const ttsAllAudios = new Set();
 
 function addTtsButton(bubble, rawText) {
   const btn = document.createElement('button');
@@ -994,22 +1009,31 @@ function addNextButton(bubble) {
 function ttsSetState(btn, state) {
   if (!btn) return;
   btn.classList.remove('tts-loading', 'tts-playing', 'tts-paused');
+  btn.title = '';
   if (state === 'idle')    btn.innerHTML = '🔊 <span>Слушать</span>';
-  if (state === 'loading') { btn.innerHTML = '⏳ <span>Загрузка…</span>';   btn.classList.add('tts-loading'); }
+  if (state === 'loading') {
+    btn.innerHTML = '✕ <span>Отменить</span>';
+    btn.classList.add('tts-loading');
+    btn.title = 'Идёт генерация — нажми чтобы отменить';
+  }
   if (state === 'playing') { btn.innerHTML = '⏸ <span>Пауза</span>';        btn.classList.add('tts-playing'); }
   if (state === 'paused')  { btn.innerHTML = '▶ <span>Продолжить</span>';   btn.classList.add('tts-paused');  }
 }
 
 function ttsReset() {
   if (ttsAbort) { try { ttsAbort.abort(); } catch {} ttsAbort = null; }
-  const a = ttsAudio;
   ttsAudio = null;  // обнуляем ДО pause(), чтобы on-pause-handler ушёл по guard'у
-  if (a) { try { a.pause(); } catch {} }
+  // Гасим ВСЕ известные нам Audio, не только текущий ttsAudio — это страхует от
+  // ситуации, когда из-за прошлых race'ов какой-то <audio> остался без ссылки.
+  for (const x of ttsAllAudios) {
+    try { x.pause(); x.src = ''; x.load && x.load(); } catch {}
+  }
+  ttsAllAudios.clear();
   if (ttsUrl) { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
   if (ttsBtn) { ttsSetState(ttsBtn, 'idle'); ttsBtn = null; }
 }
 
-async function speak(rawText, btn) {
+async function speak(rawText, btn, opts) {
   // Случай 1: аудио уже загружено для этой же кнопки → тоггл play/pause.
   // Состояние кнопки переключается через события audio (onplay/onpause), а не
   // вручную — иначе await play() мог бы перезаписать только что выставленный 'paused'.
@@ -1062,12 +1086,23 @@ async function speak(rawText, btn) {
     ttsUrl   = url;
     const audio = new Audio(url);
     ttsAudio = audio;
+    ttsAllAudios.add(audio);
     // Все события сверяются с текущим ttsAudio — если нас успели сбросить,
     // обработчики просто молча выходят.
     audio.onplay  = () => { if (ttsAudio === audio) ttsSetState(btn, 'playing'); };
     audio.onpause = () => { if (ttsAudio === audio && !audio.ended) ttsSetState(btn, 'paused'); };
-    audio.onended = () => { if (ttsAudio === audio) ttsReset(); };
-    audio.onerror = () => { if (ttsAudio === audio) ttsReset(); };
+    audio.onended = () => {
+      ttsAllAudios.delete(audio);
+      if (ttsAudio === audio) {
+        ttsReset();
+        // Опциональный хук для авто-перехода между секциями лекции.
+        if (opts && typeof opts.onComplete === 'function') opts.onComplete();
+      }
+    };
+    audio.onerror = () => {
+      ttsAllAudios.delete(audio);
+      if (ttsAudio === audio) ttsReset();
+    };
     audio.play().catch(err => {
       if (err && err.name === 'AbortError') return;
       if (ttsAudio === audio) ttsReset();
@@ -1075,6 +1110,88 @@ async function speak(rawText, btn) {
   } catch (e) {
     if (e && e.name === 'AbortError') return;
     if (ttsBtn === btn) ttsReset();
+  }
+}
+
+// ── Lecture mode ──
+// Состояние текущей лекции. lectureRunId растёт при каждом startLecture —
+// asynchronous-задачи (fetch секций, прелоад TTS, авто-переход) сверяются с ним,
+// чтобы при смене темы или режима не «доиграть» предыдущую лекцию.
+let lectureSections = null;
+let lectureRunId    = 0;
+
+async function startLecture(tid) {
+  ttsReset();                       // на всякий случай гасим текущее аудио
+  const runId = ++lectureRunId;
+  lectureSections = null;
+  clearMessages();
+  const t = topics[tid];
+  const intro = appendBubble('ai', null);
+  intro.innerHTML = `<em>🎧 Готовлю аудио-лекцию: «${t.title}»…</em>`;
+
+  let sections;
+  try {
+    const res = await fetch('/api/lecture', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({topic_id: tid}),
+    });
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data.sections) || !data.sections.length) {
+      throw new Error(data.error || 'Пустой ответ');
+    }
+    sections = data.sections;
+  } catch (e) {
+    if (runId !== lectureRunId) return;  // нас уже отменили (сменили тему/режим)
+    intro.innerHTML = `<em style="color:#ef4444">Не удалось сгенерировать лекцию: ${e.message}</em>`;
+    return;
+  }
+  if (runId !== lectureRunId) return;
+
+  lectureSections = sections;
+  clearMessages();
+
+  // Рендерим все секции как обычные ai-бабблы. Каждая получает свою TTS-кнопку
+  // через appendBubble — клик по ней просто проиграет конкретную секцию,
+  // а авто-цепочка повесится отдельно при старте.
+  sections.forEach((s, i) => {
+    const md = `### ${i + 1}. ${s.title}\n\n${s.body}`;
+    const bub = appendBubble('ai', md);
+    bub.dataset.lectureIdx = String(i);
+  });
+
+  lecturePlay(0, runId);
+}
+
+function lecturePlay(idx, runId) {
+  if (runId !== lectureRunId) return;
+  if (!lectureSections || idx >= lectureSections.length) return;
+
+  const bubble = document.querySelector(`[data-lecture-idx="${idx}"]`);
+  if (!bubble) return;
+  const btn = bubble.querySelector('.tts-btn');
+  if (!btn) return;
+
+  const s  = lectureSections[idx];
+  const md = `### ${idx + 1}. ${s.title}\n\n${s.body}`;
+
+  // Прокрутить к текущей секции, чтобы она была в зоне видимости.
+  bubble.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+  speak(md, btn, {
+    onComplete: () => lecturePlay(idx + 1, runId),
+  });
+
+  // Прелоад следующей секции — сервер кэширует mp3 по sha1(текст), так что
+  // когда дойдём до неё через speak(), отдадим из кэша мгновенно.
+  const next = lectureSections[idx + 1];
+  if (next) {
+    const nextMd = `### ${idx + 2}. ${next.title}\n\n${next.body}`;
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: nextMd.slice(0, 4000)}),
+    }).catch(() => {});
   }
 }
 

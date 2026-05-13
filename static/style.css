@@ -143,7 +143,12 @@ body {
 }
 .next-q-btn { margin-left: 8px; }
 .tts-btn:hover { color: var(--text); }
-.tts-btn.tts-loading { opacity: 0.6; cursor: wait; }
+.tts-btn.tts-loading {
+  background: #64748b20; color: #94a3b8; border-color: #64748b40;
+  cursor: pointer; animation: tts-loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes tts-loading-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+.tts-btn.tts-loading:hover { color: #cbd5e1; }
 .tts-btn.tts-playing { background: #a78bfa20; color: #a78bfa; border-color: #a78bfa40; }
 .tts-btn.tts-paused  { background: #f59e0b20; color: #f59e0b; border-color: #f59e0b40; }
 .cs-q-row { display: flex; align-items: flex-start; gap: 4px; }
@@ -324,6 +329,7 @@ body {
 .badge-mock       { background: #f59e0b20; color: #f59e0b; }
 .badge-cheatsheet { background: #34d39920; color: #34d399; }
 .badge-mcquiz     { background: #f472b620; color: #f472b6; }
+.badge-lecture    { background: #06b6d420; color: #06b6d4; }
 
 /* ── MC Quiz ── */
 .mc-wrap {
