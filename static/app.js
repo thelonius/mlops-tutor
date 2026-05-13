@@ -1020,18 +1020,19 @@ async function speak(rawText, btn) {
   // Другая кнопка или ничего не играет — сбрасываем старое и грузим новое.
   ttsReset();
 
-  const plain = rawText
+  // Сервер сам чистит markdown и переписывает текст для аудио.
+  // На клиенте режем только явный шум: think-блоки и сноску о резервной модели.
+  const cleaned = rawText
     .replace(/_\(резервная модель:[^)]+\)_/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
-    .replace(/[#*`_~\[\]]/g, '')
-    .replace(/\n+/g, ' ').trim();
+    .trim();
   ttsBtn = btn;
   ttsSetState(btn, 'loading');
   try {
     const res  = await fetch('/api/tts', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: plain.slice(0, 3000)}),
+      body: JSON.stringify({text: cleaned.slice(0, 4000)}),
     });
     if (!res.ok) throw new Error(res.status);
     const blob = await res.blob();
