@@ -969,6 +969,7 @@ function resize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.sc
 let ttsAudio = null;
 let ttsBtn   = null;
 let ttsUrl   = null;
+let ttsAbort = null;  // отмена in-flight fetch к /api/tts
 
 function addTtsButton(bubble, rawText) {
   const btn = document.createElement('button');
@@ -1000,58 +1001,80 @@ function ttsSetState(btn, state) {
 }
 
 function ttsReset() {
-  if (ttsAudio) { try { ttsAudio.pause(); } catch {} }
-  if (ttsUrl)   { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
-  ttsAudio = null;
-  if (ttsBtn)   { ttsSetState(ttsBtn, 'idle'); ttsBtn = null; }
+  if (ttsAbort) { try { ttsAbort.abort(); } catch {} ttsAbort = null; }
+  const a = ttsAudio;
+  ttsAudio = null;  // обнуляем ДО pause(), чтобы on-pause-handler ушёл по guard'у
+  if (a) { try { a.pause(); } catch {} }
+  if (ttsUrl) { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
+  if (ttsBtn) { ttsSetState(ttsBtn, 'idle'); ttsBtn = null; }
 }
 
 async function speak(rawText, btn) {
-  // Тоггл паузы/возобновления для той же кнопки — без нового запроса.
+  // Случай 1: аудио уже загружено для этой же кнопки → тоггл play/pause.
+  // Состояние кнопки переключается через события audio (onplay/onpause), а не
+  // вручную — иначе await play() мог бы перезаписать только что выставленный 'paused'.
   if (ttsAudio && ttsBtn === btn) {
     if (ttsAudio.paused) {
-      try { await ttsAudio.play(); ttsSetState(btn, 'playing'); } catch { ttsReset(); }
+      ttsAudio.play().catch(err => {
+        // AbortError = пользователь успел снова поставить на паузу до старта.
+        // Это не ошибка, просто отыграется при следующем resume.
+        if (err && err.name === 'AbortError') return;
+        ttsReset();
+      });
     } else {
       ttsAudio.pause();
-      ttsSetState(btn, 'paused');
     }
     return;
   }
-  // Другая кнопка или ничего не играет — сбрасываем старое и грузим новое.
+  // Случай 2: для этой же кнопки уже идёт загрузка (ttsAudio ещё null).
+  // Второй клик трактуем как «отмена» — иначе два параллельных fetch создадут
+  // два Audio, и пауза снимет только одно из них.
+  if (ttsBtn === btn) {
+    ttsReset();
+    return;
+  }
+  // Случай 3: другая кнопка или ничего активного — сбрасываем старое, грузим новое.
   ttsReset();
 
-  const plain = rawText
+  // Сервер сам чистит markdown и переписывает текст для аудио.
+  // На клиенте режем только явный шум: think-блоки и сноску о резервной модели.
+  const cleaned = rawText
     .replace(/_\(резервная модель:[^)]+\)_/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
-    .replace(/[#*`_~\[\]]/g, '')
-    .replace(/\n+/g, ' ').trim();
+    .trim();
   ttsBtn = btn;
+  ttsAbort = new AbortController();
   ttsSetState(btn, 'loading');
   try {
-    const res  = await fetch('/api/tts', {
+    const res = await fetch('/api/tts', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: plain.slice(0, 3000)}),
+      body: JSON.stringify({text: cleaned.slice(0, 4000)}),
+      signal: ttsAbort.signal,
     });
+    if (ttsBtn !== btn) return;          // нас отменили во время fetch
     if (!res.ok) throw new Error(res.status);
     const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    ttsUrl     = url;
-    ttsAudio   = new Audio(url);
-    const cleanup = () => {
-      if (ttsBtn === btn) {
-        if (ttsUrl) { URL.revokeObjectURL(ttsUrl); ttsUrl = null; }
-        ttsAudio = null;
-        ttsSetState(btn, 'idle');
-        ttsBtn = null;
-      }
-    };
-    ttsAudio.onended = cleanup;
-    ttsAudio.onerror = cleanup;
-    await ttsAudio.play();
-    ttsSetState(btn, 'playing');
+    if (ttsBtn !== btn) return;
+    const url = URL.createObjectURL(blob);
+    if (ttsBtn !== btn) { URL.revokeObjectURL(url); return; }
+
+    ttsUrl   = url;
+    const audio = new Audio(url);
+    ttsAudio = audio;
+    // Все события сверяются с текущим ttsAudio — если нас успели сбросить,
+    // обработчики просто молча выходят.
+    audio.onplay  = () => { if (ttsAudio === audio) ttsSetState(btn, 'playing'); };
+    audio.onpause = () => { if (ttsAudio === audio && !audio.ended) ttsSetState(btn, 'paused'); };
+    audio.onended = () => { if (ttsAudio === audio) ttsReset(); };
+    audio.onerror = () => { if (ttsAudio === audio) ttsReset(); };
+    audio.play().catch(err => {
+      if (err && err.name === 'AbortError') return;
+      if (ttsAudio === audio) ttsReset();
+    });
   } catch (e) {
-    ttsReset();
+    if (e && e.name === 'AbortError') return;
+    if (ttsBtn === btn) ttsReset();
   }
 }
 

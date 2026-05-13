@@ -1,6 +1,9 @@
 import base64
+import hashlib
 import json
 import os
+import re
+from collections import OrderedDict
 
 from curriculum import CURRICULUM, TOPICS, build_system_prompt
 from dotenv import load_dotenv
@@ -222,21 +225,85 @@ def chat():
 
 TTS_VOICE = "ru-RU-SvetlanaNeural"
 
+AUDIO_REWRITE_PROMPT = """Перепиши текст ниже для аудио-озвучки русским женским голосом. Правила:
+- Код описывай словами: «функция X принимает Y и возвращает Z», без скобок и операторов вслух.
+- Формулы зачитывай словами: «сумма i от одного до n иксов в квадрате», а не «backslash sum».
+- Убери markdown-разметку (звёздочки, решётки, обратные апострофы, скобки `[...](...)`).
+- Списки превращай в связную речь: «во-первых», «также», «и наконец».
+- Сноски вида «резервная модель: ...» удаляй.
+- Сохрани смысл и порядок мыслей, текст должен звучать естественно при чтении вслух.
+- Не добавляй преамбулы и комментариев. Верни только переписанный текст."""
+
+# Кэш готовых mp3: ключ = sha1(voice|text). FIFO, ограничен по размеру.
+TTS_CACHE_MAX = 64
+_tts_cache: "OrderedDict[str, bytes]" = OrderedDict()
+
+
+def _audio_rewrite_fallback(text: str) -> str:
+    """Грубая чистка markdown, если LLM-перезапись не удалась."""
+    text = re.sub(r"```[\s\S]*?```", " (далее блок кода) ", text)
+    text = re.sub(r"`[^`]+`", " ", text)
+    text = re.sub(r"_\(резервная модель:[^)]+\)_", "", text)
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text)
+    text = re.sub(r"[#*`_~\[\]]", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _audio_rewrite(text: str) -> str:
+    """LLM-перезапись текста для аудио. При полном фейле — markdown-чистка регулярками."""
+    text = text[:4000]
+    # Берём только быстрые/основные модели — рерайт короткий, fallback-цепочка не нужна.
+    for model in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b"):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": AUDIO_REWRITE_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.3,
+                max_tokens=1500,
+            )
+            out = (resp.choices[0].message.content or "").strip()
+            if out:
+                return out
+        except Exception as e:
+            msg = str(e).lower()
+            if "rate_limit" in msg or "429" in msg:
+                continue
+            break
+    return _audio_rewrite_fallback(text)
+
+
 @app.route("/api/tts", methods=["POST"])
 def tts():
     text = (request.json or {}).get("text", "").strip()
     if not text:
         return jsonify({"error": "No text"}), 400
 
+    cache_key = hashlib.sha1(f"{TTS_VOICE}|{text}".encode("utf-8")).hexdigest()
+    cached = _tts_cache.get(cache_key)
+    if cached is not None:
+        _tts_cache.move_to_end(cache_key)
+        return Response(cached, mimetype="audio/mpeg",
+                        headers={"Cache-Control": "no-cache"})
+
+    spoken = _audio_rewrite(text)
+    if not spoken:
+        return jsonify({"error": "Empty rewrite"}), 502
+
     async def _collect():
         buf = bytearray()
-        communicate = edge_tts.Communicate(text, TTS_VOICE)
+        communicate = edge_tts.Communicate(spoken, TTS_VOICE)
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 buf.extend(chunk["data"])
         return bytes(buf)
 
     audio_bytes = asyncio.run(_collect())
+    _tts_cache[cache_key] = audio_bytes
+    if len(_tts_cache) > TTS_CACHE_MAX:
+        _tts_cache.popitem(last=False)
     return Response(audio_bytes, mimetype="audio/mpeg",
                     headers={"Cache-Control": "no-cache"})
 
