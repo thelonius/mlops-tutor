@@ -72,12 +72,14 @@ def get_curriculum():
 def chat():
     data = request.json
     messages = data.get("messages", [])
-    topic_id = data.get("topic_id", "")
+    topic_id = data.get("topic_id") or ""
     mode = data.get("mode", "learn")
     preferred = data.get("model", MODELS[0])
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
+    if not topic_id or topic_id not in TOPICS:
+        return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
 
     system_prompt = build_system_prompt(topic_id, mode)
 
