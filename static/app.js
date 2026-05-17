@@ -693,6 +693,14 @@ async function send(text) {
 
 // ── Stream ──
 async function streamInto(response, bubble) {
+  if (!response.ok) {
+    let msg = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body && body.error) msg = body.error;
+    } catch (_) { /* not JSON, keep status */ }
+    throw new Error(msg);
+  }
   const reader  = response.body.getReader();
   const decoder = new TextDecoder();
   let full = '', buffer = '';
