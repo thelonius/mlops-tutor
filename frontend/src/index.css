@@ -504,26 +504,6 @@ body {
   color: var(--color-accent);
 }
 
-#tooltip {
-  position: fixed;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  width: max-content;
-  max-width: 320px;
-  line-height: 1.5;
-  color: var(--text);
-  z-index: 9999;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-  display: none;
-}
-#tooltip.show { display: block; opacity: 1; }
-
 /* Code block wrapper — для кнопки "разобрать" */
 .code-wrap { position: relative; margin: 8px 0; }
 
