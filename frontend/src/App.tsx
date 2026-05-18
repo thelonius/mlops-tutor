@@ -4,7 +4,10 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { MessageList } from './components/Chat/MessageList';
 import { Composer } from './components/Chat/Composer';
 import { QuickActions } from './components/Chat/QuickActions';
+import { ModelSelect } from './components/Chat/ModelSelect';
+import { TooltipController } from './components/Glossary/Tooltip';
 import { useAutoStart } from './hooks/useAutoStart';
+import { useShareLoader } from './hooks/useShareLoader';
 import type { Mode } from './types';
 
 // Спец-режимы тянут hljs/lib/common (~95KB) и marked (~50KB) — грузим
@@ -39,18 +42,21 @@ const MODE_LABELS: Record<Mode, { label: string; badge: string }> = {
 
 export default function App() {
   useAutoStart();
+  useShareLoader();
   const { state } = useStore();
   const { topic, mode, topics } = state;
   const cfg = MODE_LABELS[mode];
 
   return (
     <>
+      <TooltipController />
       <Sidebar />
       <div className="main">
         <div className="chat-header">
           <span className="header-topic">
             {topic && topics[topic] ? topics[topic].title : 'Выбери тему →'}
           </span>
+          <ModelSelect />
           <span className={`mode-badge ${cfg.badge}`}>{cfg.label}</span>
         </div>
 

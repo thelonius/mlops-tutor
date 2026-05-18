@@ -1,6 +1,8 @@
 import { useStore } from '../../state/store';
 import { useChatStream } from '../../hooks/useChatStream';
 import { clearHistory, loadHistory } from '../../state/persistence';
+import { createShare } from '../../lib/share';
+import { useToast } from '../Toast';
 import type { Mode } from '../../types';
 
 type Action =
@@ -34,9 +36,22 @@ export function QuickActions() {
   const { state, dispatch } = useStore();
   const { mode, topic, messages, streaming, preferredModel, topics } = state;
   const { send } = useChatStream();
+  const toast = useToast();
 
   const actions = topic ? QUICK[mode] : undefined;
   if (!topic || !actions) return null;
+
+  const canShare = messages.length > 0;
+  const onShare = async () => {
+    if (!topic || !canShare) return;
+    try {
+      const url = await createShare({ v: 1, topic_id: topic, mode, messages });
+      await navigator.clipboard.writeText(url);
+      toast.show('Ссылка скопирована');
+    } catch (e) {
+      toast.show('Не получилось: ' + (e instanceof Error ? e.message : 'ошибка'));
+    }
+  };
 
   const onClick = (a: Action) => {
     if ('msg' in a) {
@@ -85,6 +100,17 @@ export function QuickActions() {
           {a.label}
         </button>
       ))}
+      {canShare && (
+        <button
+          type="button"
+          className="qbtn"
+          style={{ marginLeft: 'auto' }}
+          disabled={streaming}
+          onClick={onShare}
+        >
+          🔗 Поделиться
+        </button>
+      )}
     </div>
   );
 }
