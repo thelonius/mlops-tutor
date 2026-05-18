@@ -1,6 +1,7 @@
-import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useCallback, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useStore } from '../../state/store';
 import { useChatStream } from '../../hooks/useChatStream';
+import { useMic } from '../../hooks/useMic';
 
 export function Composer() {
   const { state } = useStore();
@@ -8,6 +9,17 @@ export function Composer() {
   const { send } = useChatStream();
   const [value, setValue] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
+
+  const onTranscript = useCallback((text: string) => {
+    setValue(text);
+    const el = taRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+      el.focus();
+    }
+  }, []);
+  const mic = useMic({ onTranscript });
 
   const submit = (text?: string) => {
     const msg = (text ?? value).trim();
@@ -66,6 +78,30 @@ export function Composer() {
         title="Отправить"
       >
         ↑
+      </button>
+      <button
+        type="button"
+        className={`mic-btn${mic.state === 'recording' ? ' recording' : ''}`}
+        title={
+          mic.state === 'recording'
+            ? 'Идёт запись — нажми чтобы остановить'
+            : mic.state === 'transcribing'
+              ? 'Распознаю…'
+              : 'Голосовой ввод'
+        }
+        disabled={!topic || mic.state === 'transcribing'}
+        onClick={() => {
+          if (mic.state === 'recording') void mic.stop();
+          else if (mic.state === 'idle') void mic.start();
+        }}
+      >
+        {mic.state === 'recording'
+          ? '⏹'
+          : mic.state === 'transcribing'
+            ? '⏳'
+            : mic.state === 'denied'
+              ? '🚫'
+              : '🎙'}
       </button>
     </div>
   );
