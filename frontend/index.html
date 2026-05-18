@@ -4,19 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>MLOps Tutor</title>
-    <!-- Inline-скрипт ставит data-theme ДО парсинга CSS — иначе FOUC
-         (вспышка тёмного перед светлым на light-mode OS). -->
-    <script>
-      (function () {
-        try {
-          var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-        } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-      })();
-    </script>
-    <!-- href подменяет useSystemTheme в зависимости от data-theme. -->
+    <!-- Astro-палитра. Vite-плагин astroBootInline() заменяет этот
+         комментарий на сжатый IIFE из src/bootTheme.ts. Скрипт ставит
+         data-theme + OKLCH-переменные на :root до первого пэйнта. -->
+    <!-- BOOT_THEME -->
+    <!-- href подменяет useAstroTheme в зависимости от data-theme. -->
     <link id="hljs-css" rel="stylesheet" href="" />
   </head>
   <body>

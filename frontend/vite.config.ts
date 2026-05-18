@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { astroBootInline } from './vite-plugin-astro-boot';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), astroBootInline()],
   base: '/static/dist/',
   build: {
     outDir: path.resolve(__dirname, '../static/dist'),
