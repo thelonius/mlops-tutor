@@ -84,6 +84,15 @@ interface OrbitalElements {
 
 type PlanetWithOrbit = 'Mercury' | 'Venus' | 'Mars' | 'Jupiter' | 'Saturn';
 
+/** Семисоси орбит планет (AU). J2000 mean values, JPL. */
+const SEMI_AXIS: Record<PlanetWithOrbit, number> = {
+  Mercury: 0.38710,
+  Venus:   0.72333,
+  Mars:    1.52371,
+  Jupiter: 5.20289,
+  Saturn:  9.53668,
+};
+
 const PLANET_ELEMENTS: Record<PlanetWithOrbit, OrbitalElements> = {
   Mercury: { L0: 252.25032350, dL: 149472.67411175, e: 0.20563593, varpi: 77.45779628 },
   Venus:   { L0: 181.97909950, dL: 58517.81538729,  e: 0.00677672, varpi: 131.60246718 },
@@ -92,28 +101,70 @@ const PLANET_ELEMENTS: Record<PlanetWithOrbit, OrbitalElements> = {
   Saturn:  { L0: 49.95424423,  dL: 1222.49362201,   e: 0.05386179, varpi: 92.59887831 },
 };
 
+interface HelioState {
+  trueLongDeg: number; // истинная гелиоцентрическая долгота, 0..360°
+  trueAnomaly: number; // ν в радианах — нужна для r через r = a(1-e²)/(1+e cosν)
+  e: number;
+  a: number;
+}
+
 /**
- * Планета: гелиоцентрическая истинная долгота через L_mean + equation of center
- * (до 2-го порядка по e). Точность для Mercury (e≈0.21) ~0.5°, для остальных
- * лучше — все в порядке для hue.
+ * Гелиоцентрический «момент» планеты на jd: истинная долгота + истинная
+ * аномалия + параметры эллипса. Из этого получается helio (x, y) на
+ * эклиптике для geo-перевода.
  */
-function planetHelioLongitude(name: PlanetWithOrbit, jd: number): number {
+function planetHelioState(name: PlanetWithOrbit, jd: number): HelioState {
   const el = PLANET_ELEMENTS[name];
   const T = (jd - J2000) / 36525;
   const L = el.L0 + el.dL * T;
   const M = rad(L - el.varpi);
   const e = el.e;
-  // C в радианах → переводим в градусы.
+  // Equation of center до 2-го порядка по e.
   const Crad =
     (2 * e - (e * e * e) / 4) * Math.sin(M) +
     (5 / 4) * e * e * Math.sin(2 * M);
-  const Cdeg = (Crad * 180) / Math.PI;
-  return norm360(L + Cdeg);
+  const trueLongDeg = norm360(L + (Crad * 180) / Math.PI);
+  const trueAnomaly = M + Crad;
+  return { trueLongDeg, trueAnomaly, e, a: SEMI_AXIS[name] };
+}
+
+/** helio (x, y) на эклиптике в AU. */
+function helioXY(state: HelioState): { x: number; y: number } {
+  const r = (state.a * (1 - state.e * state.e)) / (1 + state.e * Math.cos(state.trueAnomaly));
+  const L = rad(state.trueLongDeg);
+  return { x: r * Math.cos(L), y: r * Math.sin(L) };
 }
 
 /**
- * Универсальная точка входа: эклиптическая долгота для любого из 7 управителей.
- * Возвращает 0..360°. Используется как HUE в OKLCH.
+ * Геоцентрическая видимая эклиптическая долгота планеты.
+ *
+ * Сокращение: гелио (x, y) планеты минус гелио (x, y) Земли. Земля
+ * берётся через Sun geocentric long + 180°, эксцентриситет (0.0167)
+ * игнорируется — для меток зодиака погрешность <0.1°.
+ *
+ * Эта формула корректно показывает ретроградность: когда планета и
+ * Земля близки (Mercury, Venus около inferior conjunction, или Mars
+ * около opposition), относительное движение становится обратным —
+ * planet appears to move backwards.
+ */
+function planetGeoLongitude(name: PlanetWithOrbit, jd: number): number {
+  const planet = helioXY(planetHelioState(name, jd));
+  // Земля гелиоцентрически на L_sun + 180°, радиус ≈ 1 AU.
+  const L_e = rad(norm360(sunLongitude(jd) + 180));
+  const earth = { x: Math.cos(L_e), y: Math.sin(L_e) };
+  const dx = planet.x - earth.x;
+  const dy = planet.y - earth.y;
+  return norm360((Math.atan2(dy, dx) * 180) / Math.PI);
+}
+
+/**
+ * Универсальная точка входа: ГЕОЦЕНТРИЧЕСКАЯ эклиптическая долгота для
+ * любого из 7 управителей. Возвращает 0..360°. Используется как HUE
+ * в OKLCH и для зодиак-метки в индикаторе.
+ *
+ * Все тела геоцентрические — единый frame, метки зодиака корректны.
+ * Раньше планеты считались гелиоцентрически, что иногда давало неверный
+ * знак (например, Venus сегодня helio 135° → «Лев», geo 88° → Близнецы).
  */
 export function planetEclipticLongitude(name: PlanetName, jd: number): number {
   switch (name) {
@@ -126,7 +177,7 @@ export function planetEclipticLongitude(name: PlanetName, jd: number): number {
     case 'Mars':
     case 'Jupiter':
     case 'Saturn':
-      return planetHelioLongitude(name, jd);
+      return planetGeoLongitude(name, jd);
   }
 }
 

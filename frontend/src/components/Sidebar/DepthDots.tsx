@@ -9,9 +9,12 @@ const DEPTH_MODES: { mode: Mode; label: string }[] = [
 
 function depthColor(count: number): string {
   if (count === 0) return 'var(--text-dimmer)';
+  // Жёлтый/оранжевый/зелёный — семантический «прогресс»: начал → в процессе →
+  // проработал. Зелёный финал берём из --color-success (фикс. hue 145°,
+  // L/C адаптируется к mode + aspect-модуляции).
   if (count < 4) return '#f59e0b';
   if (count < 10) return '#f97316';
-  return '#22c55e';
+  return 'var(--color-success)';
 }
 
 function Dot({ tid, mode, label }: { tid: string; mode: Mode; label: string }) {
