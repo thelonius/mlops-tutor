@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PLANET_GLYPHS, PLANET_NAMES_RU } from '../lib/astroColors';
+import { zodiacSign } from '../lib/ephemerides';
 import type { AstroThemeState } from '../lib/themeEngine';
 
 // Мелкий индикатор «☽ Луна · ☿ Меркурий» в шапке. День + текущий
@@ -38,8 +39,11 @@ export function PlanetaryIndicator() {
     new Date(hour.phaseStartTs).setHours(0, 0, 0, 0) + hour.solar.sunsetMin * 60000,
   ).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
+  const daySign = zodiacSign(state.dayHue);
+  const hourSign = zodiacSign(state.hourHue);
   const title =
-    `День ${PLANET_NAMES_RU[hour.dayRuler]} · Час ${PLANET_NAMES_RU[hour.ruler]}\n` +
+    `День ${PLANET_NAMES_RU[hour.dayRuler]} в ${daySign} (${state.dayHue.toFixed(1)}°)\n` +
+    `Час ${PLANET_NAMES_RU[hour.ruler]} в ${hourSign} (${state.hourHue.toFixed(1)}°)\n` +
     `Восход ${sunrise} · Закат ${sunset}\n` +
     `Следующая смена часа: ${hourEnd}`;
 
