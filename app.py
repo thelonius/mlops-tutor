@@ -63,6 +63,20 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/v2")
+def index_v2():
+    # React-шелл, собранный через Vite в static/dist/. Параллельный роут на
+    # период миграции фронта; когда v2 догонит по фичам, заменим /.
+    dist_path = os.path.join(app.static_folder, "dist", "index.html")
+    if not os.path.exists(dist_path):
+        return (
+            "v2 bundle not built. Run `npm run build` in frontend/.",
+            503,
+        )
+    with open(dist_path, encoding="utf-8") as f:
+        return f.read()
+
+
 @app.route("/api/curriculum")
 def get_curriculum():
     return jsonify({"curriculum": CURRICULUM, "topics": TOPICS})
