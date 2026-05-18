@@ -151,7 +151,10 @@ body {
 .cs-a { color: var(--text); line-height: 1.6; }
 .cs-header { font-size: 14px; font-weight: 700; color: var(--heading);
              padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
-.badge-cheatsheet { background: color-mix(in oklch, var(--color-success) 12%, transparent); color: var(--color-success); }
+/* Все mode-badge'и используют accent — за раз виден только один,
+ * различать их цветом избыточно. Зелёный в чит-шит-бейдже был
+ * декоративным наследием легаси. */
+.badge-cheatsheet { background: color-mix(in oklch, var(--color-accent) 12%, transparent); color: var(--color-accent); }
 .tts-btn, .next-q-btn {
   display: inline-flex; align-items: center; gap: 5px;
   background: var(--hover-bg); border: 1px solid var(--border); border-radius: 6px;

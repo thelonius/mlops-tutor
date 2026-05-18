@@ -56,13 +56,10 @@ export function MCQuizView() {
     );
   }
 
-  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
-
   return (
     <Quiz
       key={`${topic}|${nonce}`}
       pairs={t.cheatsheet}
-      color={color}
       onRestart={restart}
       onSwitchToCheatsheet={() => switchMode('cheatsheet')}
     />
@@ -71,12 +68,17 @@ export function MCQuizView() {
 
 interface QuizProps {
   pairs: CheatsheetItem[];
-  color: string;
   onRestart: () => void;
   onSwitchToCheatsheet: () => void;
 }
 
-function Quiz({ pairs, color, onRestart, onSwitchToCheatsheet }: QuizProps) {
+// Декоративные цвета (вопрос, score, кнопка, прогресс-бар) — все
+// привязаны к --color-accent, который ротейтится planetary-часом.
+// Зелёный/красный остаются только за реальной семантикой: правильный/
+// неправильный ответ в .mc-btn — это обрабатывает CSS, не JSX.
+const ACCENT = 'var(--color-accent)';
+
+function Quiz({ pairs, onRestart, onSwitchToCheatsheet }: QuizProps) {
   const session = useMemo(() => shuffled(pairs), [pairs]);
   const [idx, setIdx] = useState(0);
   const [score, setScore] = useState(0);
@@ -101,14 +103,14 @@ function Quiz({ pairs, color, onRestart, onSwitchToCheatsheet }: QuizProps) {
         <div className="mc-wrap">
           <div className="mc-score">
             <div style={{ fontSize: 48 }}>{emoji}</div>
-            <div className="mc-score-num" style={{ color }}>
+            <div className="mc-score-num" style={{ color: ACCENT }}>
               {score}/{session.length}
             </div>
             <div className="mc-score-label">{scoreLabel(score, session.length)}</div>
             <button
               type="button"
               className="mc-restart-btn"
-              style={{ background: color }}
+              style={{ background: ACCENT }}
               onClick={onRestart}
             >
               Пройти заново
@@ -152,15 +154,15 @@ function Quiz({ pairs, color, onRestart, onSwitchToCheatsheet }: QuizProps) {
           <span>
             {idx + 1} / {session.length}
           </span>
-          <span style={{ color }}>{score} правильных</span>
+          <span style={{ color: ACCENT }}>{score} правильных</span>
         </div>
         <div className="mc-progress-bar">
           <div
             className="mc-progress-bar-fill"
-            style={{ width: `${pct}%`, background: color }}
+            style={{ width: `${pct}%`, background: ACCENT }}
           />
         </div>
-        <div className="mc-question" style={{ color }}>
+        <div className="mc-question" style={{ color: ACCENT }}>
           {pair.q}
         </div>
         <div className="mc-options">
@@ -191,7 +193,7 @@ function Quiz({ pairs, color, onRestart, onSwitchToCheatsheet }: QuizProps) {
             <button
               type="button"
               className="mc-next-btn"
-              style={{ display: 'block', background: color }}
+              style={{ display: 'block', background: ACCENT }}
               onClick={next}
             >
               Следующий →

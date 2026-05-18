@@ -23,7 +23,6 @@ export function CheatsheetView() {
   if (!t) return null;
 
   const blocks = (t.cheatsheet_blocks as CheatsheetBlock[] | undefined) || [];
-  const color = t.track === 'ml' ? '#22c55e' : '#a78bfa';
 
   return (
     <div
@@ -38,7 +37,9 @@ export function CheatsheetView() {
         ? blocks.map((b, i) => <CheatsheetBlockView key={i} block={b} />)
         : (t.cheatsheet || []).map((pair, i) => (
             <div key={i} className="cs-card">
-              <div className="cs-q" style={{ color }}>
+              {/* cs-q цвет — accent (ротейтится planetary-часом),
+                  а не зашитый трек-цвет ml/mlops. */}
+              <div className="cs-q" style={{ color: 'var(--color-accent)' }}>
                 {pair.q}
               </div>
               <div className="cs-a">{pair.a}</div>
