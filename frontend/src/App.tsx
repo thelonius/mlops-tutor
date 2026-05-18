@@ -3,6 +3,9 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { MessageList } from './components/Chat/MessageList';
 import { Composer } from './components/Chat/Composer';
 import { QuickActions } from './components/Chat/QuickActions';
+import { CheatsheetView } from './components/Cheatsheet/CheatsheetView';
+import { MCQuizView } from './components/MCQuiz/MCQuizView';
+import { LectureView } from './components/Lecture/LectureView';
 import { useAutoStart } from './hooks/useAutoStart';
 import type { Mode } from './types';
 
@@ -21,10 +24,6 @@ export default function App() {
   const { topic, mode, topics } = state;
   const cfg = MODE_LABELS[mode];
 
-  // Cheatsheet / mcquiz / lecture полностью прячут чат — у них свои view.
-  // На Phase 3 их ещё нет; показываем placeholder.
-  const isSpecialMode = mode === 'cheatsheet' || mode === 'mcquiz' || mode === 'lecture';
-
   return (
     <>
       <Sidebar />
@@ -36,13 +35,12 @@ export default function App() {
           <span className={`mode-badge ${cfg.badge}`}>{cfg.label}</span>
         </div>
 
-        {isSpecialMode ? (
-          <div className="messages" style={{ padding: 24 }}>
-            <div className="welcome">
-              <h2>Режим «{cfg.label}»</h2>
-              <p>Этот режим переезжает на v2 в Phase 4. Пока вернись к Объяснение/Квиз/Mock.</p>
-            </div>
-          </div>
+        {mode === 'cheatsheet' ? (
+          <CheatsheetView />
+        ) : mode === 'mcquiz' ? (
+          <MCQuizView />
+        ) : mode === 'lecture' ? (
+          <LectureView />
         ) : (
           <>
             <MessageList />
