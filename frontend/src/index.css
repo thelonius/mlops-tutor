@@ -326,19 +326,20 @@ body {
   justify-content: space-between; gap: 12px;
 }
 .header-topic { font-size: 14px; font-weight: 600; color: var(--heading); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Закрытый select — фон/бордер от accent через color-mix; native arrow
+ * (appearance: auto) рисуется UA в соответствии с color-scheme:state.mode.
+ * Это же выправляет открытый dropdown — он следует palette автоматом. */
 #model-select {
   font-size: 11px; font-weight: 500;
-  padding: 3px 8px; border-radius: 20px;
-  background: #1e1b2e; color: var(--color-accent);
+  padding: 3px 10px; border-radius: 20px;
+  background: color-mix(in oklch, var(--color-accent) 12%, var(--color-surface));
+  color: var(--color-accent);
   border: 1px solid color-mix(in oklch, var(--color-accent) 27%, transparent);
   cursor: pointer; outline: none;
-  appearance: none; -webkit-appearance: none;
-  padding-right: 18px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%23a78bfa' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 6px center;
   white-space: nowrap; flex-shrink: 0;
 }
 #model-select:hover { border-color: color-mix(in oklch, var(--color-accent) 53%, transparent); }
+#model-select:focus { border-color: var(--color-accent); }
 .mode-badge {
   font-size: 11px; font-weight: 500;
   padding: 3px 10px; border-radius: 20px; white-space: nowrap;

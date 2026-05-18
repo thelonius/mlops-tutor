@@ -3,6 +3,22 @@ import { PLANET_GLYPHS, PLANET_NAMES_RU } from '../lib/astroColors';
 import { zodiacSign } from '../lib/ephemerides';
 import type { AstroThemeState } from '../lib/themeEngine';
 
+const ASPECT_GLYPHS: Record<string, string> = {
+  conjunction: '☌',
+  sextile: '⚹',
+  square: '□',
+  trine: '△',
+  opposition: '☍',
+};
+
+const ASPECT_RU: Record<string, string> = {
+  conjunction: 'соединение',
+  sextile: 'секстиль',
+  square: 'квадрат',
+  trine: 'трин',
+  opposition: 'оппозиция',
+};
+
 // Мелкий индикатор «☽ Луна · ☿ Меркурий» в шапке. День + текущий
 // планетарный час. Подписка на CustomEvent('astro-theme-change') от
 // useAstroTheme — обновляется в момент смены часа.
@@ -41,11 +57,31 @@ export function PlanetaryIndicator() {
 
   const daySign = zodiacSign(state.dayHue);
   const hourSign = zodiacSign(state.hourHue);
+  const aspectsLine =
+    state.aspects.length > 0
+      ? '\nАспекты: ' +
+        state.aspects
+          .slice()
+          .sort((a, b) => a.orbDistance - b.orbDistance)
+          .slice(0, 4)
+          .map(
+            (a) =>
+              `${PLANET_GLYPHS[a.a]} ${ASPECT_GLYPHS[a.type]} ${PLANET_GLYPHS[a.b]} ` +
+              `(${ASPECT_RU[a.type]}, ${a.actualAngle.toFixed(1)}°)`,
+          )
+          .join('\n          ')
+      : '';
+  const modLine =
+    state.chromaBoost > 0.005 || state.lightnessBoost > 0.2
+      ? `\nМодуляция: +${state.chromaBoost.toFixed(3)} C, +${state.lightnessBoost.toFixed(1)} L`
+      : '';
   const title =
     `День ${PLANET_NAMES_RU[hour.dayRuler]} в ${daySign} (${state.dayHue.toFixed(1)}°)\n` +
     `Час ${PLANET_NAMES_RU[hour.ruler]} в ${hourSign} (${state.hourHue.toFixed(1)}°)\n` +
     `Восход ${sunrise} · Закат ${sunset}\n` +
-    `Следующая смена часа: ${hourEnd}`;
+    `Следующая смена часа: ${hourEnd}` +
+    aspectsLine +
+    modLine;
 
   return (
     <span

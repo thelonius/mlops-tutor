@@ -6,6 +6,7 @@
 
 import { CHALDEAN_ORDER, WEEKDAY_RULERS, type PlanetName } from './astroColors';
 import { planetEclipticLongitude, toJulianDate } from './ephemerides';
+import { aspectModulation, type ActiveAspect } from './aspects';
 
 export interface SolarTimes {
   sunriseMin: number;
@@ -81,13 +82,34 @@ function routeHue(role: string, dayHue: number, hourHue: number, spec: RoleSpec)
   return dayHue;
 }
 
-export function computePalette(dayHue: number, hourHue: number, mode: ColorMode): Record<string, string> {
+export interface PaletteModulation {
+  /** Доп. chroma к accent'у/success/warn (0..0.04). Гармоничные аспекты. */
+  chromaBoost?: number;
+  /** Доп. L-сдвиг bg vs surface (0..3). Напряжённые аспекты делают фон жёстче. */
+  lightnessBoost?: number;
+}
+
+export function computePalette(
+  dayHue: number,
+  hourHue: number,
+  mode: ColorMode,
+  mod: PaletteModulation = {},
+): Record<string, string> {
   const spec = PALETTE_SPEC[mode];
   const out: Record<string, string> = {};
+  const cBoost = mod.chromaBoost ?? 0;
+  const lBoost = mod.lightnessBoost ?? 0;
+  const lSign = mode === 'dark' ? -1 : 1; // в dark двигаем bg ВНИЗ (темнее), в light — ВВЕРХ (светлее)
   for (const role of Object.keys(TOKEN_NAMES)) {
     const s = spec[role];
     const h = routeHue(role, dayHue, hourHue, s);
-    out[TOKEN_NAMES[role]] = `oklch(${s.L}% ${s.C} ${h})`;
+    let L = s.L;
+    let C = s.C;
+    // Напряжённые аспекты → bg/border ещё дальше от текста, surface как было.
+    if (role === 'bg' || role === 'border') L += lSign * lBoost;
+    // Гармоничные аспекты → насыщеннее accent/success/warn (не текст, не фон).
+    if (role === 'accent' || role === 'success' || role === 'warn') C += cBoost;
+    out[TOKEN_NAMES[role]] = `oklch(${L}% ${C.toFixed(4)} ${h})`;
   }
   return out;
 }
@@ -223,6 +245,10 @@ export interface AstroThemeState {
   /** Эклиптические долготы управителей дня и часа (0..360°). */
   dayHue: number;
   hourHue: number;
+  /** Активные аспекты + посчитанные модуляторы палитры. */
+  aspects: ActiveAspect[];
+  chromaBoost: number;
+  lightnessBoost: number;
 }
 
 export function computeState(now: Date, lat: number, lon: number): AstroThemeState {
@@ -234,6 +260,17 @@ export function computeState(now: Date, lat: number, lon: number): AstroThemeSta
   const jd = toJulianDate(now);
   const dayHue = planetEclipticLongitude(hour.dayRuler, jd);
   const hourHue = planetEclipticLongitude(hour.ruler, jd);
-  const palette = computePalette(dayHue, hourHue, mode);
-  return { mode, hour, palette, lat, lon, jd, dayHue, hourHue };
+  // Аспекты между парами планет двигают chroma (гармоничные) и L (напряжённые).
+  // Второе измерение уникальности палитры поверх hue.
+  const mod = aspectModulation(jd);
+  const palette = computePalette(dayHue, hourHue, mode, {
+    chromaBoost: mod.chromaBoost,
+    lightnessBoost: mod.lightnessBoost,
+  });
+  return {
+    mode, hour, palette, lat, lon, jd, dayHue, hourHue,
+    aspects: mod.aspects,
+    chromaBoost: mod.chromaBoost,
+    lightnessBoost: mod.lightnessBoost,
+  };
 }

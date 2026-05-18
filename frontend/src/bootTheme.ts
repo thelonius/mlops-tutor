@@ -41,6 +41,10 @@ declare global {
   root.dataset.astroDayRuler = state.hour.dayRuler;
   // Legacy data-theme — оставляем для CSS-правил, которые ещё ссылаются.
   root.setAttribute('data-theme', state.mode);
+  // Native UA-chrome (нативный <select> dropdown, scrollbar и пр.)
+  // следует нашему mode'у. Без этого macOS отрисует dropdown в темной
+  // схеме на светлой странице и наоборот.
+  root.style.colorScheme = state.mode;
 
   window.__astroTheme = { state, coords, tz };
 })();
