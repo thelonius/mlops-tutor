@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
+import { rehypeHljsMini } from '../../lib/rehype-hljs-mini';
 import type { Role } from '../../types';
 
 interface Props {
@@ -29,7 +29,7 @@ function BubbleInner({ role, content, typing }: Props) {
           // юзерский текст — plain text, как и в legacy
           <>{content}</>
         ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHljsMini]}>
             {content}
           </ReactMarkdown>
         )}

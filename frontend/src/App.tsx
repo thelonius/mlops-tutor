@@ -1,13 +1,32 @@
+import { lazy, Suspense } from 'react';
 import { useStore } from './state/store';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { MessageList } from './components/Chat/MessageList';
 import { Composer } from './components/Chat/Composer';
 import { QuickActions } from './components/Chat/QuickActions';
-import { CheatsheetView } from './components/Cheatsheet/CheatsheetView';
-import { MCQuizView } from './components/MCQuiz/MCQuizView';
-import { LectureView } from './components/Lecture/LectureView';
 import { useAutoStart } from './hooks/useAutoStart';
 import type { Mode } from './types';
+
+// Спец-режимы тянут hljs/lib/common (~95KB) и marked (~50KB) — грузим
+// только когда пользователь реально переключился. Чат-путь стартует
+// без этих чанков.
+const CheatsheetView = lazy(() =>
+  import('./components/Cheatsheet/CheatsheetView').then((m) => ({ default: m.CheatsheetView })),
+);
+const MCQuizView = lazy(() =>
+  import('./components/MCQuiz/MCQuizView').then((m) => ({ default: m.MCQuizView })),
+);
+const LectureView = lazy(() =>
+  import('./components/Lecture/LectureView').then((m) => ({ default: m.LectureView })),
+);
+
+function LazyFallback() {
+  return (
+    <div className="messages" style={{ padding: 24, color: 'var(--text-muted)' }}>
+      Загружаю…
+    </div>
+  );
+}
 
 const MODE_LABELS: Record<Mode, { label: string; badge: string }> = {
   learn: { label: 'Объяснение', badge: 'badge-learn' },
@@ -36,11 +55,17 @@ export default function App() {
         </div>
 
         {mode === 'cheatsheet' ? (
-          <CheatsheetView />
+          <Suspense fallback={<LazyFallback />}>
+            <CheatsheetView />
+          </Suspense>
         ) : mode === 'mcquiz' ? (
-          <MCQuizView />
+          <Suspense fallback={<LazyFallback />}>
+            <MCQuizView />
+          </Suspense>
         ) : mode === 'lecture' ? (
-          <LectureView />
+          <Suspense fallback={<LazyFallback />}>
+            <LectureView />
+          </Suspense>
         ) : (
           <>
             <MessageList />
