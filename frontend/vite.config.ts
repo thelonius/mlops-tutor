@@ -11,9 +11,11 @@ export default defineConfig({
     assetsDir: 'assets',
   },
   server: {
-    port: 5173,
+    port: 5174,
+    strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:5000',
+      // Dev workflow: vite на 5174, Flask на 5050 (см. .claude/launch.json).
+      '/api': 'http://127.0.0.1:5050',
     },
   },
 });
