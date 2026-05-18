@@ -8,6 +8,7 @@ import { ModelSelect } from './components/Chat/ModelSelect';
 import { TooltipController } from './components/Glossary/Tooltip';
 import { useAutoStart } from './hooks/useAutoStart';
 import { useShareLoader } from './hooks/useShareLoader';
+import { useSystemTheme } from './hooks/useSystemTheme';
 import type { Mode } from './types';
 
 // Спец-режимы тянут hljs/lib/common (~95KB) и marked (~50KB) — грузим
@@ -41,6 +42,7 @@ const MODE_LABELS: Record<Mode, { label: string; badge: string }> = {
 };
 
 export default function App() {
+  useSystemTheme();
   useAutoStart();
   useShareLoader();
   const { state } = useStore();
