@@ -1,9 +1,29 @@
 import { useStore } from './state/store';
 import { Sidebar } from './components/Sidebar/Sidebar';
+import { MessageList } from './components/Chat/MessageList';
+import { Composer } from './components/Chat/Composer';
+import { QuickActions } from './components/Chat/QuickActions';
+import { useAutoStart } from './hooks/useAutoStart';
+import type { Mode } from './types';
+
+const MODE_LABELS: Record<Mode, { label: string; badge: string }> = {
+  learn: { label: 'Объяснение', badge: 'badge-learn' },
+  quiz: { label: 'Квиз', badge: 'badge-quiz' },
+  mock: { label: 'Mock Interview', badge: 'badge-mock' },
+  cheatsheet: { label: 'Чит-шит', badge: 'badge-cheatsheet' },
+  mcquiz: { label: 'Тест', badge: 'badge-mcquiz' },
+  lecture: { label: 'Лекция', badge: 'badge-lecture' },
+};
 
 export default function App() {
+  useAutoStart();
   const { state } = useStore();
-  const { topic, mode, messages, topics } = state;
+  const { topic, mode, topics } = state;
+  const cfg = MODE_LABELS[mode];
+
+  // Cheatsheet / mcquiz / lecture полностью прячут чат — у них свои view.
+  // На Phase 3 их ещё нет; показываем placeholder.
+  const isSpecialMode = mode === 'cheatsheet' || mode === 'mcquiz' || mode === 'lecture';
 
   return (
     <>
@@ -13,53 +33,24 @@ export default function App() {
           <span className="header-topic">
             {topic && topics[topic] ? topics[topic].title : 'Выбери тему →'}
           </span>
-          <span className="mode-badge badge-learn" id="mode-badge">
-            {labelFor(mode)}
-          </span>
+          <span className={`mode-badge ${cfg.badge}`}>{cfg.label}</span>
         </div>
 
-        <div className="messages" style={{ padding: 16 }}>
-          {!topic ? (
+        {isSpecialMode ? (
+          <div className="messages" style={{ padding: 24 }}>
             <div className="welcome">
-              <h2>Phase 2</h2>
-              <p>
-                Sidebar и выбор темы готовы. Чат подключим в Phase 3 — там будет
-                стриминг ответов, persistence истории и quick-actions.
-              </p>
+              <h2>Режим «{cfg.label}»</h2>
+              <p>Этот режим переезжает на v2 в Phase 4. Пока вернись к Объяснение/Квиз/Mock.</p>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <p style={{ color: 'var(--text-muted)' }}>
-                Тема: <b>{topics[topic]?.title}</b> · режим: <b>{labelFor(mode)}</b> · сообщений
-                в истории: <b>{messages.length}</b>
-              </p>
-              <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-                Чат-UI будет в следующей фазе. Сейчас selectTopic пишет в store + localStorage,
-                refresh страницы восстанавливает выбор.
-              </p>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <MessageList />
+            <QuickActions />
+            <Composer />
+          </>
+        )}
       </div>
     </>
   );
-}
-
-function labelFor(mode: string): string {
-  switch (mode) {
-    case 'learn':
-      return 'Объяснение';
-    case 'quiz':
-      return 'Квиз';
-    case 'mock':
-      return 'Mock Interview';
-    case 'cheatsheet':
-      return 'Чит-шит';
-    case 'mcquiz':
-      return 'Тест';
-    case 'lecture':
-      return 'Лекция';
-    default:
-      return mode;
-  }
 }

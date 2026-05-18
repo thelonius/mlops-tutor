@@ -25,6 +25,7 @@ export interface State {
   mode: Mode;
   messages: Message[];
   streaming: boolean;
+  thinking: string;
   progress: Set<string>;
   preferredModel: string;
   curriculum: Group[];
@@ -41,8 +42,11 @@ export type Action =
   | { type: 'SET_MODE'; mode: Mode; messages: Message[] }
   | { type: 'SET_MESSAGES'; messages: Message[] }
   | { type: 'APPEND_MESSAGE'; message: Message }
-  | { type: 'STREAM_START' }
+  | { type: 'STREAM_START'; userMessage: Message }
+  | { type: 'STREAM_TEXT'; text: string }
+  | { type: 'STREAM_THINKING'; text: string }
   | { type: 'STREAM_END' }
+  | { type: 'STREAM_ERROR'; error: string }
   | { type: 'MARK_DONE'; topic: string }
   | { type: 'SET_MODEL'; model: string };
 
@@ -51,6 +55,7 @@ const initialState: State = {
   mode: 'learn',
   messages: [],
   streaming: false,
+  thinking: '',
   progress: new Set(),
   preferredModel: 'llama-3.3-70b-versatile',
   curriculum: [],
@@ -73,17 +78,60 @@ function reducer(state: State, action: Action): State {
     case 'CURRICULUM_ERROR':
       return { ...state, curriculumStatus: 'error', curriculumError: action.error };
     case 'SELECT_TOPIC':
-      return { ...state, topic: action.topic, messages: action.messages };
+      return {
+        ...state,
+        topic: action.topic,
+        messages: action.messages,
+        thinking: '',
+        streaming: false,
+      };
     case 'SET_MODE':
-      return { ...state, mode: action.mode, messages: action.messages };
+      return {
+        ...state,
+        mode: action.mode,
+        messages: action.messages,
+        thinking: '',
+        streaming: false,
+      };
     case 'SET_MESSAGES':
       return { ...state, messages: action.messages };
     case 'APPEND_MESSAGE':
       return { ...state, messages: [...state.messages, action.message] };
     case 'STREAM_START':
-      return { ...state, streaming: true };
+      // Кладём сообщение пользователя + пустого ассистента, чтобы стрим
+      // обновлял ровно последний пузырь.
+      return {
+        ...state,
+        streaming: true,
+        thinking: '',
+        messages: [...state.messages, action.userMessage, { role: 'assistant', content: '' }],
+      };
+    case 'STREAM_TEXT': {
+      // Реальный ответ начался — стираем preview размышлений.
+      const last = state.messages[state.messages.length - 1];
+      if (!last || last.role !== 'assistant') return state;
+      const updated = [...state.messages];
+      updated[updated.length - 1] = { ...last, content: last.content + action.text };
+      return { ...state, messages: updated, thinking: '' };
+    }
+    case 'STREAM_THINKING':
+      return { ...state, thinking: state.thinking + action.text };
     case 'STREAM_END':
-      return { ...state, streaming: false };
+      return { ...state, streaming: false, thinking: '' };
+    case 'STREAM_ERROR': {
+      const last = state.messages[state.messages.length - 1];
+      const errMsg: Message = {
+        role: 'assistant',
+        content: `_(ошибка: ${action.error})_`,
+      };
+      const updated = [...state.messages];
+      if (last && last.role === 'assistant' && last.content === '') {
+        updated[updated.length - 1] = errMsg;
+      } else {
+        updated.push(errMsg);
+      }
+      return { ...state, messages: updated, streaming: false, thinking: '' };
+    }
     case 'MARK_DONE': {
       if (state.progress.has(action.topic)) return state;
       const next = new Set(state.progress);
@@ -147,12 +195,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveSession({ topic: state.topic, mode: state.mode });
   }, [state.topic, state.mode]);
 
-  // Персистенс messages per (topic, mode). Пишем только если topic выбран
-  // и история непустая — иначе можем затереть существующую при ре-маунте.
+  // Персистенс messages per (topic, mode). Не пишем во время стрима —
+  // иначе на refresh подхватим частичный ответ ассистента.
   useEffect(() => {
-    if (!state.topic || state.messages.length === 0) return;
+    if (!state.topic || state.messages.length === 0 || state.streaming) return;
     saveHistory(state.topic, state.mode, state.messages);
-  }, [state.topic, state.mode, state.messages]);
+  }, [state.topic, state.mode, state.messages, state.streaming]);
 
   useEffect(() => {
     saveProgress(state.progress);
