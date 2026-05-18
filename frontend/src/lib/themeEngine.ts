@@ -4,7 +4,8 @@
  * the deferred manager script consume the same logic via `define:vars`.
  */
 
-import { CHALDEAN_ORDER, PLANET_HUES, WEEKDAY_RULERS, type PlanetName } from './astroColors';
+import { CHALDEAN_ORDER, WEEKDAY_RULERS, type PlanetName } from './astroColors';
+import { planetEclipticLongitude, toJulianDate } from './ephemerides';
 
 export interface SolarTimes {
   sunriseMin: number;
@@ -217,13 +218,22 @@ export interface AstroThemeState {
   palette: Record<string, string>;
   lat: number;
   lon: number;
+  /** Julian Date момента расчёта — нужен индикатору для tooltip'а. */
+  jd: number;
+  /** Эклиптические долготы управителей дня и часа (0..360°). */
+  dayHue: number;
+  hourHue: number;
 }
 
 export function computeState(now: Date, lat: number, lon: number): AstroThemeState {
   const hour = getPlanetaryHour(now, lat, lon);
   const mode = getColorMode();
-  const dayHue = PLANET_HUES[hour.dayRuler];
-  const hourHue = PLANET_HUES[hour.ruler];
+  // Эклиптическая долгота вместо фиксированного PLANET_HUES — палитра
+  // уникальна каждый день, синодические периоды дают эффективно-бесконечный
+  // цикл (Saturn ~29.5 года + Jupiter ~11.9 — точный повтор не за жизнь).
+  const jd = toJulianDate(now);
+  const dayHue = planetEclipticLongitude(hour.dayRuler, jd);
+  const hourHue = planetEclipticLongitude(hour.ruler, jd);
   const palette = computePalette(dayHue, hourHue, mode);
-  return { mode, hour, palette, lat, lon };
+  return { mode, hour, palette, lat, lon, jd, dayHue, hourHue };
 }
