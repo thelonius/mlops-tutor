@@ -7,7 +7,7 @@ from collections import OrderedDict
 
 from curriculum import CURRICULUM, TOPICS, build_system_prompt
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, jsonify, request, stream_with_context
 import asyncio
 import tempfile
 import edge_tts
@@ -60,17 +60,12 @@ MODELS = [
 
 @app.route("/")
 def index():
-    return render_template("index.html")
-
-
-@app.route("/v2")
-def index_v2():
-    # React-шелл, собранный через Vite в static/dist/. Параллельный роут на
-    # период миграции фронта; когда v2 догонит по фичам, заменим /.
+    # React-шелл, собранный через Vite в static/dist/. Деплой CI делает
+    # `npm run build` в frontend/ и scp'ит результат рядом со static/.
     dist_path = os.path.join(app.static_folder, "dist", "index.html")
     if not os.path.exists(dist_path):
         return (
-            "v2 bundle not built. Run `npm run build` in frontend/.",
+            "frontend bundle not built. Run `npm run build` in frontend/.",
             503,
         )
     with open(dist_path, encoding="utf-8") as f:
