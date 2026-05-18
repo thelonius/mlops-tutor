@@ -74,6 +74,7 @@ function applyState(state: AstroThemeState): void {
   root.dataset.astroHourRuler = state.hour.ruler;
   root.dataset.astroDayRuler = state.hour.dayRuler;
   root.setAttribute('data-theme', state.mode);
+  root.style.colorScheme = state.mode;
   applyHljs(state.mode);
 }
 
