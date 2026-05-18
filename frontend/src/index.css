@@ -63,6 +63,14 @@ body {
   transition: background 0.2s, color 0.2s;
 }
 
+/* React mount: root становится flex-контейнером уровня body. */
+#root {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
 /* ── Sidebar ── */
 .sidebar {
   width: 256px;

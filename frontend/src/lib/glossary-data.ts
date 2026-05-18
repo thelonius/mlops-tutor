@@ -2,7 +2,7 @@
 // Ключи matchятся как whole word (case-sensitive). Ключи с пробелом — фразы.
 // Сортировка по длине применяется автоматически — сначала длинные.
 
-window.GLOSSARY = {
+export const GLOSSARY: Record<string, string> = {
   // ── Kubernetes ──
   "Kubernetes": "Оркестратор контейнеров. Управляет деплоем, масштабированием и жизненным циклом приложений в кластере.",
   "K8s": "Сокращение от Kubernetes (8 букв между K и s).",
@@ -263,7 +263,6 @@ window.GLOSSARY = {
   "RidgeCV": "Ridge с автоматическим подбором α по кросс-валидации.",
   "LassoCV": "Lasso с автоматическим подбором α по кросс-валидации.",
   "ElasticNetCV": "ElasticNet с автоматическим подбором α и ρ по кросс-валидации.",
-  "регуляризация": "Штраф на сложность модели в loss-е. L1/L2/ElasticNet — стандартные.",
   "regularization path": "Зависимость коэффициентов модели от силы регуляризации α.",
   "мультиколлинеарность": "Сильная корреляция между фичами. Делает решение линейной регрессии нестабильным.",
   "multicollinearity": "Сильная корреляция между фичами. Делает решение линейной регрессии нестабильным.",
@@ -321,7 +320,6 @@ window.GLOSSARY = {
   // ── Triton перфоманс ──
   "max_queue_delay_microseconds": "Сколько Triton ждёт на дозапрос перед запуском неполного батча.",
   "preferred_batch_size": "Целевой размер батча для dynamic batching.",
-  "perf_analyzer": "CLI Triton для бенчмаркинга throughput и latency при разной concurrency.",
   "BLS": "Business Logic Scripting — Python backend в Triton с if/for. Гибче ensemble.",
   "sequence batching": "Режим Triton для stateful моделей (RNN/LSTM): запросы одного sequence_id идут к одному инстансу.",
 
@@ -408,7 +406,6 @@ window.GLOSSARY = {
   "KV-cache": "Кеш ключей и значений attention. Самая большая память LLM-инференса (помимо весов).",
   "prefix caching": "Запросы с общим префиксом (system prompt) делят KV-cache блоки. Включается через --enable-prefix-caching.",
   "tensor parallelism": "Слои attention/MLP разрезаются между GPU. Меньше VRAM на GPU, требует all-reduce.",
-  "TP": "Tensor parallelism — слоить модель между GPU.",
   "PP": "Pipeline parallelism — разные слои на разных GPU.",
   "AWQ": "Activation-aware Weight Quantization. 4-bit квантизация с лучшим качеством чем naive int4.",
   "GPTQ": "Post-training 4-bit квантизация. Альтернатива AWQ.",
@@ -421,7 +418,6 @@ window.GLOSSARY = {
   // ── RAG ──
   "RAG": "Retrieval-Augmented Generation: поиск релевантных кусков + генерация на их основе.",
   "chunking": "Разбиение документов на куски для embedding. Ключевая стратегия RAG.",
-  "embedding": "Векторное представление текста. Близкие смыслы → близкие векторы.",
   "embeddings": "Векторное представление текста. Близкие смыслы → близкие векторы.",
   "vector store": "БД для хранения векторов и поиска ближайших соседей. Qdrant, Weaviate, pgvector.",
   "bi-encoder": "Модель отдельно энкодит запрос и документ → cos-сходство. Быстро, но менее точно.",
@@ -438,7 +434,6 @@ window.GLOSSARY = {
   "context precision": "Метрика RAGAS: доля релевантных chunks среди retrieved.",
   "lost-in-the-middle": "LLM хуже использует документы из середины длинного контекста.",
   "query expansion": "LLM переписывает запрос (synonyms, decomposition) для лучшего retrieval.",
-  "Qdrant": "Vector store на Rust. Быстрый, мощные filters по payload.",
   "Weaviate": "Vector store с hybrid search из коробки.",
   "Chroma": "Embedded vector store для dev и прототипов.",
   "pgvector": "Расширение Postgres для векторного поиска.",
@@ -526,19 +521,14 @@ window.GLOSSARY = {
   "execute_remotely": "В ClearML: переключает локальный запуск на удалённый через очередь.",
 
   // ── CI/CD / GitOps ──
-  "GitOps": "Принцип: git — единственная истина о состоянии инфры. ArgoCD/Flux синхронизируют кластер.",
-  "Helm": "Пакетный менеджер для Kubernetes. Шаблонизирует YAML через Go templates.",
   "Helm chart": "Шаблонизированный набор YAML-манифестов с values.yaml.",
   "Kustomize": "Overlay-патчи для k8s манифестов без шаблонов. Встроен в kubectl.",
-  "ArgoCD": "GitOps-инструмент: синхронизирует k8s кластер с git репозиторием.",
   "Argo Rollouts": "Расширение k8s для canary/blue-green деплоев с auto-analysis.",
   "Sealed Secrets": "Шифрует k8s Secret публичным ключом кластера. Безопасно хранить в git.",
   "External Secrets Operator": "k8s оператор синкает secrets из Vault/AWS Secrets Manager в k8s Secret.",
   "SOPS": "Mozilla-инструмент для шифрования YAML/JSON через age/PGP.",
   "Vault Agent Injector": "Inject secrets в Pod через init-container (HashiCorp Vault).",
-  "DVC": "Data Version Control — git для данных и моделей. Трекает большие файлы через .dvc-метафайлы.",
   "dvc repro": "Пересчитывает изменившиеся стадии DVC pipeline. Makefile для данных.",
-  "blue-green": "Стратегия деплоя: два полных деплоя, переключение трафика мгновенно.",
   "shadow deployment": "Новая версия получает копию трафика, ответы пользователю не идут. Тестирование под нагрузкой.",
 
   // ── SQL / NoSQL ──
@@ -596,7 +586,6 @@ window.GLOSSARY = {
   "token bucket": "Rate limit алгоритм: токены капают со скоростью R, ёмкость B → burst до B.",
   "leaky bucket": "Rate limit алгоритм: запросы вытекают со скоростью R. Сглаживает burst.",
   "sliding window": "Rate limit на скользящем окне. Точнее fixed window.",
-  "circuit breaker": "Паттерн: при error rate > порога → Open → запросы отклоняются → Half-Open пробный → Closed.",
   "retry storm": "Все клиенты одновременно retry-ят упавший сервис → роняют его снова при восстановлении.",
   "exponential backoff": "Растущая задержка между retry: base · 2^attempt.",
   "jitter": "Случайная добавка к delay → ломает синхронизацию retry-storm.",
@@ -605,8 +594,6 @@ window.GLOSSARY = {
   "graceful shutdown": "Корректное завершение с дождиванием активных запросов.",
   "hedged requests": "При p99 шлём дубль на другой replica → берём первый ответ. Снижает long tail.",
   "SLI": "Service Level Indicator — метрика (latency p99 = 180мс).",
-  "SLO": "Service Level Objective — внутренняя цель (p99 < 200мс 99.9% времени).",
-  "SLA": "Service Level Agreement — контракт с клиентом (99.9% uptime → штраф).",
   "error budget": "(1 − SLO) × period. Бюджет на простой. Расходован → фриз релизов.",
 
   // ── Ranking / Recommender ──
@@ -679,7 +666,6 @@ window.GLOSSARY = {
   "asyncio": "Стандартная библиотека для асинхронного IO в Python.",
   "event loop": "Цикл, выполняющий корутины кооперативно.",
   "coroutine": "Функция async def. Возвращает awaitable, исполняется в event loop.",
-  "Task": "asyncio.Task — корутина, запущенная в фоне через create_task.",
   "asyncio.gather": "Параллельный запуск корутин, результаты в порядке аргументов.",
   "asyncio.wait": "Low-level: FIRST_COMPLETED / FIRST_EXCEPTION. Тонкий контроль.",
   "TaskGroup": "asyncio.TaskGroup (3.11+) — structured concurrency для группы Task-ов.",
@@ -765,7 +751,6 @@ window.GLOSSARY = {
   "expire_on_commit": "SQLAlchemy: инвалидировать объекты после commit. False для async.",
   "alembic": "Стандартный migration tool для SQLAlchemy.",
   "autogenerate": "alembic revision --autogenerate — diff моделей и БД. Не видит всё.",
-  "asyncpg": "Async Postgres драйвер. Самый быстрый.",
   "psycopg3": "Postgres драйвер, поддерживает async.",
   "aiomysql": "Async MySQL драйвер.",
   "aiosqlite": "Async SQLite (для тестов).",
@@ -822,7 +807,6 @@ window.GLOSSARY = {
   "hash flooding": "Атака: специальные ключи с одинаковым hash → все в один slot → O(n).",
   "PYTHONHASHSEED": "Рандомизация hash-функций Python для защиты от hash flooding.",
   "LRU": "Least Recently Used — стратегия вытеснения кеша.",
-  "OrderedDict": "dict с move_to_end и popitem(last=False).",
   "functools.lru_cache": "Декоратор для memoization функций по аргументам.",
   "functools.cache": "lru_cache(maxsize=None). Python 3.9+.",
   "stride": "В numpy: шаг в байтах для каждого измерения многомерного массива.",
@@ -864,7 +848,6 @@ window.GLOSSARY = {
   "BST": "Binary Search Tree — для каждого узла left.val < node.val < right.val.",
   "AVL": "Самобалансирующееся BST с balance factor ∈ {-1, 0, 1}.",
   "Red-Black tree": "Самобалансирующееся BST с цветами. std::map / TreeMap.",
-  "B-tree": "Многоключевое дерево для дисков. Postgres, MySQL индексы.",
   "trie": "Префиксное дерево. O(m) на операцию (m — длина ключа).",
   "preorder": "root → left → right",
   "inorder": "left → root → right. Для BST даёт sorted.",
@@ -941,7 +924,6 @@ window.GLOSSARY = {
   "pairwise": "itertools.pairwise (3.10+) — соседние пары.",
 
   // ── LeetCode patterns ──
-  "sliding window": "Паттерн: подмассив с условием. Two pointers, O(n) вместо O(n²).",
   "two pointers": "Паттерн: пара в отсортированном или meet in the middle.",
   "prefix sum": "Префиксные суммы для O(1) range queries.",
   "top-K": "Top-K через heap размером K — O(n log k).",

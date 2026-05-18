@@ -41,13 +41,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Copy files to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "app.py,curriculum.py,shares.py,requirements.txt,templates/,static/"
+          source: "app.py,curriculum.py,shares.py,requirements.txt,static/"
           target: /opt/mlops-tutor/
           strip_components: 0
 
@@ -85,24 +97,23 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-          # ОДНО ssh-подключение, считаем все md5 одной командой.
+          # Бэкенд + dist/index.html. Хешированные ассеты НЕ проверяем —
+          # их имена содержат content-hash, а index.html ссылается на
+          # актуальные. Поломка в bundle => другое имя ассета => другой
+          # md5 у index.html => этот шаг упадёт. На проде могут лежать
+          # старые ассеты от прошлых деплоев — это безвредный мусор,
+          # никто на них не ссылается. Если когда-то начнёт мешать,
+          # добавим отдельный шаг prune через `find -mtime`.
+          FILES="app.py curriculum.py shares.py requirements.txt static/dist/index.html"
+
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
               -o ConnectTimeout=10 \
               "$SSH_USER@$SSH_HOST" \
-              "cd /opt/mlops-tutor && md5sum \
-                app.py curriculum.py shares.py requirements.txt \
-                templates/index.html \
-                static/app.js static/style.css static/glossary.js static/share.js" \
+              "cd /opt/mlops-tutor && md5sum $FILES" \
               > prod_md5.txt
 
-          md5sum \
-            app.py curriculum.py shares.py requirements.txt \
-            templates/index.html \
-            static/app.js static/style.css static/glossary.js static/share.js \
-            > local_md5.txt
+          md5sum $FILES > local_md5.txt
 
-          # Нормализуем: pwd-префиксы могут отличаться, оставляем только базовое имя.
-          # Формат: '<md5>  <path>' → '<md5>  <path>'. Сортируем и diff'им.
           sort prod_md5.txt  > prod_md5.sorted
           sort local_md5.txt > local_md5.sorted
 
@@ -112,7 +123,7 @@ jobs:
           cat local_md5.sorted
           echo "=== diff ==="
           if diff -u prod_md5.sorted local_md5.sorted; then
-            echo "✅ Прод == main по всем 9 файлам."
+            echo "✅ Прод == main по всем $(echo $FILES | wc -w) файлам."
           else
             echo ""
             echo "::error::Прод не равен main по md5."
