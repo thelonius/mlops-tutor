@@ -1,0 +1,182 @@
+# Словарь произношения для TTS (русский голос Svetlana).
+# Формат: <english_term><TAB><cyrillic_pronunciation>
+# Строки на # игнорируются. Пустые строки тоже.
+# Файл перечитывается автоматически при изменении mtime — рестарт не нужен.
+#
+# Принцип: писать так, как реально говорят русские разработчики, а не
+# калькой с английского. Кубер, а не кубернетес. Докер, а не доцкер.
+# Матчинг case-insensitive, с границей слова (не цепляет внутри других слов).
+
+# === MLOps стек ===
+MLOps	эмэл опс
+LLMOps	эл-эл-эм-опс
+DevOps	девопс
+Docker	докер
+Kubernetes	кубер
+k8s	кубер
+Helm	хелм
+chart	чарт
+charts	чартс
+Compose	компоуз
+Server	сервер
+Actions	экшнс
+deployment	деплоймент
+namespace	нэймспейс
+pipeline	пайплайн
+pipelines	пайплайны
+workflow	воркфлоу
+workflows	воркфлоу
+inference	инференс
+
+# === Облака и железо ===
+AWS	эй-дабл-ю-эс
+GCP	джи-си-пи
+Azure	эжур
+S3	эс-три
+EC2	и-си-ту
+Lambda	лямбда
+Snowflake	сноуфлейк
+BigQuery	биг-квери
+NVIDIA	энвидия
+CUDA	куда
+GPU	джи-пи-ю
+CPU	си-пи-ю
+TPU	ти-пи-ю
+
+# === Базы и стриминг ===
+PostgreSQL	постгрес
+MongoDB	монго-ди-би
+DynamoDB	дайнамо-ди-би
+Redis	редис
+Elasticsearch	эластик-сёрч
+Kafka	кафка
+Spark	спарк
+Hadoop	хадуп
+
+# === Веб-стек ===
+FastAPI	фастапи
+Flask	фласк
+Django	джанго
+React	реакт
+TypeScript	тайпскрипт
+JavaScript	джаваскрипт
+gunicorn	гуникорн
+uvicorn	ювикорн
+nginx	энджин-икс
+Caddy	кэдди
+
+# === Языки ===
+Python	питон
+Rust	раст
+Bash	баш
+
+# === Dev-инструменты ===
+GitHub	гитхаб
+GitLab	гитлаб
+VS Code	ви-эс код
+Jupyter	юпитер
+pytest	пайтест
+CI/CD	си-ай си-ди
+
+# === ML-фреймворки и библиотеки ===
+PyTorch	пайторч
+TensorFlow	тензорфлоу
+TensorRT	тензор-ар-ти
+scikit-learn	сайкит-лёрн
+XGBoost	иксджибуст
+LightGBM	лайт-джи-би-эм
+CatBoost	кэтбуст
+HuggingFace	хагингфейс
+Hugging Face	хагингфейс
+transformers	трансформерс
+numpy	нампи
+pandas	пандас
+matplotlib	матплотлиб
+
+# === ML-инфраструктура ===
+MLflow	эм-эл-флоу
+Airflow	эйрфлоу
+Kubeflow	кьюб-флоу
+ONNX	оннкс
+Triton	тритон
+vLLM	ви-эл-эл-эм
+
+# === LLM / GenAI ===
+LLM	эл-эл-эм
+LLMs	эл-эл-эмы
+GPT	джи-пи-ти
+RAG	рэг
+LoRA	лора
+PEFT	пефт
+SFT	эс-эф-ти
+RLHF	ар-эл-эйч-эф
+DPO	ди-пи-о
+BERT	берт
+Whisper	виспер
+Silero	силеро
+Claude	клод
+ChatGPT	чат-джи-пи-ти
+OpenAI	опен-эй-ай
+Anthropic	антропик
+Llama	лама
+Mistral	мистраль
+embedding	эмбеддинг
+embeddings	эмбеддинги
+tokenizer	токенайзер
+checkpoint	чекпойнт
+fine-tuning	файн-тюнинг
+fine-tune	файн-тюн
+prompt	промпт
+prompts	промпты
+
+# === Векторные БД ===
+Pinecone	пайнкоун
+Qdrant	кьюдрант
+Chroma	крома
+Milvus	милвус
+FAISS	фейс
+
+# === Аббревиатуры ===
+API	эй-пи-ай
+REST	рест
+gRPC	джи-эр-пи-си
+GraphQL	графкьюэл
+SQL	эс-кью-эл
+NoSQL	ноу-эс-кью-эл
+ETL	и-ти-эл
+ELT	и-эл-ти
+JSON	джейсон
+YAML	ямл
+TOML	томл
+XML	икс-эм-эл
+HTTP	эйч-ти-ти-пи
+HTTPS	эйч-ти-ти-пи-эс
+SSH	эс-эс-эйч
+DNS	ди-эн-эс
+URL	ю-ар-эл
+ASR	эй-эс-ар
+VAD	ви-эй-ди
+DAG	даг
+
+# === Мониторинг ===
+Prometheus	прометеус
+Grafana	графана
+Loki	локи
+Jaeger	ягер
+Sentry	сентри
+DataDog	датадог
+OpenTelemetry	опен-телеметри
+
+# === Инфра прочая ===
+Terraform	терраформ
+Ansible	ансибл
+Vault	волт
+LangChain	лэнгчейн
+LangGraph	лэнггрэф
+
+# === Метрики ===
+MAE	эм-эй-и
+MSE	эм-эс-и
+RMSE	ар-эм-эс-и
+AUC	эй-ю-си
+ROC	рок

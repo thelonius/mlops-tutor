@@ -242,10 +242,60 @@ AUDIO_REWRITE_PROMPT = """Перепиши текст ниже для аудио
 - Убери markdown-разметку (звёздочки, решётки, обратные апострофы, скобки `[...](...)`).
 - Списки превращай в связную речь: «во-первых», «также», «и наконец».
 - Сноски вида «резервная модель: ...» удаляй.
+- Английские термины пиши русской транскрипцией так, как их реально произносят русские разработчики: Docker → «докер», Kubernetes → «кубер», PyTorch → «пайторч», MLOps → «эмэл опс», FastAPI → «фастапи», API → «эй-пи-ай», GPU → «джи-пи-ю». Не «кубернетес», не «доцкер». Если термина нет в твоих знаниях — оставь латиницей, постпроцессинг доберёт.
 - Сохрани смысл и порядок мыслей, текст должен звучать естественно при чтении вслух.
 - Не добавляй преамбулы и комментариев. Верни только переписанный текст."""
 
-# Кэш готовых mp3: ключ = sha1(voice|text). FIFO, ограничен по размеру.
+# Словарь произношения для финального постпроцессинга. Перечитывается по mtime,
+# чтобы редактирование data/tts_terms.tsv не требовало рестарта Flask.
+TTS_TERMS_PATH = os.path.join(os.path.dirname(__file__), "data", "tts_terms.tsv")
+_tts_terms_state: dict = {"mtime": 0.0, "patterns": []}
+
+
+def _load_tts_terms() -> tuple[float, list]:
+    """Возвращает (mtime, скомпилированные паттерны). Кеш по mtime файла."""
+    try:
+        mtime = os.path.getmtime(TTS_TERMS_PATH)
+    except OSError:
+        return 0.0, []
+    if mtime == _tts_terms_state["mtime"] and _tts_terms_state["patterns"]:
+        return mtime, _tts_terms_state["patterns"]
+    terms: list[tuple[str, str]] = []
+    with open(TTS_TERMS_PATH, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            src, dst = parts[0].strip(), parts[1].strip()
+            if src and dst:
+                terms.append((src, dst))
+    # Длинные паттерны сначала: «scikit-learn» должен сработать до «scikit».
+    terms.sort(key=lambda kv: len(kv[0]), reverse=True)
+    # Граница слова, учитывающая кириллицу — иначе «деплой» зацепится внутри «деплоить».
+    boundary_class = r"A-Za-zА-Яа-яЁё0-9"
+    patterns = [
+        (re.compile(rf"(?<![{boundary_class}])" + re.escape(src) + rf"(?![{boundary_class}])",
+                    re.IGNORECASE), dst)
+        for src, dst in terms
+    ]
+    _tts_terms_state["mtime"] = mtime
+    _tts_terms_state["patterns"] = patterns
+    return mtime, patterns
+
+
+def _normalize_terms(text: str) -> str:
+    """Подменяет английские термины русской транскрипцией для TTS."""
+    _, patterns = _load_tts_terms()
+    for pattern, repl in patterns:
+        text = pattern.sub(repl, text)
+    return text
+
+
+# Кэш готовых mp3: ключ = sha1(voice|terms_mtime|text). mtime словаря в ключе —
+# чтобы правка tts_terms.tsv автоматически инвалидировала старые озвучки.
 TTS_CACHE_MAX = 64
 _tts_cache: "OrderedDict[str, bytes]" = OrderedDict()
 
@@ -292,7 +342,10 @@ def tts():
     if not text:
         return jsonify({"error": "No text"}), 400
 
-    cache_key = hashlib.sha1(f"{TTS_VOICE}|{text}".encode("utf-8")).hexdigest()
+    mtime, _ = _load_tts_terms()
+    cache_key = hashlib.sha1(
+        f"{TTS_VOICE}|{mtime}|{text}".encode("utf-8")
+    ).hexdigest()
     cached = _tts_cache.get(cache_key)
     if cached is not None:
         _tts_cache.move_to_end(cache_key)
@@ -302,6 +355,7 @@ def tts():
     spoken = _audio_rewrite(text)
     if not spoken:
         return jsonify({"error": "Empty rewrite"}), 502
+    spoken = _normalize_terms(spoken)
 
     async def _collect():
         buf = bytearray()
