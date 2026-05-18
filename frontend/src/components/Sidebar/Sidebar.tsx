@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { useStore } from '../../state/store';
+import { useUi } from '../../state/ui';
 import { loadHistory } from '../../state/persistence';
 import type { Group, Topic } from '../../types';
 import { ModeSelector } from './ModeSelector';
@@ -7,6 +8,7 @@ import { TopicButton } from './TopicButton';
 
 export function Sidebar() {
   const { state, dispatch } = useStore();
+  const ui = useUi();
   const { topic, mode, progress, curriculum, topics, curriculumStatus, curriculumError } =
     state;
 
@@ -21,10 +23,19 @@ export function Sidebar() {
   const onSelect = (tid: string) => {
     const msgs = loadHistory(tid, mode) ?? [];
     dispatch({ type: 'SELECT_TOPIC', topic: tid, messages: msgs });
+    ui.closeMobileSidebar();
   };
 
+  const cls = [
+    'sidebar',
+    ui.desktopSidebarCollapsed ? 'collapsed' : '',
+    ui.mobileSidebarOpen ? 'open' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div className="sidebar">
+    <div className={cls}>
       <div className="sidebar-header">
         <div>
           <h1>MLOps Tutor</h1>

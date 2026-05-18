@@ -6,6 +6,7 @@ export const histKey = (tid: string, mode: Mode) => `mlops_chat_${tid}_${mode}`;
 const SESSION_KEY = 'mlops_session';
 const PROGRESS_KEY = 'mlops_progress';
 const MODEL_KEY = 'mlops_model';
+const SIDEBAR_COLLAPSED_KEY = 'mlops_sidebar_collapsed';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
 export function loadHistory(tid: string, mode: Mode): Message[] | null {
@@ -70,4 +71,13 @@ export function loadPreferredModel(): string {
 
 export function savePreferredModel(model: string): void {
   localStorage.setItem(MODEL_KEY, model);
+}
+
+export function loadSidebarCollapsed(): boolean {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+}
+
+export function saveSidebarCollapsed(collapsed: boolean): void {
+  if (collapsed) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, '1');
+  else localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
 }

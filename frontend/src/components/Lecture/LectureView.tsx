@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../state/store';
-import { useTts, type TtsState } from '../../hooks/useTts';
+import { useSharedTts } from '../TtsProvider';
+import type { TtsState } from '../../hooks/useTts';
 import { Bubble } from '../Chat/Bubble';
 
 interface Section {
@@ -24,7 +25,7 @@ export function LectureView() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
-  const tts = useTts();
+  const tts = useSharedTts();
   const cancelledRef = useRef(false);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
 

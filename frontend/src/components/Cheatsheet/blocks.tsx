@@ -34,7 +34,12 @@ function CodeBlock({ block }: { block: Extract<CheatsheetBlock, { type: 'code' }
   const ref = useRef<HTMLElement>(null);
   const lang = block.lang || 'plaintext';
   useEffect(() => {
-    if (ref.current) hljs.highlightElement(ref.current);
+    const el = ref.current;
+    if (!el) return;
+    // В StrictMode dev-маунт срабатывает дважды. Без guard'а hljs пишет
+    // «Element previously highlighted» — функционально ОК, но шумит в консоли.
+    if (el.dataset.highlighted) return;
+    hljs.highlightElement(el);
   }, [block.code, block.lang]);
   return (
     <div className="cs-block cs-code">

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { useStore } from './state/store';
+import { useUi } from './state/ui';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { MessageList } from './components/Chat/MessageList';
 import { Composer } from './components/Chat/Composer';
@@ -46,15 +47,38 @@ export default function App() {
   useAutoStart();
   useShareLoader();
   const { state } = useStore();
+  const ui = useUi();
   const { topic, mode, topics } = state;
   const cfg = MODE_LABELS[mode];
 
   return (
     <>
       <TooltipController />
+      <div
+        className={`overlay${ui.mobileSidebarOpen ? ' show' : ''}`}
+        id="overlay"
+        onClick={ui.closeMobileSidebar}
+      />
       <Sidebar />
       <div className="main">
         <div className="chat-header">
+          <button
+            type="button"
+            className="sidebar-toggle"
+            id="sidebar-toggle"
+            title="Свернуть меню"
+            onClick={ui.toggleDesktopSidebar}
+          >
+            {ui.desktopSidebarCollapsed ? '▶' : '◀'}
+          </button>
+          <button
+            type="button"
+            className="hamburger"
+            aria-label="Меню"
+            onClick={ui.openMobileSidebar}
+          >
+            ☰
+          </button>
           <span className="header-topic">
             {topic && topics[topic] ? topics[topic].title : 'Выбери тему →'}
           </span>
