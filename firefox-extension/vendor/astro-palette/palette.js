@@ -43,14 +43,29 @@ export const TOKEN_NAMES = {
 };
 
 /**
+ * @typedef {Object} PaletteModulation
+ * @property {number} [chromaBoost]    доп. C к accent/success/warn (0..0.04)
+ * @property {number} [lightnessBoost] доп. L-сдвиг bg/border от текста (0..3)
+ */
+
+/**
  * Палитра как map { '--color-*': 'oklch(...)' }.
+ *
+ * Опциональная модуляция (аспектная, см. ./aspects.js): гармоничные аспекты
+ * поднимают chroma accent'а/семантики, напряжённые — толкают bg/border дальше
+ * от текста. Без `mod` поведение прежнее.
  * @param {number} dayHue  hue фона/текста/бордера (управитель дня)
  * @param {number} hourHue hue accent'а (управитель часа)
  * @param {ColorMode} mode
+ * @param {PaletteModulation} [mod]
  * @returns {Record<string, string>}
  */
-export function computePalette(dayHue, hourHue, mode) {
+export function computePalette(dayHue, hourHue, mode, mod = {}) {
   const spec = PALETTE_SPEC[mode];
+  const cBoost = mod.chromaBoost ?? 0;
+  const lBoost = mod.lightnessBoost ?? 0;
+  // В dark двигаем bg вниз (темнее), в light — вверх (светлее).
+  const lSign = mode === 'dark' ? -1 : 1;
   /** @type {Record<string,string>} */
   const out = {};
   for (const role of Object.keys(TOKEN_NAMES)) {
@@ -59,7 +74,11 @@ export function computePalette(dayHue, hourHue, mode) {
     if (s.hueOverride !== undefined) h = s.hueOverride;
     else if (role === 'accent') h = hourHue;
     else h = dayHue;
-    out[TOKEN_NAMES[role]] = `oklch(${s.L}% ${s.C.toFixed(4)} ${h})`;
+    let L = s.L;
+    let C = s.C;
+    if (role === 'bg' || role === 'border') L += lSign * lBoost;
+    if (role === 'accent' || role === 'success' || role === 'warn') C += cBoost;
+    out[TOKEN_NAMES[role]] = `oklch(${L}% ${C.toFixed(4)} ${h})`;
   }
   return out;
 }

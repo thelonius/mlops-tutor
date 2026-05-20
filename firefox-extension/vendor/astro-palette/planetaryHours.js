@@ -56,6 +56,8 @@ function midnightTs(date) {
  * @property {number} phaseEndTs   ms — конец текущего планетарного часа
  * @property {number} totalIdx     индекс часа от восхода (0..23)
  * @property {number} weekday      день недели базового астро-дня (0=вс)
+ * @property {SolarTimes} solar      восход/закат базового дня
+ * @property {SolarTimes} nextSolar  восход/закат следующего дня
  */
 
 /**
@@ -103,5 +105,8 @@ export function getPlanetaryHour(now, lat, lon) {
   const dayRuler = WEEKDAY_RULERS[dayBase.getDay()];
   const startIdx = CHALDEAN_ORDER.indexOf(dayRuler);
   const ruler = CHALDEAN_ORDER[(startIdx + totalIdx) % 7];
-  return { ruler, dayRuler, phaseStartTs, phaseEndTs, totalIdx, weekday: dayBase.getDay() };
+  return {
+    ruler, dayRuler, phaseStartTs, phaseEndTs, totalIdx,
+    weekday: dayBase.getDay(), solar, nextSolar,
+  };
 }
