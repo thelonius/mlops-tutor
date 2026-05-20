@@ -31,169 +31,111 @@ html, body {
   color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
+/* ── Фоновый слой: полноэкранный SVG (зодиак / диск Луны) ── */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.bg svg {
+  width: min(100vw, 100vh);
+  height: min(100vw, 100vh);
+  display: block;
+}
+/* Three.js-Луна: квадратный хост по меньшей стороне вьюпорта */
+.bg .moon3d-host {
+  width: min(92vw, 92vh);
+  height: min(92vw, 92vh);
+}
+.bg .moon3d-host canvas {
+  display: block;
+  filter: drop-shadow(0 0 60px color-mix(in oklch, var(--color-accent) 30%, transparent));
+}
+
+/* ── Контент поверх фона ── */
 .stage {
+  position: relative;
+  z-index: 1;
   min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
-}
-
-.head {
   text-align: center;
-  margin-bottom: 28px;
+  pointer-events: none;
 }
 
 .clock {
-  font-size: clamp(72px, 14vw, 168px);
+  font-size: clamp(72px, 15vw, 184px);
   font-weight: 200;
   letter-spacing: -0.04em;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  text-shadow: 0 2px 24px var(--color-bg);
 }
 
-.hour-meta {
+.ctx {
   margin-top: 14px;
   font-size: 14px;
   color: var(--color-text-muted);
   letter-spacing: 0.02em;
+  text-shadow: 0 1px 12px var(--color-bg);
 }
-.hour-meta .accent { color: var(--color-accent); font-weight: 500; }
-.hour-meta .sep { opacity: 0.5; margin: 0 8px; }
+.ctx .accent { color: var(--color-accent); font-weight: 500; }
+.ctx .sep { opacity: 0.5; margin: 0 8px; }
+.ctx:empty { display: none; }
 
-/* ── Палитра — 8 свотчей в ряд ── */
-.palette {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 8px;
-  width: min(560px, 100%);
-  margin-bottom: 28px;
-}
-@media (max-width: 560px) {
-  .palette { grid-template-columns: repeat(4, 1fr); }
-}
+.moon-line { margin-top: 10px; font-size: 13px; }
+.voc-line  { margin-top: 6px;  font-size: 12px; color: color-mix(in oklch, var(--color-text-muted), var(--color-border)); }
+.voc-line.current { color: var(--color-warn); }
 
-.swatch {
-  aspect-ratio: 1;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  position: relative;
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-.swatch:hover { transform: translateY(-2px); }
-.swatch::after {
-  content: attr(data-label);
-  position: absolute;
-  bottom: -18px; left: 0; right: 0;
-  text-align: center;
-  font-size: 10px;
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
-}
+/* В режиме 3D-Луны фон всегда тёмный (диск Луны) — принудительно светлый
+ * текст с тёмным гало, независимо от OS-темы. */
+.bg-moon .clock { color: #f4f1ea; text-shadow: 0 2px 4px rgba(0,0,0,0.55), 0 0 36px rgba(0,0,0,0.7); }
+.bg-moon .ctx   { color: #d7d2c8; text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 18px rgba(0,0,0,0.7); }
+.bg-moon .ctx .accent { color: color-mix(in oklch, var(--color-accent) 60%, white); }
+.bg-moon .voc-line.current { color: color-mix(in oklch, var(--color-warn) 70%, white); }
 
-/* ── Соседние дни: компактные мини-палитры ── */
-.adjacent {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 28px;
-  width: min(520px, 100%);
-}
-.adj-row {
-  display: grid;
-  grid-template-columns: 64px repeat(8, 1fr);
-  gap: 6px;
-  align-items: center;
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-.adj-gap {
-  height: 8px;
-}
-.adj-label {
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.adj-label .accent { color: var(--color-accent); font-weight: 500; }
-.adj-swatch {
-  aspect-ratio: 1;
-  border-radius: 5px;
-  border: 1px solid var(--color-border);
-  min-width: 0;
-}
-
-/* ── Moon block ── */
-.moon {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 20px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  width: min(520px, 100%);
-}
-
-.moon-face {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  display: block;
-}
-.moon-face .moon-disc {
-  fill: color-mix(in oklch, var(--color-bg) 88%, var(--color-text) 12%);
-  stroke: var(--color-border);
-  stroke-width: 1;
-}
-.moon-face .moon-lit {
-  fill: color-mix(in oklch, var(--color-text) 92%, var(--color-bg));
-}
-
-.moon-text { min-width: 0; flex: 1; }
-.moon-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text);
-}
-.moon-sub {
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-.moon-sub .accent { color: var(--color-accent); }
-
-.moon-voc {
-  margin-top: 6px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: color-mix(in oklch, var(--color-text-muted), var(--color-border));
-  padding-left: 12px;
-  position: relative;
-}
-.moon-voc:empty { display: none; }
-.moon-voc::before {
-  content: '';
-  width: 6px;
-  height: 6px;
+/* ── Переключатель фона ── */
+.bg-toggle {
+  position: fixed;
+  z-index: 2;
+  bottom: 20px;
+  right: 20px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: currentColor;
-  position: absolute;
-  left: 0;
-  top: 0.45em;
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklch, var(--color-surface) 80%, transparent);
+  color: var(--color-text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: color 0.15s, border-color 0.15s, transform 0.15s;
 }
-.moon-voc.current {
-  color: var(--color-warn);
+.bg-toggle:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  transform: rotate(30deg);
 }
 
-.foot {
-  margin-top: 36px;
-  font-size: 11px;
-  color: color-mix(in oklch, var(--color-text-muted), var(--color-border));
-  text-align: center;
-  letter-spacing: 0.03em;
-}
+/* ── SVG-классы (заполняются inline fill из JS, но базовые штрихи тут) ── */
+.zw-sector { stroke: var(--color-bg); stroke-width: 0.3; }
+.zw-sign   { fill: color-mix(in oklch, var(--color-text-muted) 55%, transparent); font-size: 3.4px; }
+.zw-planet { fill: var(--color-text); font-size: 4px; }
+.zw-planet.ruler { fill: var(--color-accent); font-size: 5px; font-weight: 600; }
+.zw-ring   { fill: none; stroke: var(--color-border); stroke-width: 0.25; }
+
+.moon-disc-bg { stroke: var(--color-border); stroke-width: 0.01; }
+.moon-lit-bg  { stroke: none; }

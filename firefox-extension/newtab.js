@@ -9,8 +9,8 @@
  *   5. Moon: долгота, фаза (sun-moon angle), illumination, zodiac.
  */
 
-(() => {
-  'use strict';
+import { buildZodiacWheelSVG } from './zodiac.js';
+import { createMoon3D } from './moon3d.js';
 
   // ─── astroColors ──────────────────────────────────────────────
   const PLANET_GLYPHS = {
@@ -474,151 +474,101 @@
     return hh === 0 ? `${d}д` : `${d}д ${hh}ч`;
   }
 
-  const PALETTE_LABELS = {
-    '--color-bg':         'bg',
-    '--color-surface':    'surface',
-    '--color-text':       'text',
-    '--color-text-muted': 'muted',
-    '--color-accent':     'accent',
-    '--color-border':     'border',
-    '--color-success':    'ok',
-    '--color-warn':       'warn',
-  };
-
-  // Один полный расчёт палитры для произвольного момента — тот же путь,
-  // что в render(), но без побочки: возвращает палитру + краткий контекст
-  // для тултипа.
-  function paletteFor(moment, lat, lon, mode) {
-    const hour = getPlanetaryHour(moment, lat, lon);
-    const jd = toJulianDate(moment);
-    const dayHue = planetEclipticLongitude(hour.dayRuler, jd);
-    const hourHue = planetEclipticLongitude(hour.ruler, jd);
-    return {
-      palette: computePalette(dayHue, hourHue, mode),
-      dayRuler: hour.dayRuler,
-      ruler: hour.ruler,
-    };
-  }
-
-  function renderAdjacentRow(rowEl, label, info) {
-    rowEl.innerHTML = '';
-    const lab = document.createElement('div');
-    lab.className = 'adj-label';
-    lab.innerHTML = label;
-    lab.title =
-      `${PLANET_NAMES_RU[info.dayRuler]} день · ${PLANET_NAMES_RU[info.ruler]} час`;
-    rowEl.appendChild(lab);
-    for (const value of Object.values(info.palette)) {
-      const s = document.createElement('div');
-      s.className = 'adj-swatch';
-      s.style.background = value;
-      s.title = value;
-      rowEl.appendChild(s);
-    }
-  }
-
-  function renderAdjacent(now, lat, lon, mode) {
-    const hour = getPlanetaryHour(now, lat, lon);
-    // Момент гарантированно внутри соседнего часа: за минуту до старта
-    // текущего / через минуту после его конца. Планетарный час длится
-    // ~40-80 мин, минутного отступа хватает.
-    const prevHour = new Date(hour.phaseStartTs - 60000);
-    const nextHour = new Date(hour.phaseEndTs + 60000);
-    const yest = new Date(now.getTime() - 86400000);
-    const tom = new Date(now.getTime() + 86400000);
-
-    // glyphKey: какой управитель показать в подписи. Для часовых строк это
-    // ruler (он гонит accent-hue), для дневных — dayRuler (база палитры).
-    const rows = [
-      ['adj-prev-hour', 'пред.', prevHour, 'ruler'],
-      ['adj-next-hour', 'след.', nextHour, 'ruler'],
-      ['adj-yesterday', 'вчера', yest, 'dayRuler'],
-      ['adj-tomorrow', 'завтра', tom, 'dayRuler'],
-    ];
-    for (const [id, baseLabel, moment, glyphKey] of rows) {
-      const info = paletteFor(moment, lat, lon, mode);
-      const glyph = PLANET_GLYPHS[info[glyphKey]];
-      renderAdjacentRow(
-        document.getElementById(id),
-        `${baseLabel} <span class="accent">${glyph}</span>`,
-        info,
-      );
-    }
-  }
-
-  function renderPaletteSwatches(palette) {
-    const root = document.getElementById('palette');
-    root.innerHTML = '';
-    for (const [varName, value] of Object.entries(palette)) {
-      const el = document.createElement('div');
-      el.className = 'swatch';
-      el.style.background = value;
-      el.dataset.label = PALETTE_LABELS[varName] || varName;
-      el.title = `${varName}: ${value}`;
-      el.addEventListener('click', () => {
-        navigator.clipboard?.writeText(value).catch(() => {});
-      });
-      root.appendChild(el);
-    }
-  }
-
-  // SVG-путь освещённой части диска радиуса 1.
-  // Терминатор — полу-эллипс с rx = |cos(phaseAngle)|. Полу-диск рисуется
-  // на той стороне, где Луна освещена (waxing → правая, waning → левая),
-  // плюс полу-эллипс, который её либо подрезает (crescent), либо
-  // расширяет (gibbous), в зависимости от знака cos(phaseAngle).
-  function moonLitPath(phase) {
-    const k = phase.illumination;
-    const cosT = Math.cos(rad(phase.angle));    // <0 → gibbous, >0 → crescent
-    const rx = Math.abs(cosT).toFixed(4);
-    const isCrescent = k < 0.5;
-    if (phase.waxing) {
-      // Полу-диск справа: from (0,-1) arc sweep=1 to (0,1).
-      // Затем эллипс назад в (0,-1):
-      //   crescent (cosT>0)  → sweep=0 (вогнутая дуга в правую половину) — подрезает
-      //   gibbous  (cosT<0)  → sweep=1 (выпуклая в левую половину) — расширяет
-      const sweep = isCrescent ? 0 : 1;
-      return `M 0,-1 A 1,1 0 0,1 0,1 A ${rx},1 0 0,${sweep} 0,-1 Z`;
-    } else {
-      // Полу-диск слева.
-      const sweep = isCrescent ? 1 : 0;
-      return `M 0,-1 A 1,1 0 0,0 0,1 A ${rx},1 0 0,${sweep} 0,-1 Z`;
-    }
-  }
-
-  function renderMoon(phase, moonLong, now) {
-    document.getElementById('moon-lit').setAttribute('d', moonLitPath(phase));
-    const sign = zodiacSign(moonLong);
-    document.getElementById('moon-title').textContent = `Луна в знаке ${sign}`;
-    document.getElementById('moon-sub').innerHTML =
-      `${phase.emoji} ${phase.name} · <span class="accent">${fmtPercent(phase.illumination)}</span>`;
-
-    const vocEl = document.getElementById('moon-voc');
-    const voc = findVoC(now);
-    if (!voc) {
-      vocEl.className = 'moon-voc';
-      vocEl.textContent = '';
-      return;
-    }
-    if (voc.isCurrent) {
-      vocEl.className = 'moon-voc current';
-      const remaining = fmtDuration(voc.endTs - now.getTime());
-      vocEl.textContent =
-        `без курса ещё ${remaining}, до ${fmtDayTime(new Date(voc.endTs), now)} → ${voc.nextSign}`;
-    } else {
-      vocEl.className = 'moon-voc';
-      const lastG = PLANET_GLYPHS[voc.lastAspect.planet];
-      const dur = fmtDuration(voc.endTs - voc.startTs);
-      vocEl.textContent =
-        `след. без курса ${fmtDayTime(new Date(voc.startTs), now)} → ` +
-        `${fmtDayTime(new Date(voc.endTs), now)} (${dur}, после ${voc.lastAspect.glyph} ${lastG} ${PLANET_NAMES_RU[voc.lastAspect.planet]})`;
-    }
-  }
-
+  // ─── render ───────────────────────────────────────────────────
   function applyPalette(palette) {
     const r = document.documentElement;
     for (const [k, v] of Object.entries(palette)) r.style.setProperty(k, v);
     r.style.colorScheme = getColorMode();
+  }
+
+  // oklch-токены палитры three.js не парсит — резолвим в rgb через браузер:
+  // ставим color через CSS-переменную на временный элемент и читаем computed.
+  const _probe = document.createElement('span');
+  _probe.style.display = 'none';
+  document.body.appendChild(_probe);
+  function resolveCssColor(cssExpr) {
+    _probe.style.color = '';
+    _probe.style.color = cssExpr;
+    return getComputedStyle(_probe).color || '#cccccc';
+  }
+
+  const WHEEL_PLANETS = ['Saturn', 'Jupiter', 'Mars', 'Sun', 'Venus', 'Mercury', 'Moon'];
+  const BG_MODES = ['zodiac', 'moon'];
+  function currentBgMode() {
+    const m = localStorage.getItem('bgMode');
+    return BG_MODES.includes(m) ? m : 'zodiac';
+  }
+  function cycleBgMode() {
+    const i = BG_MODES.indexOf(currentBgMode());
+    localStorage.setItem('bgMode', BG_MODES[(i + 1) % BG_MODES.length]);
+    render(new Date());
+  }
+
+  // Three.js-инстанс Луны держим один на всё время (GL-контекст дорог), создаём
+  // лениво при первом входе в moon-режим, dispose при уходе в zodiac.
+  let moon3d = null;
+  function renderMoonBg(jd, hour) {
+    const bg = document.getElementById('bg');
+    if (!moon3d) {
+      bg.innerHTML = '';
+      const host = document.createElement('div');
+      host.className = 'moon3d-host';
+      bg.appendChild(host);
+      moon3d = createMoon3D(host);
+    }
+    const phase = moonPhaseInfo(jd);
+    moon3d.update({
+      illumination: phase.illumination,
+      isWaxing: phase.waxing,
+      // «Солнце» — цвет accent текущего часа, ambient — мягкий цвет дня.
+      sunColor: resolveCssColor('color-mix(in oklch, var(--color-accent) 70%, white)'),
+      ambientColor: resolveCssColor('var(--color-surface)'),
+      bodyTint: resolveCssColor('color-mix(in oklch, var(--color-text) 70%, var(--color-accent))'),
+    });
+  }
+  function disposeMoonBg() {
+    if (moon3d) { moon3d.dispose(); moon3d = null; }
+  }
+
+  function renderZodiacBg(jd, hour) {
+    disposeMoonBg();
+    const rulerSet = new Set([hour.ruler, hour.dayRuler]);
+    const planets = WHEEL_PLANETS.map(name => ({
+      name,
+      glyph: PLANET_GLYPHS[name],
+      lon: planetEclipticLongitude(name, jd),
+      isRuler: rulerSet.has(name),
+    }));
+    const moonSign = Math.floor(norm360(moonLongitude(jd)) / 30);
+    document.getElementById('bg').innerHTML = buildZodiacWheelSVG({ planets, moonSign });
+  }
+
+  function renderMoonLine(jd) {
+    const phase = moonPhaseInfo(jd);
+    document.getElementById('moon-line').innerHTML =
+      `${phase.emoji} Луна в ${zodiacSign(phase.moonLong)} · ${phase.name} · ` +
+      `<span class="accent">${fmtPercent(phase.illumination)}</span>`;
+  }
+
+  function renderVocLine(now) {
+    const el = document.getElementById('voc-line');
+    const voc = findVoC(now);
+    if (!voc) {
+      el.className = 'ctx voc-line';
+      el.textContent = '';
+    } else if (voc.isCurrent) {
+      el.className = 'ctx voc-line current';
+      el.textContent =
+        `без курса ещё ${fmtDuration(voc.endTs - now.getTime())}, ` +
+        `до ${fmtDayTime(new Date(voc.endTs), now)} → ${voc.nextSign}`;
+    } else {
+      el.className = 'ctx voc-line';
+      const lastG = PLANET_GLYPHS[voc.lastAspect.planet];
+      el.textContent =
+        `след. без курса ${fmtDayTime(new Date(voc.startTs), now)} → ` +
+        `${fmtDayTime(new Date(voc.endTs), now)} ` +
+        `(${fmtDuration(voc.endTs - voc.startTs)}, после ${voc.lastAspect.glyph} ${lastG})`;
+    }
   }
 
   function render(now) {
@@ -628,9 +578,7 @@
     const dayHue = planetEclipticLongitude(hour.dayRuler, jd);
     const hourHue = planetEclipticLongitude(hour.ruler, jd);
     const mode = getColorMode();
-    const palette = computePalette(dayHue, hourHue, mode);
-
-    applyPalette(palette);
+    applyPalette(computePalette(dayHue, hourHue, mode));
 
     document.getElementById('clock').textContent = fmtTime(now);
 
@@ -643,23 +591,25 @@
       `<span class="sep">·</span>день <span class="accent">${dayG} ${dayN}</span>` +
       `<span class="sep">·</span>час <span class="accent">${hourG} ${hourN}</span>`;
 
-    renderPaletteSwatches(palette);
-    renderAdjacent(now, lat, lon, mode);
-    renderMoon(moonPhaseInfo(jd), moonLongitude(jd), now);
+    renderMoonLine(jd);
+    renderVocLine(now);
 
-    const next = new Date(hour.phaseEndTs);
-    document.getElementById('foot').textContent =
-      `следующий час в ${fmtTime(next)}`;
+    const mb = currentBgMode();
+    document.body.classList.toggle('bg-moon', mb === 'moon');
+    document.body.classList.toggle('bg-zodiac', mb === 'zodiac');
+    if (mb === 'moon') renderMoonBg(jd, hour);
+    else renderZodiacBg(jd, hour);
   }
 
   function loop() {
     render(new Date());
   }
 
-  // Первичный пэйнт + ребилд каждую минуту (для часов и фазы часа).
   loop();
   setInterval(loop, 30 * 1000);
 
-  // Реакция на смену OS-темы.
+  document.getElementById('bg-toggle').addEventListener('click', cycleBgMode);
+  window.addEventListener('keydown', e => {
+    if (e.key === 'b' || e.key === 'и') cycleBgMode();
+  });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', loop);
-})();
