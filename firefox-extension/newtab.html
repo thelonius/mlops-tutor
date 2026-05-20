@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Новая вкладка</title>
+  <link rel="stylesheet" href="newtab.css" />
+</head>
+<body>
+  <main class="stage">
+    <header class="head">
+      <div class="clock" id="clock">—:—</div>
+      <div class="hour-meta" id="hour-meta">…</div>
+    </header>
+
+    <section class="palette" id="palette" aria-label="Палитра"></section>
+
+    <section class="adjacent" id="adjacent" aria-label="Соседние час и день">
+      <div class="adj-row" id="adj-prev-hour"></div>
+      <div class="adj-row" id="adj-next-hour"></div>
+      <div class="adj-gap"></div>
+      <div class="adj-row" id="adj-yesterday"></div>
+      <div class="adj-row" id="adj-tomorrow"></div>
+    </section>
+
+    <section class="moon" id="moon">
+      <svg class="moon-face" id="moon-face" viewBox="-1.05 -1.05 2.1 2.1" aria-hidden="true">
+        <circle class="moon-disc" cx="0" cy="0" r="1"/>
+        <path class="moon-lit" id="moon-lit" d=""/>
+      </svg>
+      <div class="moon-text">
+        <div class="moon-title" id="moon-title">Луна</div>
+        <div class="moon-sub" id="moon-sub">—</div>
+        <div class="moon-voc" id="moon-voc"></div>
+      </div>
+    </section>
+
+    <footer class="foot" id="foot"></footer>
+  </main>
+
+  <script src="newtab.js"></script>
+</body>
+</html>

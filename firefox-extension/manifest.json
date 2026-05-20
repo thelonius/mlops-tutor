@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Astro Palette New Tab",
+  "version": "0.1.0",
+  "description": "Новая вкладка с планетарно-часовой OKLCH-палитрой и блоком Луны.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "astro-palette-newtab@mlops-tutor.local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  }
+}

@@ -14,6 +14,13 @@
       "runtimeArgs": ["run", "dev", "--", "--port", "5174", "--strictPort"],
       "port": 5174,
       "cwd": "/Users/eddubnitsky/openclaw/mlops_tutor/frontend"
+    },
+    {
+      "name": "firefox-extension-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5180"],
+      "port": 5180,
+      "cwd": "/Users/eddubnitsky/openclaw/mlops_tutor/.claude/worktrees/zealous-montalcini-5db4d4/firefox-extension"
     }
   ]
 }
