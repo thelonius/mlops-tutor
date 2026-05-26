@@ -12,35 +12,30 @@ class Vacancy:
     requirements: str
     vibes: str
 
-class VacancyProvider:
-    def __init__(self, db_path: Optional[str] = None):
-        if db_path is None:
-            # Try common locations
-            candidates = [
-                os.path.expanduser("~/openclaw/workspace/jobs_warehouse.sqlite"),
-                "/Users/eddubnitsky/openclaw/workspace/jobs_warehouse.sqlite",
-                os.path.join(os.path.dirname(__file__), "..", "..", "workspace", "jobs_warehouse.sqlite"),
-            ]
-            for candidate in candidates:
-                if os.path.exists(candidate):
-                    self.db_path = candidate
-                    return
-            self.db_path = candidates[0]
-        else:
-            self.db_path = db_path
+def _find_db() -> str:
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "data", "jobs_warehouse.sqlite"),
+        os.path.expanduser("~/openclaw/workspace/jobs_warehouse.sqlite"),
+        "/Users/eddubnitsky/openclaw/workspace/jobs_warehouse.sqlite",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]
 
+
+class VacancyProvider:
     def get_vacancy(self, short_id: str) -> Optional[Vacancy]:
-        """Fetch vacancy details by short_id from the jobs warehouse."""
+        db_path = _find_db()
         try:
-            if not os.path.exists(self.db_path):
+            if not os.path.exists(db_path):
                 return None
 
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
             cursor.execute(
-                "SELECT short_id, title, company, stack, requirements, vibes FROM vacancies WHERE short_id = ?", 
+                "SELECT short_id, title, company, stack, requirements, vibes FROM vacancies WHERE short_id = ?",
                 (short_id,)
             )
             row = cursor.fetchone()
@@ -59,5 +54,9 @@ class VacancyProvider:
             print(f"Error fetching vacancy {short_id}: {e}")
         return None
 
-# Singleton instance
+    @property
+    def db_path(self) -> str:
+        return _find_db()
+
+
 provider = VacancyProvider()
