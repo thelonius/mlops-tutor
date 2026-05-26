@@ -15,11 +15,10 @@ class Vacancy:
 class VacancyProvider:
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            # Try common locations
             candidates = [
+                os.path.join(os.path.dirname(__file__), "data", "jobs_warehouse.sqlite"),
                 os.path.expanduser("~/openclaw/workspace/jobs_warehouse.sqlite"),
                 "/Users/eddubnitsky/openclaw/workspace/jobs_warehouse.sqlite",
-                os.path.join(os.path.dirname(__file__), "..", "..", "workspace", "jobs_warehouse.sqlite"),
             ]
             for candidate in candidates:
                 if os.path.exists(candidate):
