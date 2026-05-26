@@ -120,9 +120,15 @@ def get_curriculum():
 
 @app.route("/api/curriculum/vacancy/<vacancy_id>")
 def get_vacancy_curriculum(vacancy_id):
+    import os as _os
+    db = vacancy_provider.provider.db_path
     vacancy = vacancy_provider.provider.get_vacancy(vacancy_id)
     if not vacancy:
-        return jsonify({"error": "Vacancy not found"}), 404
+        return jsonify({
+            "error": "Vacancy not found",
+            "db_path": db,
+            "db_exists": _os.path.exists(db),
+        }), 404
 
     relevant_topic_ids = map_vacancy_to_topics(vacancy)
     filtered_topics = {tid: TOPICS[tid] for tid in relevant_topic_ids if tid in TOPICS}
