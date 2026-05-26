@@ -9486,6 +9486,18 @@ CURRICULUM = [
         "topics": ["system_design"],
     },
     {
+        "id": "mlops_networking",
+        "section": "MLOps",
+        "title": "Сети и протоколы",
+        "topics": ["networking_base"],
+    },
+    {
+        "id": "mlops_orchestration",
+        "section": "MLOps",
+        "title": "Оркестрация пайплайнов",
+        "topics": ["orchestration"],
+    },
+    {
         "id": "ml_classic",
         "section": "ML",
         "title": "Классика ML",
