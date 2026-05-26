@@ -1,3 +1,6 @@
+from typing import Optional
+from vacancy_provider import Vacancy
+
 TRACKS = {
     "mlops": {
         "mentor_role": "MLOps наставник",
@@ -9288,6 +9291,73 @@ TOPICS = {
              "content": "**Полный prompt в логи = риск compliance.** Промпт может содержать пользовательский PII, медицинские данные, секреты, которые юзер случайно вставил. Минимум: маскирование в проде, allowlist полей, отдельный compliance-режим (Langfuse/LangSmith умеют скрывать content полностью). GDPR/HIPAA-аудит этого специально проверяют."},
         ],
     },
+    "networking_base": {
+        "title": "Сети для DevOps и MLOps",
+        "emoji": "🌍",
+        "week": 1,
+        "what": "OSI, TCP/UDP, DNS, HTTP/HTTPS, gRPC, L4/L7 Load Balancing, CIDR, Subnets",
+        "why": "Понимание того, как запрос доходит от пользователя до пода в K8s и почему gRPC быстрее REST для инференса",
+        "interview_focus": "gRPC vs REST, L4 vs L7 LB, DNS в Kubernetes (CoreDNS), CIDR и маски подсетей",
+        "track": "mlops",
+        "cheatsheet": [
+            {"q": "В чем разница между L4 и L7 балансировкой?", "a": "L4 работает на транспортном уровне (TCP/UDP) и перенаправляет пакеты по IP и порту. L7 работает на уровне приложения (HTTP/gRPC) и может маршрутизировать трафик на основе путей, заголовков или cookies."},
+            {"q": "Почему gRPC предпочтительнее REST для инференса моделей?", "a": "gRPC использует HTTP/2 (бинарный формат Protobuf вместо текстового JSON), поддерживает стриминг ( bidirectional streaming) и имеет более эффективную сериализацию. Это снижает latency и нагрузку на CPU."},
+            {"q": "Что такое CIDR и зачем он в K8s?", "a": "CIDR (Classless Inter-Domain Routing) задает диапазон IP-адресов (например, 10.0.0.0/16). В K8s используется для выделения отдельных диапазонов IP для подов (PodCIDR) и сервисов (ServiceCIDR)."},
+            {"q": "Как работает DNS внутри Kubernetes?", "a": "CoreDNS запускается в кластере. Поды могут обращаться к сервисам по имени: `<service-name>.<namespace>.svc.cluster.local`. Это позволяет менять поды, не меняя IP в конфигурациях."},
+            {"q": "Разница TCP vs UDP в контексте ML?", "a": "TCP гарантирует доставку и порядок (нужен для REST/gRPC). UDP быстрее, но не гарантирует доставку (используется в некоторых системах мониторинга, например StatsD, или в реальном времени стриминге)."},
+            {"q": "Что такое Ingress-контроллер?", "a": "L7-балансировщик (обычно Nginx или Envoy), который управляет внешним доступом в кластер, предоставляя правила маршрутизации (например, /v1/predict -> service-v1)."},
+            {"q": "Как работает HTTP/2 в gRPC?", "a": "Использует мультиплексирование (несколько запросов в одном TCP-соединении), сжатие заголовков (HPACK) и server push. Это решает проблему head-of-line blocking, которая была в HTTP/1.1."},
+            {"q": "Что такое MTU и почему он важен для GPU-кластеров?", "a": "MTU (Maximum Transmission Unit) — максимальный размер пакета. Для передачи больших тензоров между нодами (Distributed Training) используют Jumbo Frames (MTU 9000), чтобы уменьшить оверхед на заголовки пакетов."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Сети — это путь данных от клиента до GPU. **L4** (TCP/UDP) — быстро и просто, **L7** (HTTP/gRPC) — гибко и умно. **gRPC + Protobuf** — стандарт для высоконагруженного инференса. **CoreDNS** обеспечивает именование в K8s, а **CIDR** — управление IP-адресами."},
+            {
+                "type": "compare",
+                "title": "gRPC vs REST",
+                "items": [
+                    {"title": "gRPC",
+                     "points": [
+                         "HTTP/2 (Binary)",
+                         "Protobuf (строгая схема)",
+                         "Bidirectional streaming",
+                         "Высокая производительность",
+                     ]},
+                    {"title": "REST",
+                     "points": [
+                         "HTTP/1.1 (Text/JSON)",
+                         "Гибкость (без схемы)",
+                         "Простой дебаг через curl",
+                         "Выше latency, больше оверхед",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Уровни OSI для DevOps",
+                "headers": ["Уровень", "Название", "Что там происходит", "Инструмент/Протокол"],
+                "rows": [
+                    ["L3", "Network", "Маршрутизация по IP", "IP, ICMP, Router"],
+                    ["L4", "Transport", "Доставка портов, сессии", "TCP, UDP, L4 LB"],
+                    ["L7", "Application", "Бизнес-логика, пути, заголовки", "HTTP, gRPC, DNS, Ingress"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Полезные команды",
+                "items": [
+                    {"k": "`dig <service>.<ns>.svc.cluster.local`", "v": "проверить DNS в K8s"},
+                    {"k": "`curl -v http://...`",                "v": "отладить L7 запрос"},
+                    {"k": "`tcpdump -i eth0 port 80`",             "v": "захват пакетов (L4/L3)"},
+                    {"k": "`netstat -tulpn`",                      "v": "посмотреть открытые порты"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**gRPC — это не только скорость, но и контракт.** `.proto` файл служит документацией API, которую нельзя случайно изменить без пересборки клиента и сервера."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**L4 Load Balancers не видят HTTP-пути.** Если вам нужно маршрутизировать `/predict` на один под, а `/health` на другой — используйте Ingress (L7)."},
+        ],
+    },
 }
 
 CURRICULUM = [
@@ -9296,6 +9366,12 @@ CURRICULUM = [
         "section": "MLOps",
         "title": "Контейнеры и K8s",
         "topics": ["containers", "k8s_basics", "k8s_storage", "k8s_gpu"],
+    },
+    {
+        "id": "mlops_networking",
+        "section": "MLOps",
+        "title": "Сетевая инфраструктура",
+        "topics": ["networking_base"],
     },
     {
         "id": "mlops_inference",
@@ -9448,7 +9524,7 @@ LLM_MOCK_PROMPT_TEMPLATE = """\
 Начни с приветствия и первого вопроса про опыт."""
 
 
-def build_system_prompt(topic_id: str, mode: str) -> str:
+def build_system_prompt(topic_id: str, mode: str, vacancy_data: Optional[Vacancy] = None) -> str:
     topic = TOPICS.get(topic_id)
     if topic is None:
         raise KeyError(f"Unknown topic_id: {topic_id!r}")
@@ -9468,33 +9544,60 @@ def build_system_prompt(topic_id: str, mode: str) -> str:
     track_id = topic.get("track", "mlops")
     track = TRACKS.get(track_id, TRACKS["mlops"])
 
+    # Динамический блок вакансии: если передан vacancy_data, он переопределяет
+    # target_position и company из TRACKS
+    mentor_role = track["mentor_role"]
+    target_position = track["target_position"]
+    student_profile = track["student_profile"]
+    mock_identity = track["mock_identity"]
+    mock_target = track["mock_target"]
+    vacancy_block = ""
+    if vacancy_data:
+        company_name = vacancy_data.company
+        target_position = vacancy_data.title
+        company_details = f"Стек: {vacancy_data.stack}. Требования: {vacancy_data.requirements}. Вайб: {vacancy_data.vibes}"
+    else:
+        company_name = track.get("company", "")
+        company_details = track.get("company_details", "")
+
+    vacancy_block = ""
+    if vacancy_data:
+        vacancy_block = f"\n\nЦЕЛЬ: Готовимся конкретно под вакансию {target_position} в {company_name}.\n" \
+                        f"Стек: {vacancy_data.stack}\n" \
+                        f"Особые требования: {vacancy_data.requirements}"
+
     company_block = ""
-    if track["company"]:
-        company_block = f" в {track['company']} ({track['company_details']})"
+    if company_name:
+        company_block = f" в {company_name} ({company_details})"
 
     fields = {
-        "mentor_role": track["mentor_role"],
-        "target_position": track["target_position"],
-        "student_profile": track["student_profile"],
+        "mentor_role": mentor_role,
+        "target_position": target_position,
+        "student_profile": student_profile,
         "learn_examples_hint": track["learn_examples_hint"],
         "company_block": company_block,
-        "mock_identity": track["mock_identity"],
-        "mock_target": track["mock_target"],
+        "mock_identity": mock_identity,
+        "mock_target": mock_target,
         "title": title,
         "what": what,
         "why": why,
         "interview_focus": focus,
+        "vacancy_block": vacancy_block,
     }
 
     if mode == "learn":
-        return LEARN_PROMPT_TEMPLATE.format(**fields)
+        # Добавляем vacancy_block в конец промпта
+        prompt = LEARN_PROMPT_TEMPLATE.format(**fields)
+        return prompt + vacancy_block
     if mode == "quiz":
-        return QUIZ_PROMPT_TEMPLATE.format(**fields)
+        prompt = QUIZ_PROMPT_TEMPLATE.format(**fields)
+        return prompt + vacancy_block
     if mode == "mock":
         section = TOPIC_SECTION.get(topic_id, "")
         if section == "LLM":
-            return LLM_MOCK_PROMPT_TEMPLATE.format(interview_focus=focus)
-        return MOCK_PROMPT_TEMPLATE.format(**fields)
+            return LLM_MOCK_PROMPT_TEMPLATE.format(interview_focus=focus) + vacancy_block
+        prompt = MOCK_PROMPT_TEMPLATE.format(**fields)
+        return prompt + vacancy_block
 
     return f"Ты ML/MLOps наставник. Тема: {title}. Помогай готовиться к интервью. Пиши по-русски."
 
