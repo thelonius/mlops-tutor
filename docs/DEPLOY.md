@@ -105,6 +105,59 @@ gh run rerun <run-id>          # повтор
 
 В большинстве случаев лечится `gh run rerun <run-id>`.
 
+## Добавление новых Python модулей
+
+При добавлении нового `.py` файла (например, `vacancy_provider.py`, `config.py` и т.д.) нужно обновить **две конфиги**:
+
+### 1. Обновить `.github/workflows/deploy.yml`
+
+В шаге "Copy files to server" добавить файл в whitelist:
+
+```yaml
+- name: Copy files to server
+  source: "app.py,curriculum.py,shares.py,new_module.py,requirements.txt,static/,data/tts_terms.tsv"
+```
+
+И в шаге "Verify prod == main (md5)" добавить файл в FILES:
+
+```bash
+FILES="app.py curriculum.py shares.py new_module.py requirements.txt static/dist/index.html data/tts_terms.tsv"
+```
+
+### 2. Обновить `docker-compose.yml` на сервере
+
+Добавить volume для нового модуля (на сервере в `/opt/mlops-tutor/docker-compose.yml`):
+
+```yaml
+volumes:
+  - ./app.py:/app/app.py:ro
+  - ./curriculum.py:/app/curriculum.py:ro
+  - ./new_module.py:/app/new_module.py:ro
+```
+
+**Важно:** После обновления docker-compose.yml на сервере нужно пересоздать контейнер:
+
+```bash
+cd /opt/mlops-tutor && docker compose up -d --force-recreate
+```
+
+### Пример: Как это выглядело при добавлении vacancy_provider.py
+
+**Ошибка без обновления:**
+```
+File "/app/app.py", line 8, in <module>
+  from curriculum import CURRICULUM, TOPICS, build_system_prompt
+File "/app/curriculum.py", line 2, in <module>
+  from vacancy_provider import Vacancy
+ModuleNotFoundError: No module named 'vacancy_provider'
+```
+
+**Решение:**
+1. Добавить `vacancy_provider.py` в deploy.yml whitelist
+2. Добавить volume в docker-compose.yml
+3. Запушить обновления в main
+4. После deploy пересоздать контейнер если нужно
+
 ## Откат
 
 Workflow откатов нет — потому что main линейный и всегда «последний правильный». Откатить = revert PR'а в main:
