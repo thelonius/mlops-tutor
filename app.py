@@ -4,19 +4,57 @@ import json
 import os
 import re
 from collections import OrderedDict
-from typing import Optional
 
 from curriculum import CURRICULUM, TOPICS, build_system_prompt
-from vacancy_provider import Vacancy
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, request, stream_with_context
 import asyncio
 import tempfile
 import edge_tts
 from openai import OpenAI
+import vacancy_provider
+
+def map_vacancy_to_topics(vacancy: vacancy_provider.Vacancy) -> list[str]:
+    """Select relevant topics from TOPICS based on vacancy stack and requirements."""
+    selected = set()
+    # Core MLOps topics that should almost always be there for a Senior role
+    core_mlops = {"containers", "k8s_basics", "system_design"}
+
+    # Convert vacancy info to a single lowercase string for matching
+    text_to_match = f"{vacancy.stack} {vacancy.requirements} {vacancy.title}".lower()
+
+    # Mapping of keywords to topic IDs
+    keyword_map = {
+        "containers": ["docker", "container", "podman"],
+        "k8s_basics": ["kubernetes", "k8s", "helm", "deployment"],
+        "k8s_storage": ["pvc", "pv", "storageclass", "nfs", "ebs"],
+        "k8s_gpu": ["gpu", "nvidia", "mig", "cuda", "device plugin"],
+        "model_formats": ["onnx", "tensorrt", "torchscript", "model format"],
+        "triton_basics": ["triton", "inference server", "config.pbtxt"],
+        "triton_advanced": ["dynamic batching", "ensemble", "perf_analyzer"],
+        "clearml": ["clearml", "mlflow", "experiment tracking", "model registry"],
+        "cicd": ["gitlab ci", "github actions", "argocd", "gitops", "helm"],
+        "monitoring": ["prometheus", "grafana", "drift", "evidently", "monitoring"],
+        "orchestration": ["airflow", "kubeflow", "dag", "pipeline"],
+        "system_design": ["system design", "architecture", "scalability", "ha"],
+    }
+
+    # 1. Add based on keywords
+    for topic_id, keywords in keyword_map.items():
+        if topic_id in TOPICS and any(kw in text_to_match for kw in keywords):
+            selected.add(topic_id)
+    
+    # 2. Ensure core topics are present if it's an MLOps/Infra role
+    if any(kw in text_to_match for kw in ["mlops", "infrastructure", "platform"]):
+        selected.update(core_mlops)
+        
+    # 3. Fallback: if nothing matches, return a basic set
+    if not selected:
+        return list(core_mlops)
+        
+    return list(selected)
 
 import shares
-import vacancy_provider
 
 load_dotenv()
 
@@ -61,41 +99,6 @@ MODELS = [
 ]
 
 
-def map_vacancy_to_topics(vacancy: Vacancy) -> list[str]:
-    """Select relevant topics from TOPICS based on vacancy stack and requirements."""
-    selected = set()
-    core_mlops = {"containers", "k8s_basics", "system_design"}
-
-    text_to_match = f"{vacancy.stack} {vacancy.requirements} {vacancy.title}".lower()
-
-    keyword_map = {
-        "containers": ["docker", "container", "podman"],
-        "k8s_basics": ["kubernetes", "k8s", "helm", "deployment"],
-        "k8s_storage": ["pvc", "pv", "storageclass", "nfs", "ebs"],
-        "k8s_gpu": ["gpu", "nvidia", "mig", "cuda", "device plugin"],
-        "model_formats": ["onnx", "tensorrt", "torchscript", "model format"],
-        "triton_basics": ["triton", "inference server", "config.pbtxt"],
-        "triton_advanced": ["dynamic batching", "ensemble", "perf_analyzer"],
-        "clearml": ["clearml", "mlflow", "experiment tracking", "model registry"],
-        "cicd": ["gitlab ci", "github actions", "argocd", "gitops", "helm"],
-        "monitoring": ["prometheus", "grafana", "drift", "evidently", "monitoring"],
-        "orchestration": ["airflow", "kubeflow", "dag", "pipeline"],
-        "system_design": ["system design", "architecture", "scalability", "ha"],
-    }
-
-    for topic_id, keywords in keyword_map.items():
-        if topic_id in TOPICS and any(kw in text_to_match for kw in keywords):
-            selected.add(topic_id)
-
-    if any(kw in text_to_match for kw in ["mlops", "infrastructure", "platform"]):
-        selected.update(core_mlops)
-
-    if not selected:
-        return list(core_mlops)
-
-    return list(selected)
-
-
 @app.route("/")
 def index():
     # React-шелл, собранный через Vite в static/dist/. Деплой CI делает
@@ -120,10 +123,11 @@ def get_vacancy_curriculum(vacancy_id):
     vacancy = vacancy_provider.provider.get_vacancy(vacancy_id)
     if not vacancy:
         return jsonify({"error": "Vacancy not found"}), 404
-
+    
+    # Map vacancy to a subset of topics
     relevant_topic_ids = map_vacancy_to_topics(vacancy)
     filtered_topics = {tid: TOPICS[tid] for tid in relevant_topic_ids if tid in TOPICS}
-
+    
     return jsonify({
         "vacancy": {
             "title": vacancy.title,
