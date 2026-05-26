@@ -9468,18 +9468,6 @@ CURRICULUM = [
         "topics": ["clearml", "cicd", "monitoring"],
     },
     {
-        "id": "mlops_networking",
-        "section": "MLOps",
-        "title": "Сетевые основы для MLOps",
-        "topics": ["networking_base"],
-    },
-    {
-        "id": "mlops_orchestration",
-        "section": "MLOps",
-        "title": "Оркестрация пайплайнов",
-        "topics": ["orchestration"],
-    },
-    {
         "id": "mlops_sysdesign_week",
         "section": "MLOps",
         "title": "System Design (MLOps трек)",
