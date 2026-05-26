@@ -72,6 +72,12 @@ jobs:
           script: |
             set -e
             cd /opt/mlops-tutor
+            echo "=== docker-compose.yml ==="
+            cat docker-compose.yml
+            echo "=== data/ on host ==="
+            ls -lh data/ || echo "no data/ dir"
+            echo "=== data/ in container ==="
+            docker compose exec -T app ls -lh /app/data/ || echo "no /app/data in container"
             docker compose restart app
             sleep 3
             docker compose logs app --tail=20
