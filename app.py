@@ -96,10 +96,13 @@ def map_vacancy_to_topics(vacancy: Vacancy) -> list[str]:
     return list(selected)
 
 
-@app.route("/")
-def index():
-    # React-шелл, собранный через Vite в static/dist/. Деплой CI делает
-    # `npm run build` в frontend/ и scp'ит результат рядом со static/.
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def index(path):
+    # Отдаем React SPA для всех не-API маршрутов — чтобы /vacancy/<id> тоже работал.
+    if path.startswith("api/"):
+        from flask import abort
+        abort(404)
     dist_path = os.path.join(app.static_folder, "dist", "index.html")
     if not os.path.exists(dist_path):
         return (
