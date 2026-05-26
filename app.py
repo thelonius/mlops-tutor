@@ -5,7 +5,6 @@ import os
 import re
 from collections import OrderedDict
 from typing import Optional
-import numpy as np
 
 from curriculum import CURRICULUM, TOPICS, build_system_prompt
 from vacancy_provider import Vacancy
@@ -63,17 +62,20 @@ MODELS = [
 
 
 _TOPIC_VECTORS: Optional[dict] = None
+_TOPIC_DIM: Optional[int] = None
 _TOPIC_VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "topic_vectors.json")
 _FALLBACK_TOPICS = ["containers", "k8s_basics", "system_design"]
 
 
 def _load_topic_vectors() -> Optional[dict]:
-    global _TOPIC_VECTORS
+    global _TOPIC_VECTORS, _TOPIC_DIM
     if _TOPIC_VECTORS is not None:
         return _TOPIC_VECTORS
     try:
         raw = json.loads(open(_TOPIC_VECTORS_PATH, encoding="utf-8").read())
-        _TOPIC_VECTORS = {tid: np.array(v, dtype=np.float32) for tid, v in raw.items() if tid in TOPICS}
+        _TOPIC_VECTORS = {tid: v for tid, v in raw.items() if tid in TOPICS}
+        if _TOPIC_VECTORS:
+            _TOPIC_DIM = len(next(iter(_TOPIC_VECTORS.values())))
         return _TOPIC_VECTORS
     except Exception as e:
         print(f"Warning: could not load topic vectors: {e}")
@@ -84,13 +86,11 @@ def map_vacancy_to_topics(vacancy: Vacancy, vacancy_id: Optional[str] = None, to
     topic_vecs = _load_topic_vectors()
     if topic_vecs and vacancy_id:
         vec = vacancy_provider.provider.get_vacancy_vector(vacancy_id)
-        if vec is not None and len(vec) > 0:
-            ids = list(topic_vecs.keys())
-            matrix = np.stack([topic_vecs[tid] for tid in ids])
-            if len(vec) == matrix.shape[1]:
-                scores = matrix @ vec
-                top_idx = np.argsort(scores)[::-1][:top_n]
-                return [ids[i] for i in top_idx]
+        if vec and len(vec) == _TOPIC_DIM:
+            # Vectors are pre-normalized → cosine similarity = dot product.
+            scored = [(tid, sum(a * b for a, b in zip(tvec, vec))) for tid, tvec in topic_vecs.items()]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            return [tid for tid, _ in scored[:top_n]]
 
     # Fallback: keyword matching
     selected = set()
