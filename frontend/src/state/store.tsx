@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { Group, Message, Mode, Topic } from '../types';
-import { fetchCurriculum } from '../api';
+import { fetchCurriculum, fetchVacancyCurriculum } from '../api';
 import {
   loadHistory,
   loadPreferredModel,
@@ -32,6 +32,8 @@ export interface State {
   topics: Record<string, Topic>;
   curriculumStatus: 'idle' | 'loading' | 'ready' | 'error';
   curriculumError: string | null;
+  vacancyId: string | null;
+  vacancy: { title: string; company: string; stack: string } | null;
 }
 
 export type Action =
@@ -48,7 +50,9 @@ export type Action =
   | { type: 'STREAM_END' }
   | { type: 'STREAM_ERROR'; error: string }
   | { type: 'MARK_DONE'; topic: string }
-  | { type: 'SET_MODEL'; model: string };
+  | { type: 'SET_MODEL'; model: string }
+  | { type: 'SET_VACANCY_ID'; vacancyId: string | null }
+  | { type: 'SET_VACANCY_DETAILS'; vacancy: { title: string; company: string; stack: string } | null };
 
 const initialState: State = {
   topic: null,
@@ -62,6 +66,8 @@ const initialState: State = {
   topics: {},
   curriculumStatus: 'idle',
   curriculumError: null,
+  vacancyId: null,
+  vacancy: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -140,6 +146,10 @@ function reducer(state: State, action: Action): State {
     }
     case 'SET_MODEL':
       return { ...state, preferredModel: action.model };
+    case 'SET_VACANCY_ID':
+      return { ...state, vacancyId: action.vacancyId };
+    case 'SET_VACANCY_DETAILS':
+      return { ...state, vacancy: action.vacancy };
     default:
       return state;
   }
@@ -158,19 +168,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     dispatch({ type: 'CURRICULUM_LOAD' });
-    fetchCurriculum()
-      .then((data) => {
+
+    // 1. Проверяем URL на наличие vacancy_id (в path или в query)
+    const path = window.location.pathname;
+    let vId = null;
+    if (path.startsWith('/vacancy/')) {
+      vId = path.split('/vacancy/')[1];
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      vId = params.get('vacancy_id');
+    }
+
+    if (vId) {
+      dispatch({ type: 'SET_VACANCY_ID', vacancyId: vId });
+    }
+
+    const loadData = async () => {
+      try {
+        let data;
+        if (vId) {
+          data = await fetchVacancyCurriculum(vId);
+          dispatch({
+            type: 'SET_VACANCY_ID',
+            vacancyId: vId,
+          });
+          // Сохраняем детали вакансии для UI-бейджа
+          if (data.vacancy) {
+            // Мы должны добавить экшен SET_VACANCY_DETAILS или использовать SET_VACANCY_ID
+            // Чтобы не плодить экшены, я расширю SET_VACANCY_ID или добавлю новый.
+            // Но сейчас просто использую dispatch с типом, который я добавлю в reducer.
+            dispatch({
+              type: 'SET_VACANCY_DETAILS',
+              vacancy: data.vacancy,
+            } as any);
+          }
+        } else {
+          data = await fetchCurriculum();
+        }
         if (cancelled) return;
         dispatch({
           type: 'CURRICULUM_READY',
           curriculum: data.curriculum,
           topics: data.topics,
         });
-      })
-      .catch((err: Error) => {
+      } catch (err: any) {
         if (cancelled) return;
         dispatch({ type: 'CURRICULUM_ERROR', error: err.message });
-      });
+      }
+    };
+
+    loadData();
     return () => {
       cancelled = true;
     };

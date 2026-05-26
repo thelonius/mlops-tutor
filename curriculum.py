@@ -869,6 +869,73 @@ TOPICS = {
              "content": "**Sequence batching требует sticky-роутинга.** Запросы одного `sequence_id` должны попадать к одному и тому же instance, иначе hidden state потеряется."},
         ],
     },
+    "networking_base": {
+        "title": "Сети для DevOps и MLOps",
+        "emoji": "🌐",
+        "week": 1,
+        "what": "OSI, TCP/UDP, DNS, HTTP/HTTPS, gRPC, L4/L7 Load Balancing, CIDR, Subnets",
+        "why": "Понимание того, как запрос доходит от пользователя до пода в K8s и почему gRPC быстрее REST для инференса",
+        "interview_focus": "gRPC vs REST, L4 vs L7 LB, DNS в Kubernetes (CoreDNS), CIDR и маски подсетей",
+        "track": "mlops",
+        "cheatsheet": [
+            {"q": "В чем разница между L4 и L7 балансировкой?", "a": "L4 работает на транспортном уровне (TCP/UDP) и перенаправляет пакеты по IP и порту. L7 работает на уровне приложения (HTTP/gRPC) и может маршрутизировать трафик на основе путей, заголовков или cookies."},
+            {"q": "Почему gRPC предпочтительнее REST для инференса моделей?", "a": "gRPC использует HTTP/2 (бинарный формат Protobuf вместо текстового JSON), поддерживает стриминг ( bidirectional streaming) и имеет более эффективную сериализацию. Это снижает latency и нагрузку на CPU."},
+            {"q": "Что такое CIDR и зачем он в K8s?", "a": "CIDR (Classless Inter-Domain Routing) задает диапазон IP-адресов (например, 10.0.0.0/16). В K8s используется для выделения отдельных диапазонов IP для подов (PodCIDR) и сервисов (ServiceCIDR)."},
+            {"q": "Как работает DNS внутри Kubernetes?", "a": "CoreDNS запускается в кластере. Поды могут обращаться к сервисам по имени: `<service-name>.<namespace>.svc.cluster.local`. Это позволяет менять поды, не меняя IP в конфигурациях."},
+            {"q": "Разница TCP vs UDP в контексте ML?", "a": "TCP гарантирует доставку и порядок (нужен для REST/gRPC). UDP быстрее, но не гарантирует доставку (используется в некоторых системах мониторинга, например StatsD, или в реальном времени стриминге)."},
+            {"q": "Что такое Ingress-контроллер?", "a": "L7-балансировщик (обычно Nginx или Envoy), который управляет внешним доступом в кластер, предоставляя правила маршрутизации (например, /v1/predict -> service-v1)."},
+            {"q": "Как работает HTTP/2 в gRPC?", "a": "Использует мультиплексирование (несколько запросов в одном TCP-соединении), сжатие заголовков (HPACK) и server push. Это решает проблему head-of-line blocking, которая была в HTTP/1.1."},
+            {"q": "Что такое MTU и почему он важен для GPU-кластеров?", "a": "MTU (Maximum Transmission Unit) — максимальный размер пакета. Для передачи больших тензоров между нодами (Distributed Training) используют Jumbo Frames (MTU 9000), чтобы уменьшить оверхед на заголовки пакетов."},
+        ],
+        "cheatsheet_blocks": [
+            {"type": "tldr",
+             "content": "Сети — это путь данных от клиента до GPU. **L4** (TCP/UDP) — быстро и просто, **L7** (HTTP/gRPC) — гибко и умно. **gRPC + Protobuf** — стандарт для высоконагруженного инференса. **CoreDNS** обеспечивает именование в K8s, а **CIDR** — управление IP-адресами."},
+            {
+                "type": "compare",
+                "title": "gRPC vs REST",
+                "items": [
+                    {"title": "gRPC",
+                     "points": [
+                         "HTTP/2 (Binary)",
+                         "Protobuf (строгая схема)",
+                         "Bidirectional streaming",
+                         "Высокая производительность",
+                     ]},
+                    {"title": "REST",
+                     "points": [
+                         "HTTP/1.1 (Text/JSON)",
+                         "Гибкость (без схемы)",
+                         "Простой дебаг через curl",
+                         "Выше latency, больше оверхед",
+                     ]},
+                ],
+            },
+            {
+                "type": "table",
+                "title": "Уровни OSI для DevOps",
+                "headers": ["Уровень", "Название", "Что там происходит", "Инструмент/Протокол"],
+                "rows": [
+                    ["L3", "Network", "Маршрутизация по IP", "IP, ICMP, Router"],
+                    ["L4", "Transport", "Доставка портов, сессии", "TCP, UDP, L4 LB"],
+                    ["L7", "Application", "Бизнес-логика, пути, заголовки", "HTTP, gRPC, DNS, Ingress"],
+                ],
+            },
+            {
+                "type": "kv",
+                "title": "Полезные команды",
+                "items": [
+                    {"k": "`dig <service>.<ns>.svc.cluster.local`", "v": "проверить DNS в K8s"},
+                    {"k": "`curl -v http://...`",                "v": "отладить L7 запрос"},
+                    {"k": "`tcpdump -i eth0 port 80`",             "v": "захват пакетов (L4/L3)"},
+                    {"k": "`netstat -tulpn`",                      "v": "посмотреть открытые порты"},
+                ],
+            },
+            {"type": "callout", "kind": "tip",
+             "content": "**gRPC — это не только скорость, но и контракт.** `.proto` файл служит документацией API, которую нельзя случайно изменить без пересборки клиента и сервера."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**L4 Load Balancers не видят HTTP-пути.** Если вам нужно маршрутизировать `/predict` на один под, а `/health` на другой — используйте Ingress (L7)."},
+        ],
+    },
     "orchestration": {
         "title": "Оркестрация ML-пайплайнов",
         "emoji": "⚙️",
@@ -898,53 +965,63 @@ TOPICS = {
                      "points": [
                          "Универсальный (не только ML)",
                          "Задачи могут быть в одном процессе или разными workers",
-                         "Простой для DevOps",
-                         "Опасность: state machine сложностью могут разойтись",
+                         "Богатый набор операторов",
+                         "Сложный деплой и масштабирование",
                      ]},
-                    {"title": "Kubeflow Pipelines",
+                    {"title": "Kubeflow (KFP)",
                      "points": [
-                         "Для ML (но не только)",
-                         "Каждый шаг — отдельный контейнер (K8s Pod)",
-                         "Встроённая поддержка ML-артефактов и метрик",
-                         "Требует K8s, более сложная диагностика",
+                         "Рождён для ML в K8s",
+                         "**Каждый шаг — отдельный контейнер**",
+                         "Нативная работа с артефактами",
+                         "Интеграция с K8s-ресурсами",
                      ]},
-                ],
-            },
-            {
-                "type": "table",
-                "title": "Ключевые концепты",
-                "headers": ["Концепт", "Определение", "Пример"],
-                "rows": [
-                    ["DAG", "Граф зависимостей между задачами", "Task A → Task B → Task C"],
-                    ["XCom", "Маленькое сообщение между задачами", "task_1.xcom_pull(task_ids='task_0')"],
-                    ["Backfill", "Запуск по историческим датам", "airflow dags backfill --start-date 2026-01-01"],
-                    ["Idempotency", "Одинаковый результат при переходе", "Нет дублей при retry на 3-м шаге"],
                 ],
             },
             {
                 "type": "code",
                 "lang": "python",
                 "caption": "Простой DAG в Airflow",
-                "code": "from airflow import DAG\nfrom airflow.operators.bash import BashOperator\nfrom datetime import datetime\n\ndag = DAG(\n    'my_ml_pipeline',\n    start_date=datetime(2026, 5, 1),\n    schedule_interval='@weekly',\n    catchup=False\n)\n\nfetch = BashOperator(task_id='fetch_data', bash_command='python fetch.py', dag=dag)\ntrain = BashOperator(task_id='train_model', bash_command='python train.py', dag=dag)\nevaluate = BashOperator(task_id='evaluate', bash_command='python eval.py', dag=dag)\n\nfetch >> train >> evaluate\n"
+                "code": (
+                    "from airflow import DAG\n"
+                    "from airflow.operators.python import PythonOperator\n"
+                    "from datetime import datetime\n\n"
+                    "def extract(): print('Extracting data...')\n"
+                    "def transform(): print('Transforming data...')\n"
+                    "def load(): print('Loading model...')\n\n"
+                    "with DAG('ml_pipeline', start_date=datetime(2026, 1, 1), schedule='@daily') as dag:\n"
+                    "    t1 = PythonOperator(task_id='extract', python_callable=extract)\n"
+                    "    t2 = PythonOperator(task_id='transform', python_callable=transform)\n"
+                    "    t3 = PythonOperator(task_id='load', python_callable=load)\n\n"
+                    "    t1 >> t2 >> t3  # Линейная зависимость"
+                ),
             },
             {
                 "type": "kv",
-                "title": "Полезные команды Airflow",
+                "title": "Ключевые концепты",
                 "items": [
-                    {"k": "`airflow dags list`",                   "v": "список всех DAGs"},
-                    {"k": "`airflow tasks list my_dag`",            "v": "список задач в DAG"},
-                    {"k": "`airflow dags trigger -e 2026-05-01 my_dag`", "v": "запустить DAG вручную"},
-                    {"k": "`airflow db reset`",                      "v": "очистить metadata БД (только локально!)"},
+                    {"k": "**XComs**",        "v": "маленькие сообщения между задачами (metadata)"},
+                    {"k": "**S3/Shared Vol**", "v": "передача больших данных (датасеты, веса)"},
+                    {"k": "**Backfill**",      "v": "запуск за прошлые даты"},
+                    {"k": "**SLA**",            "v": "оповещение, если задача выполняется слишком долго"},
+                    {"k": "**Idempotency**",    "v": "повторный запуск $\neq$ дублирование данных"},
                 ],
             },
-            {"type": "callout", "kind": "fact",
-             "content": "**Airflow не выполняет задачи в одном контейнере.** Даже если всё запущено на одной машине, задача может быть запущена в отдельном процессе (CeleryExecutor) или Pod-е (KubernetesExecutor). Это делает пайплайны устойчивыми: упал worker — Scheduler переведет задачу на другой worker."},
-            {"type": "callout", "kind": "warning",
-             "content": "**schedule_interval — это конец периода, а не начало.** DAG с `schedule_interval='@daily'` запускается В КОНЦЕ дня (полночь). Первый запуск происходит на день позже, чем `start_date`. Этого ловят ошибками в даталейне."},
-            {"type": "callout", "kind": "gotcha",
-             "content": "**XComs по умолчанию сохраняют pickle.** Если между шагами передаёте большие данные, XCom упадёт. Решение: сохранить результат в S3/HDFS, передать только путь. Или используйте Kubeflow + артефакты (встроено)."},
+            {
+                "type": "flow",
+                "title": "Проектирование пайплайна",
+                "branches": [
+                    {"condition": "данные в БД, простая логика",       "outcome": "Airflow + SQLOperator"},
+                    {"condition": "сложный ML, GPU-шаги, K8s",         "outcome": "**Kubeflow Pipelines**"},
+                    {"condition": "нужен event-driven запуск",         "outcome": "Airflow Sensor или Kafka Trigger"},
+                    {"condition": "огромные объемы данных",             "outcome": "Airflow как оркестратор $\rightarrow$ Spark/Flink как исполнитель"},
+                ],
+            },
             {"type": "callout", "kind": "tip",
-             "content": "**KFP компилирует Python-код в YAML-манифесты Argo, которые затем исполняются в K8s как Pod-ы."},
+             "content": "**Не передавайте датасеты через XCom.** XCom хранит данные в базе Airflow. Попытка передать Pandas DataFrame на 1GB положит базу. Передавайте путь к S3-файлу."},
+            {"type": "callout", "kind": "gotcha",
+             "content": "**Ловушка `execution_date`.** В Airflow `ds` — это дата начала периода, а не дата запуска. Если вы запустили DAG 26-го за 25-е, `ds` будет '2026-05-25'. Используйте это для корректного фильтра данных."},
+            {"type": "callout", "kind": "fact",
+             "content": "**KFP — это обертка над Argo Workflows.** По сути, KFP компилирует Python-код в YAML-манифесты Argo, которые затем исполняются в K8s как Pod-ы."},
         ],
     },
     "clearml": {
@@ -9369,73 +9446,6 @@ TOPICS = {
              "content": "**Полный prompt в логи = риск compliance.** Промпт может содержать пользовательский PII, медицинские данные, секреты, которые юзер случайно вставил. Минимум: маскирование в проде, allowlist полей, отдельный compliance-режим (Langfuse/LangSmith умеют скрывать content полностью). GDPR/HIPAA-аудит этого специально проверяют."},
         ],
     },
-    "networking_base": {
-        "title": "Сети для DevOps и MLOps",
-        "emoji": "🌍",
-        "week": 1,
-        "what": "OSI, TCP/UDP, DNS, HTTP/HTTPS, gRPC, L4/L7 Load Balancing, CIDR, Subnets",
-        "why": "Понимание того, как запрос доходит от пользователя до пода в K8s и почему gRPC быстрее REST для инференса",
-        "interview_focus": "gRPC vs REST, L4 vs L7 LB, DNS в Kubernetes (CoreDNS), CIDR и маски подсетей",
-        "track": "mlops",
-        "cheatsheet": [
-            {"q": "В чем разница между L4 и L7 балансировкой?", "a": "L4 работает на транспортном уровне (TCP/UDP) и перенаправляет пакеты по IP и порту. L7 работает на уровне приложения (HTTP/gRPC) и может маршрутизировать трафик на основе путей, заголовков или cookies."},
-            {"q": "Почему gRPC предпочтительнее REST для инференса моделей?", "a": "gRPC использует HTTP/2 (бинарный формат Protobuf вместо текстового JSON), поддерживает стриминг ( bidirectional streaming) и имеет более эффективную сериализацию. Это снижает latency и нагрузку на CPU."},
-            {"q": "Что такое CIDR и зачем он в K8s?", "a": "CIDR (Classless Inter-Domain Routing) задает диапазон IP-адресов (например, 10.0.0.0/16). В K8s используется для выделения отдельных диапазонов IP для подов (PodCIDR) и сервисов (ServiceCIDR)."},
-            {"q": "Как работает DNS внутри Kubernetes?", "a": "CoreDNS запускается в кластере. Поды могут обращаться к сервисам по имени: `<service-name>.<namespace>.svc.cluster.local`. Это позволяет менять поды, не меняя IP в конфигурациях."},
-            {"q": "Разница TCP vs UDP в контексте ML?", "a": "TCP гарантирует доставку и порядок (нужен для REST/gRPC). UDP быстрее, но не гарантирует доставку (используется в некоторых системах мониторинга, например StatsD, или в реальном времени стриминге)."},
-            {"q": "Что такое Ingress-контроллер?", "a": "L7-балансировщик (обычно Nginx или Envoy), который управляет внешним доступом в кластер, предоставляя правила маршрутизации (например, /v1/predict -> service-v1)."},
-            {"q": "Как работает HTTP/2 в gRPC?", "a": "Использует мультиплексирование (несколько запросов в одном TCP-соединении), сжатие заголовков (HPACK) и server push. Это решает проблему head-of-line blocking, которая была в HTTP/1.1."},
-            {"q": "Что такое MTU и почему он важен для GPU-кластеров?", "a": "MTU (Maximum Transmission Unit) — максимальный размер пакета. Для передачи больших тензоров между нодами (Distributed Training) используют Jumbo Frames (MTU 9000), чтобы уменьшить оверхед на заголовки пакетов."},
-        ],
-        "cheatsheet_blocks": [
-            {"type": "tldr",
-             "content": "Сети — это путь данных от клиента до GPU. **L4** (TCP/UDP) — быстро и просто, **L7** (HTTP/gRPC) — гибко и умно. **gRPC + Protobuf** — стандарт для высоконагруженного инференса. **CoreDNS** обеспечивает именование в K8s, а **CIDR** — управление IP-адресами."},
-            {
-                "type": "compare",
-                "title": "gRPC vs REST",
-                "items": [
-                    {"title": "gRPC",
-                     "points": [
-                         "HTTP/2 (Binary)",
-                         "Protobuf (строгая схема)",
-                         "Bidirectional streaming",
-                         "Высокая производительность",
-                     ]},
-                    {"title": "REST",
-                     "points": [
-                         "HTTP/1.1 (Text/JSON)",
-                         "Гибкость (без схемы)",
-                         "Простой дебаг через curl",
-                         "Выше latency, больше оверхед",
-                     ]},
-                ],
-            },
-            {
-                "type": "table",
-                "title": "Уровни OSI для DevOps",
-                "headers": ["Уровень", "Название", "Что там происходит", "Инструмент/Протокол"],
-                "rows": [
-                    ["L3", "Network", "Маршрутизация по IP", "IP, ICMP, Router"],
-                    ["L4", "Transport", "Доставка портов, сессии", "TCP, UDP, L4 LB"],
-                    ["L7", "Application", "Бизнес-логика, пути, заголовки", "HTTP, gRPC, DNS, Ingress"],
-                ],
-            },
-            {
-                "type": "kv",
-                "title": "Полезные команды",
-                "items": [
-                    {"k": "`dig <service>.<ns>.svc.cluster.local`", "v": "проверить DNS в K8s"},
-                    {"k": "`curl -v http://...`",                "v": "отладить L7 запрос"},
-                    {"k": "`tcpdump -i eth0 port 80`",             "v": "захват пакетов (L4/L3)"},
-                    {"k": "`netstat -tulpn`",                      "v": "посмотреть открытые порты"},
-                ],
-            },
-            {"type": "callout", "kind": "tip",
-             "content": "**gRPC — это не только скорость, но и контракт.** `.proto` файл служит документацией API, которую нельзя случайно изменить без пересборки клиента и сервера."},
-            {"type": "callout", "kind": "gotcha",
-             "content": "**L4 Load Balancers не видят HTTP-пути.** Если вам нужно маршрутизировать `/predict` на один под, а `/health` на другой — используйте Ingress (L7)."},
-        ],
-    },
 }
 
 CURRICULUM = [
@@ -9446,22 +9456,10 @@ CURRICULUM = [
         "topics": ["containers", "k8s_basics", "k8s_storage", "k8s_gpu"],
     },
     {
-        "id": "mlops_networking",
-        "section": "MLOps",
-        "title": "Сетевая инфраструктура",
-        "topics": ["networking_base"],
-    },
-    {
         "id": "mlops_inference",
         "section": "MLOps",
         "title": "Модели и Inference",
         "topics": ["model_formats", "triton_basics", "triton_advanced"],
-    },
-    {
-        "id": "mlops_orchestration",
-        "section": "MLOps",
-        "title": "Оркестрация пайплайнов",
-        "topics": ["orchestration"],
     },
     {
         "id": "mlops_practice",
@@ -9629,23 +9627,22 @@ def build_system_prompt(topic_id: str, mode: str, vacancy_data: Optional[Vacancy
     track = TRACKS.get(track_id, TRACKS["mlops"])
 
     # Динамический блок вакансии: если передан vacancy_data, он переопределяет
-    # target_position и company из TRACKS
+    # базовые настройки трека под конкретную цель.
     mentor_role = track["mentor_role"]
     target_position = track["target_position"]
+    company_details = track.get("company_details", "")
+    company_name = track.get("company", "")
     student_profile = track["student_profile"]
     mock_identity = track["mock_identity"]
     mock_target = track["mock_target"]
+
     vacancy_block = ""
     if vacancy_data:
         company_name = vacancy_data.company
         target_position = vacancy_data.title
         company_details = f"Стек: {vacancy_data.stack}. Требования: {vacancy_data.requirements}. Вайб: {vacancy_data.vibes}"
-    else:
-        company_name = track.get("company", "")
-        company_details = track.get("company_details", "")
-
-    vacancy_block = ""
-    if vacancy_data:
+        mock_identity = f"Senior MLOps Engineer из {company_name}"
+        mock_target = f"{target_position} в {company_name}"
         vacancy_block = f"\n\nЦЕЛЬ: Готовимся конкретно под вакансию {target_position} в {company_name}.\n" \
                         f"Стек: {vacancy_data.stack}\n" \
                         f"Особые требования: {vacancy_data.requirements}"
@@ -9670,7 +9667,7 @@ def build_system_prompt(topic_id: str, mode: str, vacancy_data: Optional[Vacancy
     }
 
     if mode == "learn":
-        # Добавляем vacancy_block в конец промпта
+        # Добавляем vacancy_block в начало или конец промпта
         prompt = LEARN_PROMPT_TEMPLATE.format(**fields)
         return prompt + vacancy_block
     if mode == "quiz":

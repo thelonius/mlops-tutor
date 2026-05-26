@@ -36,7 +36,7 @@ function* parseSseLines(buffer: string): Generator<SseEvent | '[DONE]'> {
 }
 
 export function useChatStream() {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
@@ -57,6 +57,7 @@ export function useChatStream() {
             topic_id: topicId,
             mode,
             model,
+            vacancy_id: state.vacancyId,
           }),
           signal: ctrl.signal,
         });

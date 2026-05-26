@@ -12,6 +12,47 @@ import asyncio
 import tempfile
 import edge_tts
 from openai import OpenAI
+import vacancy_provider
+
+def map_vacancy_to_topics(vacancy: vacancy_provider.Vacancy) -> list[str]:
+    \"\"\"Select relevant topics from TOPICS based on vacancy stack and requirements.\"\"\"
+    selected = set()
+    # Core MLOps topics that should almost always be there for a Senior role
+    core_mlops = {"containers", "k8s_basics", "system_design"}
+    
+    # Convert vacancy info to a single lowercase string for matching
+    text_to_match = f\"{vacancy.stack} {vacancy.requirements} {vacancy.title}\".lower()
+    
+    # Mapping of keywords to topic IDs
+    keyword_map = {
+        \"containers\": [\"docker\", \"container\", \"podman\"],
+        \"k8s_basics\": [\"kubernetes\", \"k8s\", \"helm\", \"deployment\"],
+        \"k8s_storage\": [\"pvc\", \"pv\", \"storageclass\", \"nfs\", \"ebs\"],
+        \"k8s_gpu\": [\"gpu\", \"nvidia\", \"mig\", \"cuda\", \"device plugin\"],
+        \"model_formats\": [\"onnx\", \"tensorrt\", \"torchscript\", \"model format\"],
+        \"triton_basics\": [\"triton\", \"inference server\", \"config.pbtxt\"],
+        \"triton_advanced\": [\"dynamic batching\", \"ensemble\", \"perf_analyzer\"],
+        \"clearml\": [\"clearml\", \"mlflow\", \"experiment tracking\", \"model registry\"],
+        \"cicd\": [\"gitlab ci\", \"github actions\", \"argocd\", \"gitops\", \"helm\"],
+        \"monitoring\": [\"prometheus\", \"grafana\", \"drift\", \"evidently\", \"monitoring\"],
+        \"orchestration\": [\"airflow\", \"kubeflow\", \"dag\", \"pipeline\"],
+        \"system_design\": [\"system design\", \"architecture\", \"scalability\", \"ha\"],
+    }
+
+    # 1. Add based on keywords
+    for topic_id, keywords in keyword_map.items():
+        if topic_id in TOPICS and any(kw in text_to_match for kw in keywords):
+            selected.add(topic_id)
+    
+    # 2. Ensure core topics are present if it's an MLOps/Infra role
+    if any(kw in text_to_match for kw in [\"mlops\", \"infrastructure\", \"platform\"]):
+        selected.update(core_mlops)
+        
+    # 3. Fallback: if nothing matches, return a basic set
+    if not selected:
+        return list(core_mlops)
+        
+    return list(selected)
 
 import shares
 
@@ -77,6 +118,27 @@ def get_curriculum():
     return jsonify({"curriculum": CURRICULUM, "topics": TOPICS})
 
 
+@app.route("/api/curriculum/vacancy/<vacancy_id>")
+def get_vacancy_curriculum(vacancy_id):
+    vacancy = vacancy_provider.provider.get_vacancy(vacancy_id)
+    if not vacancy:
+        return jsonify({"error": "Vacancy not found"}), 404
+    
+    # Map vacancy to a subset of topics
+    relevant_topic_ids = map_vacancy_to_topics(vacancy)
+    filtered_topics = {tid: TOPICS[tid] for tid in relevant_topic_ids if tid in TOPICS}
+    
+    return jsonify({
+        "vacancy": {
+            "title": vacancy.title,
+            "company": vacancy.company,
+            "stack": vacancy.stack
+        },
+        "curriculum": CURRICULUM,
+        "topics": filtered_topics
+    })
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.json
@@ -84,13 +146,18 @@ def chat():
     topic_id = data.get("topic_id") or ""
     mode = data.get("mode", "learn")
     preferred = data.get("model", MODELS[0])
+    vacancy_id = data.get("vacancy_id")
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
     if not topic_id or topic_id not in TOPICS:
         return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
 
-    system_prompt = build_system_prompt(topic_id, mode)
+    vacancy_data = None
+    if vacancy_id:
+        vacancy_data = vacancy_provider.provider.get_vacancy(vacancy_id)
+
+    system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
 
     chat_history = [
         {"role": m["role"] if m["role"] == "user" else "assistant", "content": m["content"]}

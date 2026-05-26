@@ -83,6 +83,11 @@ export default function App() {
           <span className="header-topic">
             {topic && topics[topic] ? topics[topic].title : 'Выбери тему →'}
           </span>
+          {state.vacancy && (
+            <span className="vacancy-badge">
+              🎯 {state.vacancy.company}
+            </span>
+          )}
           <PlanetaryIndicator />
           <ModelSelect />
           <span className={`mode-badge ${cfg.badge}`}>{cfg.label}</span>
