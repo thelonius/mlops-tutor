@@ -4241,7 +4241,7 @@ TOPICS = {
     },
     "py_fastapi": {
         "title": "FastAPI",
-        "emoji": "🌐",
+        "emoji": "📱",
         "subject": "python",
         "block": "python",
         "what": "Роутеры, path/query/body параметры, response_model, Depends, dependency injection, middleware, exception handlers, BackgroundTasks, lifespan, WebSockets, OpenAPI, тестирование через TestClient",
@@ -9472,6 +9472,18 @@ CURRICULUM = [
         "section": "MLOps",
         "title": "System Design (MLOps трек)",
         "topics": ["system_design"],
+    },
+    {
+        "id": "mlops_networking",
+        "section": "MLOps",
+        "title": "Сети и протоколы",
+        "topics": ["networking_base"],
+    },
+    {
+        "id": "mlops_orchestration",
+        "section": "MLOps",
+        "title": "Оркестрация пайплайнов",
+        "topics": ["orchestration"],
     },
     {
         "id": "ml_classic",
