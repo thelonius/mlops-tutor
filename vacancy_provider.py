@@ -2,6 +2,7 @@ import sqlite3
 import os
 from dataclasses import dataclass
 from typing import Optional
+import numpy as np
 
 @dataclass
 class Vacancy:
@@ -52,6 +53,24 @@ class VacancyProvider:
                 )
         except Exception as e:
             print(f"Error fetching vacancy {short_id}: {e}")
+        return None
+
+    def get_vacancy_vector(self, short_id: str) -> Optional[np.ndarray]:
+        db_path = _find_db()
+        try:
+            if not os.path.exists(db_path):
+                return None
+            conn = sqlite3.connect(db_path)
+            row = conn.execute(
+                "SELECT vector, vector_dim FROM vacancies WHERE short_id = ?",
+                (short_id,)
+            ).fetchone()
+            conn.close()
+            if row and row[0]:
+                vec = np.frombuffer(row[0], dtype=np.float32).copy()
+                return vec
+        except Exception as e:
+            print(f"Error fetching vector for {short_id}: {e}")
         return None
 
     @property
