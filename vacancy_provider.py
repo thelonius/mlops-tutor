@@ -29,7 +29,6 @@ class VacancyProvider:
             self.db_path = db_path
 
     def get_vacancy(self, short_id: str) -> Optional[Vacancy]:
-        """Fetch vacancy details by short_id from the jobs warehouse."""
         try:
             if not os.path.exists(self.db_path):
                 return None
@@ -37,9 +36,9 @@ class VacancyProvider:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
+
             cursor.execute(
-                "SELECT short_id, title, company, stack, requirements, vibes FROM vacancies WHERE short_id = ?", 
+                "SELECT short_id, title, company, stack, requirements, vibes FROM vacancies WHERE short_id = ?",
                 (short_id,)
             )
             row = cursor.fetchone()
@@ -58,5 +57,4 @@ class VacancyProvider:
             print(f"Error fetching vacancy {short_id}: {e}")
         return None
 
-# Singleton instance
 provider = VacancyProvider()
