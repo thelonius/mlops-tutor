@@ -59,7 +59,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "app.py,curriculum.py,shares.py,vacancy_provider.py,requirements.txt,static/,data/tts_terms.tsv,data/jobs_warehouse.sqlite"
+          source: "app.py,curriculum.py,shares.py,vacancy_provider.py,requirements.txt,static/,data/tts_terms.tsv,data/jobs_warehouse.sqlite,data/topic_vectors.json"
           target: /opt/mlops-tutor/
           strip_components: 0
 
@@ -110,7 +110,7 @@ jobs:
           # старые ассеты от прошлых деплоев — это безвредный мусор,
           # никто на них не ссылается. Если когда-то начнёт мешать,
           # добавим отдельный шаг prune через `find -mtime`.
-          FILES="app.py curriculum.py shares.py vacancy_provider.py requirements.txt static/dist/index.html data/tts_terms.tsv data/jobs_warehouse.sqlite"
+          FILES="app.py curriculum.py shares.py vacancy_provider.py requirements.txt static/dist/index.html data/tts_terms.tsv data/jobs_warehouse.sqlite data/topic_vectors.json"
 
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
               -o ConnectTimeout=10 \

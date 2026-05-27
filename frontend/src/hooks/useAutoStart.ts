@@ -22,7 +22,7 @@ function initialOpener(mode: Mode, title: string): string | null {
 // ключ (topic, mode) — стартуем не более одного раза для пары.
 export function useAutoStart() {
   const { state } = useStore();
-  const { topic, mode, messages, streaming, topics, curriculumStatus, preferredModel } = state;
+  const { topic, mode, messages, streaming, topics, curriculumStatus, preferredModel, vacancy } = state;
   const { send } = useChatStream();
 
   const firedKeyRef = useRef<string | null>(null);
@@ -33,9 +33,20 @@ export function useAutoStart() {
     if (streaming) return;
     if (messages.length > 0) return;
 
-    const t = topics[topic];
-    if (!t) return;
-    const opener = initialOpener(mode, t.title);
+    let opener: string | null = null;
+
+    if (topic === '__vacancy__') {
+      // Адаптивное интервью по вакансии — не нужен конкретный топик
+      const pos = vacancy
+        ? `${vacancy.title}${vacancy.company ? ` в ${vacancy.company}` : ''}`
+        : 'эту вакансию';
+      opener = `Готов. Претендую на позицию «${pos}».`;
+    } else {
+      const t = topics[topic];
+      if (!t) return;
+      opener = initialOpener(mode, t.title);
+    }
+
     if (!opener) return;
 
     const key = `${topic}|${mode}`;
@@ -48,6 +59,7 @@ export function useAutoStart() {
       topicId: topic,
       mode,
       model: preferredModel,
+      vacancyId: state.vacancyId,
     });
-  }, [curriculumStatus, topic, mode, messages.length, streaming, topics, preferredModel, send]);
+  }, [curriculumStatus, topic, mode, messages.length, streaming, topics, preferredModel, vacancy, send]);
 }

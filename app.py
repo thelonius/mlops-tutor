@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 from typing import Optional
 
-from curriculum import CURRICULUM, TOPICS, build_system_prompt
+from curriculum import CURRICULUM, TOPICS, build_system_prompt, build_vacancy_interview_prompt
 from vacancy_provider import Vacancy
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, request, stream_with_context
@@ -61,39 +61,56 @@ MODELS = [
 ]
 
 
-def map_vacancy_to_topics(vacancy: Vacancy) -> list[str]:
-    """Select relevant topics from TOPICS based on vacancy stack and requirements."""
+_TOPIC_VECTORS: Optional[dict] = None
+_TOPIC_DIM: Optional[int] = None
+_TOPIC_VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "topic_vectors.json")
+_FALLBACK_TOPICS = ["containers", "k8s_basics", "system_design"]
+
+
+def _load_topic_vectors() -> Optional[dict]:
+    global _TOPIC_VECTORS, _TOPIC_DIM
+    if _TOPIC_VECTORS is not None:
+        return _TOPIC_VECTORS
+    try:
+        raw = json.loads(open(_TOPIC_VECTORS_PATH, encoding="utf-8").read())
+        _TOPIC_VECTORS = {tid: v for tid, v in raw.items() if tid in TOPICS}
+        if _TOPIC_VECTORS:
+            _TOPIC_DIM = len(next(iter(_TOPIC_VECTORS.values())))
+        return _TOPIC_VECTORS
+    except Exception as e:
+        print(f"Warning: could not load topic vectors: {e}")
+        return None
+
+
+def map_vacancy_to_topics(vacancy: Vacancy, vacancy_id: Optional[str] = None, top_n: int = 8) -> list[str]:
+    topic_vecs = _load_topic_vectors()
+    if topic_vecs and vacancy_id:
+        vec = vacancy_provider.provider.get_vacancy_vector(vacancy_id)
+        if vec and len(vec) == _TOPIC_DIM:
+            # Vectors are pre-normalized → cosine similarity = dot product.
+            scored = [(tid, sum(a * b for a, b in zip(tvec, vec))) for tid, tvec in topic_vecs.items()]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            return [tid for tid, _ in scored[:top_n]]
+
+    # Fallback: keyword matching
     selected = set()
-    core_mlops = {"containers", "k8s_basics", "system_design"}
-
-    text_to_match = f"{vacancy.stack} {vacancy.requirements} {vacancy.title}".lower()
-
+    text = f"{vacancy.stack} {vacancy.requirements} {vacancy.title}".lower()
     keyword_map = {
-        "containers": ["docker", "container", "podman"],
-        "k8s_basics": ["kubernetes", "k8s", "helm", "deployment"],
-        "k8s_storage": ["pvc", "pv", "storageclass", "nfs", "ebs"],
-        "k8s_gpu": ["gpu", "nvidia", "mig", "cuda", "device plugin"],
-        "model_formats": ["onnx", "tensorrt", "torchscript", "model format"],
-        "triton_basics": ["triton", "inference server", "config.pbtxt"],
-        "triton_advanced": ["dynamic batching", "ensemble", "perf_analyzer"],
-        "clearml": ["clearml", "mlflow", "experiment tracking", "model registry"],
-        "cicd": ["gitlab ci", "github actions", "argocd", "gitops", "helm"],
-        "monitoring": ["prometheus", "grafana", "drift", "evidently", "monitoring"],
-        "orchestration": ["airflow", "kubeflow", "dag", "pipeline"],
-        "system_design": ["system design", "architecture", "scalability", "ha"],
+        "containers": ["docker", "container"],
+        "k8s_basics": ["kubernetes", "k8s", "helm"],
+        "k8s_gpu": ["gpu", "cuda", "nvidia"],
+        "model_formats": ["onnx", "tensorrt"],
+        "triton_basics": ["triton", "inference server"],
+        "clearml": ["clearml", "mlflow"],
+        "cicd": ["gitlab ci", "github actions", "argocd"],
+        "monitoring": ["prometheus", "grafana", "evidently"],
+        "orchestration": ["airflow", "kubeflow"],
+        "system_design": ["system design", "architecture"],
     }
-
-    for topic_id, keywords in keyword_map.items():
-        if topic_id in TOPICS and any(kw in text_to_match for kw in keywords):
-            selected.add(topic_id)
-
-    if any(kw in text_to_match for kw in ["mlops", "infrastructure", "platform"]):
-        selected.update(core_mlops)
-
-    if not selected:
-        return list(core_mlops)
-
-    return list(selected)
+    for tid, kws in keyword_map.items():
+        if tid in TOPICS and any(kw in text for kw in kws):
+            selected.add(tid)
+    return list(selected) or _FALLBACK_TOPICS
 
 
 @app.route("/", defaults={"path": ""})
@@ -124,14 +141,16 @@ def get_vacancy_curriculum(vacancy_id):
     if not vacancy:
         return jsonify({"error": "Vacancy not found"}), 404
 
-    relevant_topic_ids = map_vacancy_to_topics(vacancy)
+    relevant_topic_ids = map_vacancy_to_topics(vacancy, vacancy_id=vacancy_id)
     filtered_topics = {tid: TOPICS[tid] for tid in relevant_topic_ids if tid in TOPICS}
 
     return jsonify({
         "vacancy": {
             "title": vacancy.title,
             "company": vacancy.company,
-            "stack": vacancy.stack
+            "stack": vacancy.stack,
+            "requirements": vacancy.requirements,
+            "vibes": vacancy.vibes,
         },
         "curriculum": CURRICULUM,
         "topics": filtered_topics
@@ -149,14 +168,23 @@ def chat():
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
-    if not topic_id or topic_id not in TOPICS:
-        return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
 
     vacancy_data = None
     if vacancy_id:
         vacancy_data = vacancy_provider.provider.get_vacancy(vacancy_id)
 
-    system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
+    # Режим адаптивного интервью по вакансии — виртуальный топик __vacancy__.
+    # topic_id не нужен: строим промпт по всем релевантным темам вакансии.
+    if topic_id == "__vacancy__":
+        if not vacancy_data:
+            return jsonify({"error": "vacancy_id required for __vacancy__ topic"}), 400
+        relevant = map_vacancy_to_topics(vacancy_data, vacancy_id=vacancy_id)
+        interview_topics = {tid: TOPICS[tid] for tid in relevant if tid in TOPICS}
+        system_prompt = build_vacancy_interview_prompt(vacancy_data, interview_topics)
+    else:
+        if not topic_id or topic_id not in TOPICS:
+            return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
+        system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
 
     chat_history = [
         {"role": m["role"] if m["role"] == "user" else "assistant", "content": m["content"]}

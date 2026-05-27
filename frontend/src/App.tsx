@@ -81,9 +81,13 @@ export default function App() {
             ☰
           </button>
           <span className="header-topic">
-            {topic && topics[topic] ? topics[topic].title : 'Выбери тему →'}
+            {topic === '__vacancy__'
+              ? `🎯 ${state.vacancy?.title ?? 'Интервью по вакансии'}`
+              : topic && topics[topic]
+                ? topics[topic].title
+                : 'Выбери тему →'}
           </span>
-          {state.vacancy && (
+          {state.vacancy && topic !== '__vacancy__' && (
             <span className="vacancy-badge">
               🎯 {state.vacancy.company}
             </span>

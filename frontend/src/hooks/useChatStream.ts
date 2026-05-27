@@ -9,6 +9,7 @@ interface SendArgs {
   topicId: string;
   mode: Mode;
   model: string;
+  vacancyId?: string | null;
 }
 
 // SSE-парсер. Формат: 'data: {json}\n\n' с полями text/thinking/error
@@ -36,11 +37,11 @@ function* parseSseLines(buffer: string): Generator<SseEvent | '[DONE]'> {
 }
 
 export function useChatStream() {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async ({ userMessage, historyBefore, topicId, mode, model }: SendArgs) => {
+    async ({ userMessage, historyBefore, topicId, mode, model, vacancyId }: SendArgs) => {
       // Отменяем предыдущий стрим если он ещё в полёте.
       abortRef.current?.abort();
       const ctrl = new AbortController();
@@ -57,7 +58,7 @@ export function useChatStream() {
             topic_id: topicId,
             mode,
             model,
-            vacancy_id: state.vacancyId,
+            vacancy_id: vacancyId ?? null,
           }),
           signal: ctrl.signal,
         });
