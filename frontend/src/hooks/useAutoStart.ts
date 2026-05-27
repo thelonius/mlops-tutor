@@ -59,6 +59,7 @@ export function useAutoStart() {
       topicId: topic,
       mode,
       model: preferredModel,
+      vacancyId: state.vacancyId,
     });
   }, [curriculumStatus, topic, mode, messages.length, streaming, topics, preferredModel, vacancy, send]);
 }

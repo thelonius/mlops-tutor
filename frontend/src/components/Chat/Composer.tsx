@@ -5,7 +5,7 @@ import { useMic } from '../../hooks/useMic';
 
 export function Composer() {
   const { state } = useStore();
-  const { topic, mode, messages, streaming, preferredModel } = state;
+  const { topic, mode, messages, streaming, preferredModel, vacancyId } = state;
   const { send } = useChatStream();
   const [value, setValue] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -30,6 +30,7 @@ export function Composer() {
       topicId: topic,
       mode,
       model: preferredModel,
+      vacancyId,
     });
     if (text === undefined) {
       setValue('');

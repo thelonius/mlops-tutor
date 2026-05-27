@@ -34,7 +34,7 @@ const QUICK: Partial<Record<Mode, Action[]>> = {
 
 export function QuickActions() {
   const { state, dispatch } = useStore();
-  const { mode, topic, messages, streaming, preferredModel, topics } = state;
+  const { mode, topic, messages, streaming, preferredModel, topics, vacancyId } = state;
   const { send } = useChatStream();
   const toast = useToast();
 
@@ -62,6 +62,7 @@ export function QuickActions() {
         topicId: topic,
         mode,
         model: preferredModel,
+        vacancyId,
       });
       return;
     }
@@ -80,6 +81,7 @@ export function QuickActions() {
           topicId: topic,
           mode,
           model: preferredModel,
+          vacancyId,
         });
       } else {
         dispatch({ type: 'SET_MESSAGES', messages: [] });
