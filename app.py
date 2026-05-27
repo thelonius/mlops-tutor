@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 from typing import Optional
 
-from curriculum import CURRICULUM, TOPICS, build_system_prompt
+from curriculum import CURRICULUM, TOPICS, build_system_prompt, build_vacancy_interview_prompt
 from vacancy_provider import Vacancy
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, request, stream_with_context
@@ -168,14 +168,23 @@ def chat():
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
-    if not topic_id or topic_id not in TOPICS:
-        return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
 
     vacancy_data = None
     if vacancy_id:
         vacancy_data = vacancy_provider.provider.get_vacancy(vacancy_id)
 
-    system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
+    # Режим адаптивного интервью по вакансии — виртуальный топик __vacancy__.
+    # topic_id не нужен: строим промпт по всем релевантным темам вакансии.
+    if topic_id == "__vacancy__":
+        if not vacancy_data:
+            return jsonify({"error": "vacancy_id required for __vacancy__ topic"}), 400
+        relevant = map_vacancy_to_topics(vacancy_data, vacancy_id=vacancy_id)
+        interview_topics = {tid: TOPICS[tid] for tid in relevant if tid in TOPICS}
+        system_prompt = build_vacancy_interview_prompt(vacancy_data, interview_topics)
+    else:
+        if not topic_id or topic_id not in TOPICS:
+            return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
+        system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
 
     chat_history = [
         {"role": m["role"] if m["role"] == "user" else "assistant", "content": m["content"]}

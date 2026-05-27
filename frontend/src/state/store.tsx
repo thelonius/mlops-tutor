@@ -33,7 +33,8 @@ export interface State {
   curriculumStatus: 'idle' | 'loading' | 'ready' | 'error';
   curriculumError: string | null;
   vacancyId: string | null;
-  vacancy: { title: string; company: string; stack: string } | null;
+  vacancy: { title: string; company: string; stack: string; requirements?: string; vibes?: string } | null;
+  vacancyTopics: string[] | null;
 }
 
 export type Action =
@@ -52,7 +53,8 @@ export type Action =
   | { type: 'MARK_DONE'; topic: string }
   | { type: 'SET_MODEL'; model: string }
   | { type: 'SET_VACANCY_ID'; vacancyId: string | null }
-  | { type: 'SET_VACANCY_DETAILS'; vacancy: { title: string; company: string; stack: string } | null };
+  | { type: 'SET_VACANCY_DETAILS'; vacancy: { title: string; company: string; stack: string; requirements?: string; vibes?: string } | null }
+  | { type: 'SET_VACANCY_TOPICS'; topics: string[] | null };
 
 const initialState: State = {
   topic: null,
@@ -68,6 +70,7 @@ const initialState: State = {
   curriculumError: null,
   vacancyId: null,
   vacancy: null,
+  vacancyTopics: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -150,6 +153,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, vacancyId: action.vacancyId };
     case 'SET_VACANCY_DETAILS':
       return { ...state, vacancy: action.vacancy };
+    case 'SET_VACANCY_TOPICS':
+      return { ...state, vacancyTopics: action.topics };
     default:
       return state;
   }
@@ -197,11 +202,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             // Мы должны добавить экшен SET_VACANCY_DETAILS или использовать SET_VACANCY_ID
             // Чтобы не плодить экшены, я расширю SET_VACANCY_ID или добавлю новый.
             // Но сейчас просто использую dispatch с типом, который я добавлю в reducer.
-            dispatch({
-              type: 'SET_VACANCY_DETAILS',
-              vacancy: data.vacancy,
-            } as any);
+            dispatch({ type: 'SET_VACANCY_DETAILS', vacancy: data.vacancy });
           }
+          // Сохраняем список топиков вакансии для sidebar-agenda
+          if (data.topics) {
+            dispatch({ type: 'SET_VACANCY_TOPICS', topics: Object.keys(data.topics) });
+          }
+          // Автозаходим в режим интервью по вакансии
+          dispatch({ type: 'SET_MODE', mode: 'mock', messages: [] });
+          dispatch({ type: 'SELECT_TOPIC', topic: '__vacancy__', messages: [] });
         } else {
           data = await fetchCurriculum();
         }

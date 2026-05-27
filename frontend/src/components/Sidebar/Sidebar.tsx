@@ -9,8 +9,10 @@ import { TopicButton } from './TopicButton';
 export function Sidebar() {
   const { state, dispatch } = useStore();
   const ui = useUi();
-  const { topic, mode, progress, curriculum, topics, curriculumStatus, curriculumError } =
+  const { topic, mode, progress, curriculum, topics, curriculumStatus, curriculumError, vacancy, vacancyTopics } =
     state;
+
+  const isVacancyInterview = topic === '__vacancy__';
 
   // Сколько групп в каждой секции. Если в секции одна группа — её заголовок
   // не показываем, чтобы не дублировать section-header.
@@ -23,6 +25,12 @@ export function Sidebar() {
   const onSelect = (tid: string) => {
     const msgs = loadHistory(tid, mode) ?? [];
     dispatch({ type: 'SELECT_TOPIC', topic: tid, messages: msgs });
+    ui.closeMobileSidebar();
+  };
+
+  const exitInterview = () => {
+    dispatch({ type: 'SET_MODE', mode: 'learn', messages: [] });
+    dispatch({ type: 'SELECT_TOPIC', topic: curriculum[0]?.topics[0] ?? '', messages: [] });
     ui.closeMobileSidebar();
   };
 
@@ -39,35 +47,65 @@ export function Sidebar() {
       <div className="sidebar-header">
         <div>
           <h1>MLOps Tutor</h1>
-          <p>Wildberries · Senior MLOps</p>
+          {vacancy
+            ? <p title={vacancy.requirements ?? ''}>{vacancy.company} · {vacancy.title.slice(0, 40)}</p>
+            : <p>Wildberries · Senior MLOps</p>
+          }
         </div>
       </div>
 
-      <ModeSelector />
-
-      <div className="curriculum" id="curriculum-tree">
-        {curriculumStatus === 'loading' && (
-          <div style={{ color: 'var(--text-muted)', padding: '8px 12px' }}>Загрузка…</div>
-        )}
-        {curriculumStatus === 'error' && (
-          <div style={{ color: '#ef4444', padding: '8px 12px' }}>
-            Ошибка: {curriculumError}
+      {isVacancyInterview ? (
+        <div className="mode-section">
+          <div className="section-label">Интервью по вакансии</div>
+          <button type="button" className="mode-btn" onClick={exitInterview}>
+            <span className="mode-icon">📚</span> Учиться по темам
+          </button>
+          {vacancyTopics && vacancyTopics.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div className="section-label" style={{ marginBottom: 4 }}>Темы интервью</div>
+              {vacancyTopics.map((tid) => {
+                const t = topics[tid];
+                return t ? (
+                  <div key={tid} style={{
+                    padding: '3px 12px',
+                    fontSize: '0.78rem',
+                    color: 'var(--text-muted)',
+                  }}>
+                    {t.emoji} {t.title}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <ModeSelector />
+          <div className="curriculum" id="curriculum-tree">
+            {curriculumStatus === 'loading' && (
+              <div style={{ color: 'var(--text-muted)', padding: '8px 12px' }}>Загрузка…</div>
+            )}
+            {curriculumStatus === 'error' && (
+              <div style={{ color: '#ef4444', padding: '8px 12px' }}>
+                Ошибка: {curriculumError}
+              </div>
+            )}
+            {curriculumStatus === 'ready' && (
+              <CurriculumTree
+                curriculum={curriculum}
+                sectionCounts={sectionCounts}
+                topics={topics}
+                activeTopic={topic}
+                progress={progress}
+                onSelect={onSelect}
+              />
+            )}
+            {curriculumStatus === 'ready' && curriculum.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', padding: '8px 12px' }}>Пусто.</div>
+            )}
           </div>
-        )}
-        {curriculumStatus === 'ready' && (
-          <CurriculumTree
-            curriculum={curriculum}
-            sectionCounts={sectionCounts}
-            topics={topics}
-            activeTopic={topic}
-            progress={progress}
-            onSelect={onSelect}
-          />
-        )}
-        {curriculumStatus === 'ready' && curriculum.length === 0 && (
-          <div style={{ color: 'var(--text-muted)', padding: '8px 12px' }}>Пусто.</div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

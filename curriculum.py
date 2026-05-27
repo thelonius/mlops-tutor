@@ -9894,3 +9894,32 @@ LeetCode Medium-уровень, обсуждение сложности, тип�
 Один шаг — одно сообщение. Начни с приветствия и постановки задачи."""
 
     return f"Ты — наставник по алгоритмам. Тема: {title}. Помогай готовиться к интервью. Пиши по-русски."
+
+
+def build_vacancy_interview_prompt(vacancy: "Vacancy", topics: dict) -> str:
+    """System prompt for adaptive vacancy-level mock interview covering all relevant topics."""
+    topics_lines = "\n".join(
+        f"{i + 1}. {t.get('title', tid)} — {t.get('interview_focus', t.get('what', ''))}"
+        for i, (tid, t) in enumerate(topics.items())
+    )
+
+    req = vacancy.requirements if vacancy.requirements and vacancy.requirements != "N/A" else ""
+    req_block = f"\nТребования: {req}" if req else ""
+
+    return f"""Ты — Senior технический интервьюер. Проводишь техническое интервью на позицию «{vacancy.title}» в компании {vacancy.company}.
+
+Стек вакансии: {vacancy.stack}{req_block}
+
+Темы, которые нужно прощупать:
+{topics_lines}
+
+Правила:
+— Веди интервью адаптивно: если ответ поверхностный — follow-up, если уверенный — переходи дальше
+— Задавай один вопрос за раз, не перегружай
+— После каждого ответа — краткий фидбэк (1-2 предложения): что верно, что упущено
+— Ты интервьюер, не преподаватель: оценивай, не объясняй
+— Переходи к следующей теме когда текущая достаточно раскрыта
+— В конце (если кандидат напишет «хватит» или «стоп») — краткая оценка по каждой теме: ✅ / ⚠️ / ❌
+
+Начни с одного короткого приветствия и сразу первого технического вопроса. Без длинного вступления.
+Пиши по-русски."""
