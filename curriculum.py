@@ -1,3 +1,6 @@
+import functools
+import os
+import re
 from typing import Optional
 from vacancy_provider import Vacancy
 
@@ -10087,6 +10090,68 @@ LeetCode Medium-уровень, обсуждение сложности, тип�
     return f"Ты — наставник по алгоритмам. Тема: {title}. Помогай готовиться к интервью. Пиши по-русски."
 
 
+# Привязка тем интервью к доменам банка дриллов (drills/questions.yaml).
+# Домены tf/cloud/sec намеренно без тем — в курсе нет соответствующих тем,
+# поэтому их дриллы в разбор не попадают.
+TOPIC_DRILL_DOMAIN = {
+    "containers": "k8s",
+    "k8s_basics": "k8s",
+    "k8s_storage": "k8s",
+    "k8s_gpu": "k8s",
+    "networking_base": "k8s",
+    "orchestration": "cicd",
+    "cicd": "cicd",
+    "monitoring": "obs",
+    "llm_observability": "obs",
+}
+
+_DRILLS_PATH = os.path.join(os.path.dirname(__file__), "drills", "questions.yaml")
+
+
+@functools.lru_cache(maxsize=1)
+def _load_drills_by_domain() -> dict:
+    """domain -> [(id, краткий лейбл)]. Парсим регуляркой, а не yaml:
+    в банке встречаются неэкранированные двоеточия, на которых yaml падает.
+    Любая ошибка чтения -> пустой словарь, разбор просто обойдётся без дриллов."""
+    try:
+        text = open(_DRILLS_PATH, encoding="utf-8").read()
+    except OSError:
+        return {}
+    result: dict[str, list[tuple[str, str]]] = {}
+    for block in re.split(r"(?m)^- id:\s*", text)[1:]:
+        drill_id = block.split("\n", 1)[0].strip()
+        dom_m = re.search(r"(?m)^\s+domain:\s*(\S+)", block)
+        prompt_m = re.search(r"(?m)^\s+prompt:\s*\|\s*\n\s+(.+)", block)
+        if not drill_id or not dom_m:
+            continue
+        label = (prompt_m.group(1).strip() if prompt_m else "")[:70]
+        result.setdefault(dom_m.group(1), []).append((drill_id, label))
+    return result
+
+
+def _build_drills_block(topic_ids) -> str:
+    """Блок с дриллами для тех тем интервью, у которых есть привязанный домен."""
+    by_domain = _load_drills_by_domain()
+    seen_domains: list[str] = []
+    for tid in topic_ids:
+        dom = TOPIC_DRILL_DOMAIN.get(tid)
+        if dom and dom in by_domain and dom not in seen_domains:
+            seen_domains.append(dom)
+    if not seen_domains:
+        return ""
+    lines = []
+    for dom in seen_domains:
+        topic_titles = [
+            TOPICS[t]["title"]
+            for t in topic_ids
+            if TOPIC_DRILL_DOMAIN.get(t) == dom and t in TOPICS
+        ]
+        lines.append(f"Темы [{', '.join(topic_titles)}] → дриллы:")
+        for drill_id, label in by_domain[dom]:
+            lines.append(f"  {drill_id} — {label}")
+    return "\n".join(lines)
+
+
 def build_vacancy_interview_prompt(vacancy: "Vacancy", topics: dict) -> str:
     """System prompt for adaptive vacancy-level mock interview covering all relevant topics."""
     topics_lines = "\n".join(
@@ -10097,12 +10162,27 @@ def build_vacancy_interview_prompt(vacancy: "Vacancy", topics: dict) -> str:
     req = vacancy.requirements if vacancy.requirements and vacancy.requirements != "N/A" else ""
     req_block = f"\nТребования: {req}" if req else ""
 
+    drills_text = _build_drills_block(list(topics.keys()))
+    if drills_text:
+        drills_block = (
+            "\n\nБАНК ДРИЛЛОВ (для разбора в конце; это тренировочные задачи, "
+            "НЕ задавай их в ходе интервью):\n" + drills_text
+        )
+        drills_hint = (
+            " Если у западающей темы в банке дриллов есть подходящие задачи — "
+            "укажи их конкретные id (например, k8s-002), выбрав самые близкие к "
+            "пробелу. Бери id только из банка, не выдумывай."
+        )
+    else:
+        drills_block = ""
+        drills_hint = ""
+
     return f"""Ты — Senior технический интервьюер. Проводишь техническое интервью на позицию «{vacancy.title}» в компании {vacancy.company}.
 
 Стек вакансии: {vacancy.stack}{req_block}
 
 Темы, которые нужно прощупать:
-{topics_lines}
+{topics_lines}{drills_block}
 
 СТРУКТУРА ИНТЕРВЬЮ (три фазы, веди их по порядку):
 
@@ -10142,7 +10222,7 @@ def build_vacancy_interview_prompt(vacancy: "Vacancy", topics: dict) -> str:
 | System design | ✅/⚠️/❌ | полнота этапов / trade-offs |
 
 **Что добить** (только строки с ⚠️ и ❌, самое слабое сверху):
-1. <тема> — что конкретно подтянуть и с чего начать. Действие, а не «почитайте про X».
+1. <тема> — что конкретно подтянуть и с чего начать. Действие, а не «почитайте про X».{drills_hint}
 2. …
 
 **Вердикт**: одна строка. Уровень под эту вакансию (готов / есть пробелы / рано) и почему. По делу, без воды.
