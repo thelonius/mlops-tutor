@@ -40,3 +40,6 @@ frontend/dist/
 frontend/*.tsbuildinfo
 # Vite build output для прода. На CI собирается заново перед scp.
 static/dist/
+
+# Claude Code local worktrees (не коммитим как gitlinks)
+.claude/worktrees/
