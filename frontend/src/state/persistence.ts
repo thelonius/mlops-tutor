@@ -1,11 +1,12 @@
 // Ключи и формат СТРОГО совпадают с тем, что использует static/app.js.
 // Любое расхождение — пользователи теряют историю после миграции.
-import type { Message, Mode } from '../types';
+import type { Depth, Message, Mode } from '../types';
 
 export const histKey = (tid: string, mode: Mode) => `mlops_chat_${tid}_${mode}`;
 const SESSION_KEY = 'mlops_session';
 const PROGRESS_KEY = 'mlops_progress';
 const MODEL_KEY = 'mlops_model';
+const DEPTH_KEY = 'mlops_depth';
 const SIDEBAR_COLLAPSED_KEY = 'mlops_sidebar_collapsed';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
@@ -71,6 +72,14 @@ export function loadPreferredModel(): string {
 
 export function savePreferredModel(model: string): void {
   localStorage.setItem(MODEL_KEY, model);
+}
+
+export function loadDepth(): Depth {
+  return localStorage.getItem(DEPTH_KEY) === 'senior' ? 'senior' : 'basic';
+}
+
+export function saveDepth(depth: Depth): void {
+  localStorage.setItem(DEPTH_KEY, depth);
 }
 
 export function loadSidebarCollapsed(): boolean {

@@ -41,5 +41,5 @@ frontend/*.tsbuildinfo
 # Vite build output для прода. На CI собирается заново перед scp.
 static/dist/
 
-# Claude Code local worktrees (не коммитим как gitlinks)
+# Claude Code worktrees — локальные копии репо для параллельных сессий, в репе не нужны
 .claude/worktrees/

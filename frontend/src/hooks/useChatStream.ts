@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useStore } from '../state/store';
-import type { Message, Mode } from '../types';
+import type { Depth, Message, Mode } from '../types';
 
 interface SendArgs {
   userMessage: Message;
@@ -9,6 +9,7 @@ interface SendArgs {
   topicId: string;
   mode: Mode;
   model: string;
+  depth?: Depth;
   vacancyId?: string | null;
 }
 
@@ -41,7 +42,7 @@ export function useChatStream() {
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async ({ userMessage, historyBefore, topicId, mode, model, vacancyId }: SendArgs) => {
+    async ({ userMessage, historyBefore, topicId, mode, model, depth, vacancyId }: SendArgs) => {
       // Отменяем предыдущий стрим если он ещё в полёте.
       abortRef.current?.abort();
       const ctrl = new AbortController();
@@ -58,6 +59,7 @@ export function useChatStream() {
             topic_id: topicId,
             mode,
             model,
+            depth: depth ?? 'basic',
             vacancy_id: vacancyId ?? null,
           }),
           signal: ctrl.signal,

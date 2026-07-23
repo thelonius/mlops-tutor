@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { MessageList } from './components/Chat/MessageList';
 import { Composer } from './components/Chat/Composer';
 import { QuickActions } from './components/Chat/QuickActions';
+import { ComposerDraftProvider } from './components/Chat/ComposerDraftContext';
 import { ModelSelect } from './components/Chat/ModelSelect';
 import { TooltipController } from './components/Glossary/Tooltip';
 import { PlanetaryIndicator } from './components/PlanetaryIndicator';
@@ -41,6 +42,7 @@ const MODE_LABELS: Record<Mode, { label: string; badge: string }> = {
   cheatsheet: { label: 'Чит-шит', badge: 'badge-cheatsheet' },
   mcquiz: { label: 'Тест', badge: 'badge-mcquiz' },
   lecture: { label: 'Лекция', badge: 'badge-lecture' },
+  socratic: { label: 'Разбор ошибок', badge: 'badge-socratic' },
 };
 
 export default function App() {
@@ -110,11 +112,11 @@ export default function App() {
             <LectureView />
           </Suspense>
         ) : (
-          <>
+          <ComposerDraftProvider>
             <MessageList />
             <QuickActions />
             <Composer />
-          </>
+          </ComposerDraftProvider>
         )}
       </div>
     </>

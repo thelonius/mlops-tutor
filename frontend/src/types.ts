@@ -1,4 +1,8 @@
-export type Mode = 'learn' | 'quiz' | 'mock' | 'cheatsheet' | 'mcquiz' | 'lecture';
+export type Mode = 'learn' | 'quiz' | 'mock' | 'cheatsheet' | 'mcquiz' | 'lecture' | 'socratic';
+
+// Глубина подачи в learn-режиме. 'basic' — компактно (до 300 слов, один концепт),
+// 'senior' — глубже (trade-offs, внутренности, failure modes, до 500 слов).
+export type Depth = 'basic' | 'senior';
 
 export type Role = 'user' | 'assistant';
 

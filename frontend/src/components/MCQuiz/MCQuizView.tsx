@@ -1,6 +1,20 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useStore } from '../../state/store';
+import { useChatStream } from '../../hooks/useChatStream';
 import type { CheatsheetItem, Mode } from '../../types';
+
+// Опенер сократического разбора: перечисляем заваленные вопросы с правильными
+// ответами (ученик их уже видел на тесте) и просим наставника вести диалогом.
+function buildSocraticOpener(title: string, missed: CheatsheetItem[]): string {
+  const lines = missed
+    .map((m, i) => `${i + 1}. ${m.q}\n   Правильный ответ: ${m.a}`)
+    .join('\n');
+  return (
+    `Прошёл тест по теме «${title}» и ошибся в этих вопросах:\n\n${lines}\n\n` +
+    `Ответы я видел, но до конца не понимаю. Разбери со мной каждый по очереди: ` +
+    `не давай объяснение сразу, веди наводящими вопросами, чтобы я сам понял почему это так.`
+  );
+}
 
 function shuffled<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -20,7 +34,8 @@ function scoreLabel(score: number, total: number): string {
 
 export function MCQuizView() {
   const { state, dispatch } = useStore();
-  const { topic, topics } = state;
+  const { topic, topics, preferredModel, vacancyId } = state;
+  const { send } = useChatStream();
 
   // Сессия квиза: nonce инкрементируется при «Пройти заново» — пересоздаёт
   // перетасованные пары и сбрасывает state ребёнком.
@@ -31,12 +46,33 @@ export function MCQuizView() {
     [dispatch],
   );
 
+  // Разбор заваленных вопросов сократическим диалогом: уходим в чат-режим
+  // 'socratic' и сразу отправляем опенер с пробелами. Autostart для socratic
+  // не срабатывает (opener для него null), поэтому двойного старта нет.
+  const reviewGaps = useCallback(
+    (missed: CheatsheetItem[]) => {
+      if (!topic || missed.length === 0) return;
+      const title = topics[topic]?.title ?? topic;
+      dispatch({ type: 'SET_MODE', mode: 'socratic', messages: [] });
+      void send({
+        userMessage: { role: 'user', content: buildSocraticOpener(title, missed) },
+        historyBefore: [],
+        topicId: topic,
+        mode: 'socratic',
+        model: preferredModel,
+        vacancyId,
+      });
+    },
+    [topic, topics, preferredModel, vacancyId, dispatch, send],
+  );
+
   if (!topic) {
     return (
       <div id="mcquiz-view" style={{ display: 'flex', flex: 1, padding: 24 }}>
         <div className="welcome">
           <h2>Тест</h2>
           <p>Выбери тему слева — соберу из чит-шита тест с 4 вариантами ответа.</p>
+          <p style={{ marginTop: 8 }}>🧩 Что завалишь, в конце сможешь разобрать сократическим диалогом.</p>
         </div>
       </div>
     );
@@ -62,6 +98,7 @@ export function MCQuizView() {
       pairs={t.cheatsheet}
       onRestart={restart}
       onSwitchToCheatsheet={() => switchMode('cheatsheet')}
+      onReviewGaps={reviewGaps}
     />
   );
 }
@@ -70,6 +107,7 @@ interface QuizProps {
   pairs: CheatsheetItem[];
   onRestart: () => void;
   onSwitchToCheatsheet: () => void;
+  onReviewGaps: (missed: CheatsheetItem[]) => void;
 }
 
 // Декоративные цвета (вопрос, score, кнопка, прогресс-бар) — все
@@ -78,11 +116,13 @@ interface QuizProps {
 // неправильный ответ в .mc-btn — это обрабатывает CSS, не JSX.
 const ACCENT = 'var(--color-accent)';
 
-function Quiz({ pairs, onRestart, onSwitchToCheatsheet }: QuizProps) {
+function Quiz({ pairs, onRestart, onSwitchToCheatsheet, onReviewGaps }: QuizProps) {
   const session = useMemo(() => shuffled(pairs), [pairs]);
   const [idx, setIdx] = useState(0);
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
+  // Заваленные вопросы — для последующего сократического разбора.
+  const [missed, setMissed] = useState<CheatsheetItem[]>([]);
 
   // Опции считаем для текущего вопроса всегда — даже на финальном экране,
   // чтобы порядок хуков был стабильным. Невалидный idx (за пределами session)
@@ -107,10 +147,24 @@ function Quiz({ pairs, onRestart, onSwitchToCheatsheet }: QuizProps) {
               {score}/{session.length}
             </div>
             <div className="mc-score-label">{scoreLabel(score, session.length)}</div>
+            {missed.length > 0 && (
+              <button
+                type="button"
+                className="mc-restart-btn"
+                style={{ background: ACCENT }}
+                onClick={() => onReviewGaps(missed)}
+              >
+                🧩 Разобрать непонятое ({missed.length})
+              </button>
+            )}
             <button
               type="button"
               className="mc-restart-btn"
-              style={{ background: ACCENT }}
+              style={
+                missed.length > 0
+                  ? { background: 'var(--bg-panel)', color: 'var(--text)', border: '1px solid var(--border)' }
+                  : { background: ACCENT }
+              }
               onClick={onRestart}
             >
               Пройти заново
@@ -140,6 +194,7 @@ function Quiz({ pairs, onRestart, onSwitchToCheatsheet }: QuizProps) {
     if (picked !== null) return;
     setPicked(opt);
     if (opt === pair.a) setScore((s) => s + 1);
+    else setMissed((m) => [...m, pair]);
   };
 
   const next = () => {
@@ -150,6 +205,10 @@ function Quiz({ pairs, onRestart, onSwitchToCheatsheet }: QuizProps) {
   return (
     <div id="mcquiz-view" style={{ display: 'flex', flex: 1, overflowY: 'auto' }}>
       <div className="mc-wrap">
+        <div className="mc-hint">
+          <span className="mc-hint-icon">🧩</span>
+          <span>Что завалишь, в конце разберём сократическим диалогом: наводящими вопросами, без готовых ответов.</span>
+        </div>
         <div className="mc-progress">
           <span>
             {idx + 1} / {session.length}
