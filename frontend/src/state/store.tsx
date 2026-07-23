@@ -7,13 +7,15 @@ import {
   type Dispatch,
   type ReactNode,
 } from 'react';
-import type { Group, Message, Mode, Topic } from '../types';
+import type { Depth, Group, Message, Mode, Topic } from '../types';
 import { fetchCurriculum, fetchVacancyCurriculum } from '../api';
 import {
+  loadDepth,
   loadHistory,
   loadPreferredModel,
   loadProgress,
   loadSession,
+  saveDepth,
   saveHistory,
   savePreferredModel,
   saveProgress,
@@ -28,6 +30,7 @@ export interface State {
   thinking: string;
   progress: Set<string>;
   preferredModel: string;
+  depth: Depth;
   curriculum: Group[];
   topics: Record<string, Topic>;
   curriculumStatus: 'idle' | 'loading' | 'ready' | 'error';
@@ -52,6 +55,7 @@ export type Action =
   | { type: 'STREAM_ERROR'; error: string }
   | { type: 'MARK_DONE'; topic: string }
   | { type: 'SET_MODEL'; model: string }
+  | { type: 'SET_DEPTH'; depth: Depth }
   | { type: 'SET_VACANCY_ID'; vacancyId: string | null }
   | { type: 'SET_VACANCY_DETAILS'; vacancy: { title: string; company: string; stack: string; requirements?: string; vibes?: string } | null }
   | { type: 'SET_VACANCY_TOPICS'; topics: string[] | null };
@@ -64,6 +68,7 @@ const initialState: State = {
   thinking: '',
   progress: new Set(),
   preferredModel: 'llama-3.3-70b-versatile',
+  depth: 'basic',
   curriculum: [],
   topics: {},
   curriculumStatus: 'idle',
@@ -149,6 +154,8 @@ function reducer(state: State, action: Action): State {
     }
     case 'SET_MODEL':
       return { ...state, preferredModel: action.model };
+    case 'SET_DEPTH':
+      return { ...state, depth: action.depth };
     case 'SET_VACANCY_ID':
       return { ...state, vacancyId: action.vacancyId };
     case 'SET_VACANCY_DETAILS':
@@ -266,6 +273,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     savePreferredModel(state.preferredModel);
   }, [state.preferredModel]);
 
+  useEffect(() => {
+    saveDepth(state.depth);
+  }, [state.depth]);
+
   return (
     <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>
   );
@@ -276,6 +287,7 @@ function hydrate(base: State): State {
     ...base,
     progress: loadProgress(),
     preferredModel: loadPreferredModel(),
+    depth: loadDepth(),
   };
 }
 

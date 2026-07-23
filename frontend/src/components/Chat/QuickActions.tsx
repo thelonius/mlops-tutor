@@ -3,6 +3,7 @@ import { useChatStream } from '../../hooks/useChatStream';
 import { clearHistory, loadHistory } from '../../state/persistence';
 import { createShare } from '../../lib/share';
 import { useToast } from '../Toast';
+import { useComposerDraft } from './ComposerDraftContext';
 import type { Mode } from '../../types';
 
 type Action =
@@ -36,10 +37,15 @@ export function QuickActions() {
   const { state, dispatch } = useStore();
   const { mode, topic, messages, streaming, preferredModel, topics, vacancyId } = state;
   const { send } = useChatStream();
+  const { draft, setDraft } = useComposerDraft();
   const toast = useToast();
 
   const actions = topic ? QUICK[mode] : undefined;
   if (!topic || !actions) return null;
+
+  // Текст из поля ввода подмешивается как контекст к любому действию-сообщению.
+  const ctx = draft.trim();
+  const hasCtx = ctx.length > 0;
 
   const canShare = messages.length > 0;
   const onShare = async () => {
@@ -56,14 +62,19 @@ export function QuickActions() {
   const onClick = (a: Action) => {
     if ('msg' in a) {
       if (streaming) return;
+      // Пустое поле — ведём себя ровно как раньше. Есть текст — уходит вместе
+      // с действием как контекст, а поле очищаем.
+      const content = hasCtx ? `${a.msg}\n\nМой контекст: ${ctx}` : a.msg;
       void send({
-        userMessage: { role: 'user', content: a.msg },
+        userMessage: { role: 'user', content },
         historyBefore: messages,
         topicId: topic,
         mode,
         model: preferredModel,
+        depth: state.depth,
         vacancyId,
       });
+      if (hasCtx) setDraft('');
       return;
     }
     if (a.action === 'switchMode' && a.mode) {
@@ -81,6 +92,7 @@ export function QuickActions() {
           topicId: topic,
           mode,
           model: preferredModel,
+          depth: state.depth,
           vacancyId,
         });
       } else {
@@ -91,17 +103,28 @@ export function QuickActions() {
 
   return (
     <div className="quick-area" id="quick-area">
-      {actions.map((a) => (
-        <button
-          key={a.label}
-          type="button"
-          className="qbtn"
-          disabled={streaming}
-          onClick={() => onClick(a)}
-        >
-          {a.label}
-        </button>
-      ))}
+      {actions.map((a) => {
+        const isMsg = 'msg' in a;
+        const withCtx = isMsg && hasCtx;
+        return (
+          <button
+            key={a.label}
+            type="button"
+            className={`qbtn${withCtx ? ' has-ctx' : ''}`}
+            disabled={streaming}
+            title={
+              isMsg
+                ? withCtx
+                  ? 'Уйдёт вместе с текстом из поля как контекстом'
+                  : 'Впиши заметку в поле ввода — она уйдёт как контекст'
+                : undefined
+            }
+            onClick={() => onClick(a)}
+          >
+            {a.label}
+          </button>
+        );
+      })}
       {canShare && (
         <button
           type="button"

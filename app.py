@@ -165,6 +165,9 @@ def chat():
     mode = data.get("mode", "learn")
     preferred = data.get("model", MODELS[0])
     vacancy_id = data.get("vacancy_id")
+    depth = data.get("depth", "basic")
+    if depth not in ("basic", "senior"):
+        depth = "basic"
 
     if not messages:
         return jsonify({"error": "No messages"}), 400
@@ -184,7 +187,7 @@ def chat():
     else:
         if not topic_id or topic_id not in TOPICS:
             return jsonify({"error": f"Unknown topic_id: {topic_id!r}"}), 400
-        system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data)
+        system_prompt = build_system_prompt(topic_id, mode, vacancy_data=vacancy_data, depth=depth)
 
     chat_history = [
         {"role": m["role"] if m["role"] == "user" else "assistant", "content": m["content"]}
