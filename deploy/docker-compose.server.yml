@@ -1,0 +1,46 @@
+# Деплой на общий VDS root@31.130.130.11, рядом с gpx-tracker, ssd-radar и astro.
+#
+# Своего Caddy тут нет намеренно. ACME HTTP-01 требует хостовый порт 80, а им
+# владеет контейнер ssd_radar_caddy — ровно поэтому astro-стек тоже ходит через
+# него, а не через собственный прокси. mlops-tutor подключён третьим сайтом:
+# ssd_radar_caddy видит наш контейнер через внешнюю сеть mlops_edge и проксирует
+# на него https://mlops-31-130-130-11.sslip.io:4443
+#
+# Запуск на сервере:
+#   cd /root/mlops-tutor/deploy && docker compose -f docker-compose.server.yml up -d --build
+services:
+  # Сервис намеренно НЕ называется `app`: compose публикует имя сервиса как
+  # DNS-алиас в каждой подключённой сети, а ssd_radar_caddy сидит сразу в
+  # нескольких. Второй `app` в mlops_edge 28.08.2026 перехватил трафик
+  # ssd-radar и уронил его в 502.
+  mlops_app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: mlops-tutor:latest
+    container_name: mlops_tutor_app
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      - SHARES_DB_PATH=/app/data/shares.db
+    working_dir: /app
+    # Код монтируется bind-mount'ами: пересборка образа нужна только при
+    # смене requirements.txt, обычная выкатка — rsync + restart.
+    volumes:
+      - ../app.py:/app/app.py:ro
+      - ../curriculum.py:/app/curriculum.py:ro
+      - ../shares.py:/app/shares.py:ro
+      - ../vacancy_provider.py:/app/vacancy_provider.py:ro
+      - ../static:/app/static:ro
+      - ../data:/app/data
+    expose:
+      - "8080"
+    networks:
+      - mlops_edge
+
+networks:
+  # Создаётся вне compose (docker network create mlops_edge) и разделяется с
+  # ssd_radar_caddy. Объявлена здесь, а не подключается руками, чтобы пережить
+  # пересоздание контейнера.
+  mlops_edge:
+    external: true

@@ -20,20 +20,61 @@ import vacancy_provider
 
 load_dotenv()
 
+# Единый вход для чата и генерации текста. OpenRouter проксирует десятки
+# провайдеров под одним ключом, так что смена модели больше не тянет за собой
+# новый клиент и новую переменную окружения.
 client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY", ""),
+    default_headers={
+        "HTTP-Referer": os.getenv("APP_URL", "https://176-123-166-252.sslip.io/"),
+        "X-Title": "MLOps Tutor",
+    },
+)
+
+# Groq остался ровно ради одного эндпоинта — whisper-large-v3 в /api/transcribe.
+# У OpenRouter нет audio/transcriptions, заменить распознавание речи внутри
+# того же провайдера нечем.
+#
+# Клиент создаём только при живом ключе: на пустую строку конструктор OpenAI
+# бросает «Missing credentials» прямо при импорте, и всё приложение не стартует
+# из-за одного необязательного эндпоинта.
+_groq_key = os.getenv("GROQ_API_KEY", "").strip()
+groq_client = OpenAI(
     base_url="https://api.groq.com/openai/v1",
-    api_key=os.getenv("GROQ_API_KEY"),
-)
+    api_key=_groq_key,
+) if _groq_key else None
 
-gemini_client = OpenAI(
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    api_key=os.getenv("GEMINI_API_KEY", ""),
-)
+# Zhipu напрямую. GLM-4.7-Flash и GLM-4.5-Flash у них бесплатны и идут мимо
+# общего пула OpenRouter, который стабильно отдаёт 429 по free-моделям: там
+# квота делится между всеми бесплатными пользователями сразу, а тут она наша.
+_zhipu_key = os.getenv("ZHIPU_API_KEY", "").strip()
+zhipu_client = OpenAI(
+    base_url="https://api.z.ai/api/paas/v4/",
+    api_key=_zhipu_key,
+) if _zhipu_key else None
 
-GEMINI_MODELS = {"gemma-4-31b-it", "gemma-4-26b-a4b-it"}
+# Модели без слеша в имени адресуются к Zhipu, с префиксом провайдера — к
+# OpenRouter. Разводим явным множеством, а не эвристикой по слешу.
+ZHIPU_MODELS = {"glm-4.7-flash", "glm-4.5-flash"}
+
+# Прямого клиента к Google AI Studio здесь нет намеренно. Ключ рабочий и с
+# машины разработчика Gemma отвечает, но прод в Москве получает от Google
+# 400 FAILED_PRECONDITION «User location is not supported for the API use» —
+# это географическая блокировка, из кода её не обойти. Gemma остаётся
+# доступной через OpenRouter, который проксирует запрос со своей стороны.
+
+
+def _client_for(model: str) -> Optional[OpenAI]:
+    """Клиент под конкретную модель. None — провайдер не сконфигурирован."""
+    if model in ZHIPU_MODELS:
+        return zhipu_client
+    return client
 
 # Модели с reasoning-каналом отдают рассуждения в парных тегах. Стрипаем их
-# в стриме перед отдачей пользователю. Qwen использует <think>, Gemma — <thought>.
+# в стриме перед отдачей пользователю. Zhipu и OpenRouter выносят рассуждения
+# в отдельное поле дельты, а Gemma через Google AI Studio присылает их прямо
+# в content парой <thought>...</thought> — ради неё разбор тегов и живёт.
 THINK_TAG_PAIRS = [("<think>", "</think>"), ("<thought>", "</thought>")]
 
 app = Flask(__name__)
@@ -49,16 +90,40 @@ def _b64url_encode(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
 
 # Цепочка моделей: при 429 на одной — переключаемся на следующую.
-# Маленькую llama-3.1-8b держим в самом конце — у неё баг с CJK.
+# Первыми идут бесплатные Zhipu: у них своя квота на нашем ключе, тогда как
+# free-модели OpenRouter сидят на общем пуле и регулярно отвечают 429.
+# Платная flash — последним запасом, на случай когда всё остальное молчит.
 MODELS = [
-    "llama-3.3-70b-versatile",                    # основная, 100K токенов/день
-    "qwen/qwen3-32b",                             # Qwen3 32B — хорошее качество, своя квота
-    "openai/gpt-oss-120b",                        # 120B, отдельная квота
-    "meta-llama/llama-4-scout-17b-16e-instruct",  # ещё запас
-    "llama-3.1-8b-instant",                       # последний — может давать иероглифы
-    "gemma-4-31b-it",                             # Gemma 4 31B via Gemini API
-    "gemma-4-26b-a4b-it",                         # Gemma 4 26B via Gemini API
+    "glm-4.7-flash",                            # Zhipu, бесплатно, своя квота
+    "glm-4.5-flash",                            # Zhipu, бесплатно, поколением младше
+    "minimax/minimax-m3:free",                  # OpenRouter, 1M контекста
+    "nvidia/nemotron-3-super-120b-a12b:free",   # OpenRouter, 262K
+    "z-ai/glm-5.2:free",                        # OpenRouter, сидит на общем пуле
+    "google/gemma-4-31b-it:free",               # OpenRouter, сидит на общем пуле
+    "z-ai/glm-5.3-flash",                       # платная, ~$0.075/M вход
 ]
+
+# Все модели цепочки — reasoning-capable, и рассуждения списываются из того же
+# бюджета, что и ответ. На реальном промпте тренажёра glm-4.7-flash потратил
+# 1245 токенов на reasoning и упёрся в лимит 2400 с finish_reason=length,
+# оборвав ответ на середине. 4000 хватает и на рассуждение, и на текст.
+MAX_TOKENS = 4000
+
+# Короткие служебные генерации (аудио-рерайт, лекция) — только бесплатные:
+# полная цепочка тут не нужна, а платить за вспомогательный текст незачем.
+UTILITY_MODELS = ("glm-4.7-flash", "minimax/minimax-m3:free")
+
+
+def _try_next_model(e: Exception) -> bool:
+    """Стоит ли перейти к следующей модели цепочки вместо показа ошибки.
+
+    429 — дневная квота или троттлинг общего free-пула провайдера.
+    402 — на балансе OpenRouter нет кредитов, а модель платная. Пользователь
+    может выбрать glm-5.3-flash в селекте, и тогда цепочка стартует с неё;
+    без этой ветки чат падал бы, не дойдя до бесплатных.
+    """
+    msg = str(e).lower()
+    return any(t in msg for t in ("rate_limit", "429", "402", "insufficient credits"))
 
 
 _TOPIC_VECTORS: Optional[dict] = None
@@ -202,17 +267,15 @@ def chat():
         nim_messages = [{"role": "system", "content": system_prompt}] + chat_history
         for i, model in enumerate(model_chain):
             try:
-                is_gemini = model in GEMINI_MODELS
-                api_client = gemini_client if is_gemini else client
-                # Gemma тратит ~600-800 токенов на <thought> до ответа,
-                # поэтому ей нужен больший бюджет, чтобы успеть закрыть тег.
-                max_tok = 2400 if is_gemini else 1024
+                api_client = _client_for(model)
+                if api_client is None:
+                    continue  # провайдер модели не сконфигурирован — следующая
                 stream = api_client.chat.completions.create(
                     model=model,
                     messages=nim_messages,
                     stream=True,
                     temperature=0.7,
-                    max_tokens=max_tok,
+                    max_tokens=MAX_TOKENS,
                 )
                 if i > 0:
                     note = f"_(резервная модель: {model})_\n\n"
@@ -235,7 +298,17 @@ def chat():
                     return f"data: {json.dumps({'thinking': s})}\n\n"
 
                 for chunk in stream:
-                    text = chunk.choices[0].delta.content
+                    delta = chunk.choices[0].delta
+                    # Рассуждения приезжают отдельным полем, а не тегами внутри
+                    # content: у OpenRouter оно зовётся reasoning, у Zhipu —
+                    # reasoning_content. Теговый разбор ниже остаётся для
+                    # моделей, которые всё-таки присылают <think> в content.
+                    reasoning = (getattr(delta, "reasoning", None)
+                                 or getattr(delta, "reasoning_content", None))
+                    if reasoning:
+                        last_think_content += reasoning
+                        yield ev_thinking(reasoning)
+                    text = delta.content
                     if not text:
                         continue
                     if in_think:
@@ -316,7 +389,7 @@ def chat():
                 yield "data: [DONE]\n\n"
                 return
             except Exception as e:
-                if "rate_limit" in str(e).lower() or "429" in str(e):
+                if _try_next_model(e):
                     continue
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -411,9 +484,12 @@ def _audio_rewrite(text: str) -> str:
     """LLM-перезапись текста для аудио. При полном фейле — markdown-чистка регулярками."""
     text = text[:4000]
     # Берём только быстрые/основные модели — рерайт короткий, fallback-цепочка не нужна.
-    for model in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b"):
+    for model in UTILITY_MODELS:
+        api_client = _client_for(model)
+        if api_client is None:
+            continue
         try:
-            resp = client.chat.completions.create(
+            resp = api_client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": AUDIO_REWRITE_PROMPT},
@@ -426,8 +502,7 @@ def _audio_rewrite(text: str) -> str:
             if out:
                 return out
         except Exception as e:
-            msg = str(e).lower()
-            if "rate_limit" in msg or "429" in msg:
+            if _try_next_model(e):
                 continue
             break
     return _audio_rewrite_fallback(text)
@@ -506,9 +581,12 @@ def lecture():
     )
 
     last_error = None
-    for model in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b"):
+    for model in UTILITY_MODELS:
+        api_client = _client_for(model)
+        if api_client is None:
+            continue
         try:
-            resp = client.chat.completions.create(
+            resp = api_client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": LECTURE_SYSTEM_PROMPT},
@@ -531,9 +609,8 @@ def lecture():
                 return jsonify({"sections": sections, "model": model})
             last_error = "empty sections"
         except Exception as e:
-            msg = str(e).lower()
             last_error = str(e)
-            if "rate_limit" in msg or "429" in msg:
+            if _try_next_model(e):
                 continue
             # Не-rate-limit ошибки — пробуем следующую модель один раз.
             continue
@@ -542,13 +619,15 @@ def lecture():
 
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
+    if groq_client is None:
+        return jsonify({"error": "Распознавание речи выключено: не задан GROQ_API_KEY"}), 503
     audio = request.files.get("audio")
     if not audio:
         return jsonify({"error": "No audio"}), 400
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
         audio.save(f.name)
         with open(f.name, "rb") as af:
-            result = client.audio.transcriptions.create(
+            result = groq_client.audio.transcriptions.create(
                 model="whisper-large-v3",
                 file=("audio.webm", af, "audio/webm"),
                 language="ru",

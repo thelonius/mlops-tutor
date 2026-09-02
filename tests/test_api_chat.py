@@ -1,7 +1,9 @@
 import os
 
-os.environ.setdefault("GROQ_API_KEY", "test")
+os.environ.setdefault("OPENROUTER_API_KEY", "test")
+os.environ.setdefault("ZHIPU_API_KEY", "test")
 os.environ.setdefault("GEMINI_API_KEY", "test")
+os.environ.setdefault("GROQ_API_KEY", "test")
 
 import pytest
 
