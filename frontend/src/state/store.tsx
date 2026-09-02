@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { Depth, Group, Message, Mode, Topic } from '../types';
 import { fetchCurriculum, fetchVacancyCurriculum } from '../api';
+import { DEFAULT_MODEL } from './models';
 import {
   loadDepth,
   loadHistory,
@@ -67,7 +68,7 @@ const initialState: State = {
   streaming: false,
   thinking: '',
   progress: new Set(),
-  preferredModel: 'llama-3.3-70b-versatile',
+  preferredModel: DEFAULT_MODEL,
   depth: 'basic',
   curriculum: [],
   topics: {},

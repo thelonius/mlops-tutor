@@ -1,5 +1,17 @@
 name: Deploy to production
 
+# Прод переехал 28.08.2026 на общий VDS 31.130.130.11 (/root/mlops-tutor),
+# рядом с gpx-tracker, ssd-radar и astro. Старый 91.84.112.120 (/opt/mlops-tutor)
+# мёртв, следом отвалился и 176.123.166.252.
+#
+# TLS терминирует не наш Caddy, а общий ssd_radar_caddy из соседнего стека
+# (/root/ssd-radar): порт 80 нужен ему для ACME HTTP-01, и второй Caddy на этой
+# машине сертификат уже не выпишет. Наш compose поднимает только gunicorn.
+# Публичный адрес: https://mlops-31-130-130-11.sslip.io:4443/
+#
+# Секреты SSH_HOST / SSH_USER / SSH_PRIVATE_KEY должны указывать на новый
+# сервер и ключ cesium_replica_key.
+
 on:
   push:
     branches: [main]
@@ -59,8 +71,8 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "app.py,curriculum.py,shares.py,vacancy_provider.py,requirements.txt,static/,data/tts_terms.tsv,data/jobs_warehouse.sqlite,data/topic_vectors.json"
-          target: /opt/mlops-tutor/
+          source: "app.py,curriculum.py,shares.py,vacancy_provider.py,requirements.txt,static/,data/tts_terms.tsv,data/jobs_warehouse.sqlite,data/topic_vectors.json,deploy/"
+          target: /root/mlops-tutor/
           strip_components: 0
 
       - name: Restart app
@@ -71,16 +83,17 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            cd /opt/mlops-tutor
-            echo "=== docker-compose.yml ==="
-            cat docker-compose.yml
+            cd /root/mlops-tutor/deploy
             echo "=== data/ on host ==="
-            ls -lh data/ || echo "no data/ dir"
+            ls -lh ../data/ || echo "no data/ dir"
             echo "=== data/ in container ==="
-            docker compose exec -T app ls -lh /app/data/ || echo "no /app/data in container"
-            docker compose restart app
-            sleep 3
-            docker compose logs app --tail=20
+            docker compose -f docker-compose.server.yml exec -T mlops_app ls -lh /app/data/ || echo "no /app/data in container"
+            docker compose -f docker-compose.server.yml restart mlops_app
+            sleep 5
+            docker compose -f docker-compose.server.yml logs mlops_app --tail=20
+            echo "=== smoke ==="
+            curl -sf -o /dev/null -w "GET / -> %{http_code}\n" --max-time 20 \
+              https://mlops-31-130-130-11.sslip.io:4443/
 
       # Анти-регресс: после деплоя сверяем md5 файлов на проде с тем,
       # что в текущем коммите main. Если разъезжается — значит кто-то
@@ -115,7 +128,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
               -o ConnectTimeout=10 \
               "$SSH_USER@$SSH_HOST" \
-              "cd /opt/mlops-tutor && md5sum $FILES" \
+              "cd /root/mlops-tutor && md5sum $FILES" \
               > prod_md5.txt
 
           md5sum $FILES > local_md5.txt

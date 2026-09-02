@@ -1,7 +1,7 @@
 # MLOps Tutor
 
 Интерактивный тренажёр для подготовки к собеседованию на позицию Senior MLOps Engineer.
-Веб-приложение с тремя режимами работы и AI-наставником на базе Llama 3.3 70B через Groq API.
+Веб-приложение с тремя режимами работы и AI-наставником на базе GLM 5.2 через OpenRouter.
 
 ## Что внутри
 
@@ -30,8 +30,8 @@
 
 ## Стек
 
-- **Бэкенд**: Flask + OpenAI SDK (через Groq endpoint, OpenAI-совместимый)
-- **Модели**: цепочка из четырёх (Llama 3.3 70B → GPT OSS 120B → Llama 4 Scout → Llama 3.1 8B) с автоматическим fallback при rate limit
+- **Бэкенд**: Flask + OpenAI SDK (через OpenRouter, OpenAI-совместимый)
+- **Модели**: цепочка из пяти (GLM 5.2 → MiniMax M3 → Nemotron 3 Super 120B → Gemma 4 31B → GLM 5.3 Flash) с автоматическим fallback при rate limit. Первые четыре бесплатны, платная flash — последним запасом
 - **Фронтенд**: ванильный JS, marked.js для markdown, highlight.js для подсветки кода
 - **Стриминг**: Server-Sent Events
 
@@ -41,7 +41,7 @@
 # 1. Установить зависимости
 pip install -r requirements.txt
 
-# 2. Создать .env с ключом Groq (бесплатный на https://console.groq.com/keys)
+# 2. Создать .env с ключом OpenRouter (https://openrouter.ai/keys)
 cp .env.example .env
 # отредактировать .env и вставить ключ
 
@@ -61,7 +61,7 @@ mlops_tutor/
 ├── app.py                  # Flask backend, SSE streaming, fallback chain
 ├── curriculum.py           # 12 тем, 3 system prompts (learn/quiz/mock)
 ├── requirements.txt
-├── .env                    # GROQ_API_KEY (не в git)
+├── .env                    # OPENROUTER_API_KEY (не в git)
 ├── static/
 │   └── glossary.js         # ~100 MLOps терминов для тултипов
 └── templates/
