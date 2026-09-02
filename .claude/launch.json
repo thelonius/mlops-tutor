@@ -6,14 +6,14 @@
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "flask", "--app", "app", "run", "--port", "5050", "--debug"],
       "port": 5050,
-      "cwd": "/Users/eddubnitsky/openclaw/mlops_tutor"
+      "cwd": "/Users/eddubnitsky/mlops_tutor"
     },
     {
       "name": "mlops-tutor-frontend-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5174", "--strictPort"],
       "port": 5174,
-      "cwd": "/Users/eddubnitsky/openclaw/mlops_tutor/frontend"
+      "cwd": "/Users/eddubnitsky/mlops_tutor/frontend"
     }
   ]
 }
