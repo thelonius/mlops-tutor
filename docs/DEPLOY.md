@@ -14,16 +14,20 @@ PR → review → merge в main → GitHub Actions автоматически:
 
 ## Архитектура
 
-- Прод: https://mlops-31-130-130-11.sslip.io:4443/
+- Прод: https://mlops-31-130-130-11.sslip.io/
 - Сервер: `root@31.130.130.11`, ключ `~/.ssh/cesium_replica_key`
 - Путь: `/root/mlops-tutor/`, compose-файл — `deploy/docker-compose.server.yml`
 - Стек: только gunicorn в Docker. Код и статика монтируются bind-mount'ами, а зависимости из `requirements.txt` запечены в образ, поэтому workflow на каждом деплое делает `build` (слой pip пересобирается только при смене `requirements.txt`) и `restart`.
 
-### Почему порт 4443 и чужой Caddy
+### Почему 443 и чужой Caddy
 
-Машина общая: на ней уже живут gpx-tracker (владеет хостовым `:443`), ssd-radar и astro-стек. Хостовый `:80` занят контейнером `ssd_radar_caddy`, а ACME HTTP-01 требует именно его — поэтому второй Caddy на этой машине сертификат Let's Encrypt уже не выпишет.
+Машина общая: на ней уже живут gpx-tracker (владеет хостовым `:443`), ssd-radar, quickbarn и astro-стек. Хостовый `:80` занят контейнером `ssd_radar_caddy`, а ACME HTTP-01 требует именно его — поэтому второй Caddy на этой машине сертификат Let's Encrypt уже не выпишет.
 
-mlops-tutor подключён третьим сайтом к `ssd_radar_caddy`, ровно как до этого astro. Конфиг живёт в соседнем репозитории: [`ssd/deploy/Caddyfile`](https://github.com/) → блок `{$MLOPS_DOMAIN}`. Caddy видит наш контейнер через внешнюю docker-сеть `mlops_edge`.
+Раньше сайт жил на `:4443` через `ssd_radar_caddy`. **Хостер режет `:4443` до сервера**: 05.11.2026 внешние пробы из RU/DE/NL получали таймаут, а `tcpdump` на `eth0` не видел ни одного SYN на этот порт (на 443 видел от тех же адресов). С машины разработчика порт открывался лишь потому, что трафик шёл через VPN-туннель, выходящий с самого сервера.
+
+Теперь сайт обслуживает хостовый Caddy gpx-tracker на `:443`, как уже сделано для ssd-radar и quickbarn. Сайт-блок лежит в [`deploy/host-caddy-mlops.conf`](../deploy/host-caddy-mlops.conf), в Caddyfile `/root/cesium-route-renderer/gpx-tracker/Caddyfile` между маркерами `mlops-tutor` его вставляет [`deploy/sync_host_caddy.sh`](../deploy/sync_host_caddy.sh): бэкап, `caddy validate`, `reload`, откат при ошибке. Чужие блоки (VPN, ssd-radar, quickbarn) переносятся байт в байт. Caddy видит наш контейнер через внешнюю docker-сеть `ssd_edge`.
+
+Сеть `mlops_edge` и блок `{$MLOPS_DOMAIN}` в `ssd/deploy/Caddyfile` остались как запасной вход на `:4443`. Снаружи он не работает. Блок `http://{$MLOPS_DOMAIN}` в том Caddyfile редиректит HTTP на `:4443`, поэтому набранный вручную `http://` ведёт в закрытый порт; правится в репозитории ssd, редиректом без порта.
 
 ⚠️ **Имя compose-сервиса не должно быть `app`.** Compose публикует имя сервиса как DNS-алиас в каждой подключённой сети, а `ssd_radar_caddy` сидит сразу в трёх. 28.08.2026 второй `app` в `mlops_edge` перехватил трафик ssd-radar и уронил его в 502: Caddy дозванивался до нашего контейнера на порт 8000, которого там нет. Поэтому сервис называется `mlops_app`, а upstream'ы в Caddyfile адресуются по `container_name`, а не по имени сервиса.
 
@@ -49,8 +53,9 @@ Persistent state — `/root/mlops-tutor/data/` (содержит `shares.db`). *
 ### Job `deploy` (только на push в main, после прохождения test)
 
 1. **Copy files**: `appleboy/scp-action` копирует whitelist файлов в `/root/mlops-tutor/`. `data/` и `.env` НЕ трогаются.
-2. **Build + restart**: `docker compose build mlops_app`, `up -d`, `restart`, версия `edge-tts` из контейнера, первые 20 строк логов и смоук-запрос к публичному URL. Без `build` правка `requirements.txt` до контейнера не доезжает.
-3. **Verify prod == main (md5)**: для каждого деплоимого файла сравнивает локальный md5 с тем что на проде. Если разъезжается — fail.
+2. **Build + restart + host Caddy**: `docker compose build mlops_app`, `up -d`, `restart`, версия `edge-tts` из контейнера, первые 20 строк логов, затем `deploy/sync_host_caddy.sh` вставляет наш сайт-блок в Caddyfile хостового Caddy. Без `build` правка `requirements.txt` до контейнера не доезжает.
+3. **External smoke (public :443)**: `curl` **с раннера GitHub** на публичный URL без `-k`, до 18 попыток по 10 с (первый выпуск сертификата через TLS-ALPN занимает до минуты). Это единственная проверка снаружи: смоуки изнутри сервера не ловят порты, закрытые хостером.
+4. **Verify prod == main (md5)**: для каждого деплоимого файла сравнивает локальный md5 с тем что на проде. Если разъезжается — fail.
 
 ### Concurrency guard
 
