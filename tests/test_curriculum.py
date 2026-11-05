@@ -106,22 +106,21 @@ def test_build_system_prompt_raises_for_unknown_topic():
         build_system_prompt("nonexistent_topic_xyz", "learn")
 
 
-def test_mlops_prompts_mention_company():
+def test_mlops_prompts_name_target_position():
     for mode in ["learn", "quiz", "mock"]:
         result = build_system_prompt("containers", mode)
-        assert "Wildberries" in result, (
-            f"MLOps prompt for mode '{mode}' missing company mention"
+        assert "Senior MLOps Engineer" in result, (
+            f"MLOps prompt for mode '{mode}' missing target position"
         )
 
 
-def test_ml_prompts_omit_company():
-    ml_topics = [tid for tid, t in TOPICS.items() if t["track"] == "ml"]
-    assert ml_topics, "No ML topics found — add ml topics first"
-    for tid in ml_topics:
+def test_prompts_without_company_have_no_none_artifacts():
+    # Треки без компании (company=None) не должны протекать в шаблон как «в None».
+    for tid in TOPICS:
         for mode in ["learn", "quiz", "mock"]:
             result = build_system_prompt(tid, mode)
-            assert "Wildberries" not in result, (
-                f"ML prompt for '{tid}' mode '{mode}' mentions company"
+            assert " в None" not in result and "(None)" not in result, (
+                f"prompt for '{tid}' mode '{mode}' leaks a None company"
             )
 
 

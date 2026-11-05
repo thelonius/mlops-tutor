@@ -49,7 +49,7 @@ export function Sidebar() {
           <h1>MLOps Tutor</h1>
           {vacancy
             ? <p title={vacancy.requirements ?? ''}>{vacancy.company} · {vacancy.title.slice(0, 40)}</p>
-            : <p>Wildberries · Senior MLOps</p>
+            : <p>Senior MLOps Engineer</p>
           }
         </div>
       </div>

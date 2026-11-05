@@ -8,17 +8,17 @@ TRACKS = {
     "mlops": {
         "mentor_role": "MLOps наставник",
         "target_position": "Senior MLOps Engineer",
-        "company": "Wildberries, команда Trust & Safety",
-        "company_details": "контент-модерация, GPU Kubernetes кластер, Triton, ClearML, команда 20+ DS",
+        "company": None,
+        "company_details": None,
         "student_profile": (
             "Опытный Python/ML/Fullstack разработчик (5+ лет), "
             "но никогда не работал с Kubernetes, Triton и ML-инфраструктурой."
         ),
         "learn_examples_hint": "Давай конкретные примеры: YAML-конфиги, команды kubectl, код Python",
-        "mock_identity": "Senior MLOps Engineer из команды инфраструктуры Wildberries",
+        "mock_identity": "Senior MLOps Engineer",
         "mock_target": (
-            "Senior MLOps Engineer в команду Trust & Safety "
-            "(контент-модерация, GPU Kubernetes кластер, Triton Inference Server, ClearML, команда 20+ DS)"
+            "Senior MLOps Engineer "
+            "(GPU Kubernetes кластер, Triton Inference Server, ClearML, команда 20+ DS)"
         ),
     },
     "ml": {
@@ -254,7 +254,7 @@ TOPICS = {
         "emoji": "☸️",
         "week": 1,
         "what": "Pod, Deployment, Service, Namespace, kubectl, ReplicaSet, rolling update",
-        "why": "GPU-кластер Wildberries работает на Kubernetes. Всё — деплои моделей, обучение, Triton — крутится в K8s",
+        "why": "GPU-кластеры для обучения и инференса моделей работают на Kubernetes. Всё — деплои моделей, обучение, Triton — крутится в K8s",
         "interview_focus": "Разница Pod vs Deployment, как Service находит поды через labels, rolling updates, readiness/liveness probes",
         "track": "mlops",
         "cheatsheet": [
