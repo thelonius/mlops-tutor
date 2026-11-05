@@ -1,4 +1,4 @@
-import{r as a,j as e}from"./react-ConvG009.js";import{c as S,u as M}from"./index-DOCrk_h-.js";import"./react-dom-FObVhy0T.js";import"./markdown-BQ54GPIK.js";function $(r,s){const t=s.map((l,n)=>`${n+1}. ${l.q}
+import{r as a,j as e}from"./react-ConvG009.js";import{c as S,u as M}from"./index-BTyRaEK-.js";import"./react-dom-FObVhy0T.js";import"./markdown-BQ54GPIK.js";function $(r,s){const t=s.map((l,n)=>`${n+1}. ${l.q}
    Правильный ответ: ${l.a}`).join(`
 `);return`Прошёл тест по теме «${r}» и ошибся в этих вопросах:
 
