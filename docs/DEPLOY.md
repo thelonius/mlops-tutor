@@ -6,7 +6,7 @@
 PR → review → merge в main → GitHub Actions автоматически:
   1. pytest gate
   2. scp файлов на прод
-  3. docker compose restart mlops_app + смоук
+  3. docker compose build + up -d + restart mlops_app, смоук
   4. md5 verify (прод == main)
 ```
 
@@ -17,7 +17,7 @@ PR → review → merge в main → GitHub Actions автоматически:
 - Прод: https://mlops-31-130-130-11.sslip.io:4443/
 - Сервер: `root@31.130.130.11`, ключ `~/.ssh/cesium_replica_key`
 - Путь: `/root/mlops-tutor/`, compose-файл — `deploy/docker-compose.server.yml`
-- Стек: только gunicorn в Docker. Файлы монтируются bind-mount'ами, поэтому обычная выкатка — это `restart`, без пересборки образа.
+- Стек: только gunicorn в Docker. Код и статика монтируются bind-mount'ами, а зависимости из `requirements.txt` запечены в образ, поэтому workflow на каждом деплое делает `build` (слой pip пересобирается только при смене `requirements.txt`) и `restart`.
 
 ### Почему порт 4443 и чужой Caddy
 
@@ -49,7 +49,7 @@ Persistent state — `/root/mlops-tutor/data/` (содержит `shares.db`). *
 ### Job `deploy` (только на push в main, после прохождения test)
 
 1. **Copy files**: `appleboy/scp-action` копирует whitelist файлов в `/root/mlops-tutor/`. `data/` и `.env` НЕ трогаются.
-2. **Restart**: `docker compose -f docker-compose.server.yml restart mlops_app`, первые 20 строк логов и смоук-запрос к публичному URL.
+2. **Build + restart**: `docker compose build mlops_app`, `up -d`, `restart`, версия `edge-tts` из контейнера, первые 20 строк логов и смоук-запрос к публичному URL. Без `build` правка `requirements.txt` до контейнера не доезжает.
 3. **Verify prod == main (md5)**: для каждого деплоимого файла сравнивает локальный md5 с тем что на проде. Если разъезжается — fail.
 
 ### Concurrency guard
