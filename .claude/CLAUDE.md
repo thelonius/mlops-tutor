@@ -2,12 +2,14 @@
 
 ## Деплой на прод
 
-Прод: https://mlops-31-130-130-11.sslip.io:4443/
+Прод: https://mlops-31-130-130-11.sslip.io/ (порт 443)
 Сервер: `root@31.130.130.11` (ключ `~/.ssh/cesium_replica_key`)
 Путь на сервере: `/root/mlops-tutor/`, compose — `deploy/docker-compose.server.yml`
 Стек: только gunicorn в Docker, файлы как bind-mount.
 
-TLS терминирует **чужой** Caddy — `ssd_radar_caddy` из соседнего стека `/root/ssd-radar`, конфиг [ssd/deploy/Caddyfile](file:///Users/eddubnitsky/ssd/deploy/Caddyfile), блок `{$MLOPS_DOMAIN}`. Свой Caddy тут завести нельзя: ACME HTTP-01 требует хостовый порт 80, а им владеет этот контейнер. Машина общая — рядом живут gpx-tracker (хостовый `:443`), ssd-radar и astro.
+TLS терминирует **чужой** хостовый Caddy — `gpx-tracker-caddy` из стека `/root/cesium-route-renderer/gpx-tracker`, он владеет `:443`. Наш сайт-блок лежит в [deploy/host-caddy-mlops.conf](../deploy/host-caddy-mlops.conf), в его Caddyfile (между маркерами `mlops-tutor`) его вставляет [deploy/sync_host_caddy.sh](../deploy/sync_host_caddy.sh) на шаге деплоя. Контейнер `mlops_tutor_app` подключён к внешней сети `ssd_edge`.
+
+⚠️ **Порт 4443 снаружи закрыт хостером** (SYN не доходит даже до eth0, проверено `tcpdump` и внешними пробами 05.11.2026). С машины разработчика он открывается только потому, что трафик идёт через VPN-туннель, выходящий с самого сервера, — **проверять доступность по 4443 с этой машины бессмысленно**. Внешнюю проверку делает шаг `External smoke` в workflow. Свой Caddy тут по-прежнему завести нельзя: порт 80 занят `ssd_radar_caddy`, поэтому HTTP-01 недоступен и сертификат выпускается только через TLS-ALPN. Рядом живут gpx-tracker, ssd-radar, quickbarn и astro.
 
 ⚠️ **Имя compose-сервиса не должно быть `app`.** Compose публикует имя сервиса DNS-алиасом в каждой подключённой сети, а `ssd_radar_caddy` подключён к трём. 28.08.2026 второй `app` в `mlops_edge` перехватил трафик ssd-radar и уронил его в 502. Сервис называется `mlops_app`, upstream'ы в Caddyfile адресуются по `container_name`.
 

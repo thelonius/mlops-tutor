@@ -1,10 +1,14 @@
 # Деплой на общий VDS root@31.130.130.11, рядом с gpx-tracker, ssd-radar и astro.
 #
-# Своего Caddy тут нет намеренно. ACME HTTP-01 требует хостовый порт 80, а им
-# владеет контейнер ssd_radar_caddy — ровно поэтому astro-стек тоже ходит через
-# него, а не через собственный прокси. mlops-tutor подключён третьим сайтом:
-# ssd_radar_caddy видит наш контейнер через внешнюю сеть mlops_edge и проксирует
-# на него https://mlops-31-130-130-11.sslip.io:4443
+# Своего Caddy тут нет намеренно. Публичный адрес https://mlops-31-130-130-11.sslip.io
+# обслуживает хостовый Caddy gpx-tracker, который владеет :443 — портом, что
+# хостер пропускает снаружи. Блок для него лежит в
+# deploy/host-caddy-mlops.conf, в его Caddyfile его вставляет sync_host_caddy.sh.
+# Контейнер подключён к внешней сети ssd_edge, общей с gpx-tracker-caddy.
+#
+# Сеть mlops_edge осталась только ради запасного входа через ssd_radar_caddy на
+# :4443. Снаружи этот порт закрыт хостером, и вход будет удалён вместе с блоком
+# {$MLOPS_DOMAIN} в репозитории ssd.
 #
 # Запуск на сервере:
 #   cd /root/mlops-tutor/deploy && docker compose -f docker-compose.server.yml up -d --build
@@ -37,10 +41,17 @@ services:
       - "8080"
     networks:
       - mlops_edge
+      - ssd_edge
 
 networks:
   # Создаётся вне compose (docker network create mlops_edge) и разделяется с
   # ssd_radar_caddy. Объявлена здесь, а не подключается руками, чтобы пережить
   # пересоздание контейнера.
   mlops_edge:
+    external: true
+
+  # Общая сеть с gpx-tracker-caddy: он владеет хостовым :443 и обслуживает
+  # наш публичный адрес (deploy/host-caddy-mlops.conf). Адресуем по
+  # container_name mlops_tutor_app, имя сервиса в этой сети не используем.
+  ssd_edge:
     external: true

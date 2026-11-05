@@ -4,10 +4,11 @@ name: Deploy to production
 # рядом с gpx-tracker, ssd-radar и astro. Старый 91.84.112.120 (/opt/mlops-tutor)
 # мёртв, следом отвалился и 176.123.166.252.
 #
-# TLS терминирует не наш Caddy, а общий ssd_radar_caddy из соседнего стека
-# (/root/ssd-radar): порт 80 нужен ему для ACME HTTP-01, и второй Caddy на этой
-# машине сертификат уже не выпишет. Наш compose поднимает только gunicorn.
-# Публичный адрес: https://mlops-31-130-130-11.sslip.io:4443/
+# TLS терминирует не наш Caddy, а хостовый Caddy gpx-tracker: он владеет :443,
+# портом, который хостер пропускает снаружи (:4443 режется до сервера).
+# Сайт-блок лежит в deploy/host-caddy-mlops.conf, на сервер его
+# вставляет deploy/sync_host_caddy.sh. Наш compose поднимает только gunicorn.
+# Публичный адрес: https://mlops-31-130-130-11.sslip.io/
 #
 # Секреты SSH_HOST / SSH_USER / SSH_PRIVATE_KEY должны указывать на новый
 # сервер и ключ cesium_replica_key.
@@ -88,12 +89,37 @@ jobs:
             ls -lh ../data/ || echo "no data/ dir"
             echo "=== data/ in container ==="
             docker compose -f docker-compose.server.yml exec -T mlops_app ls -lh /app/data/ || echo "no /app/data in container"
+            # Зависимости запечены в образ: без build правка requirements.txt
+            # до контейнера не доезжает (так edge-tts застрял на 7.2.8, который
+            # Microsoft отвечает 403). Слой pip пересобирается только при смене
+            # requirements.txt, иначе build идёт из кэша за секунды.
+            docker compose -f docker-compose.server.yml build mlops_app
+            docker compose -f docker-compose.server.yml up -d mlops_app
+            # up -d не перезапускает контейнер, если изменились только
+            # bind-mount'ы (app.py и т.д.), поэтому restart остаётся.
             docker compose -f docker-compose.server.yml restart mlops_app
+            docker compose -f docker-compose.server.yml exec -T mlops_app pip show edge-tts | grep -E "^Version"
             sleep 5
             docker compose -f docker-compose.server.yml logs mlops_app --tail=20
-            echo "=== smoke ==="
-            curl -sf -o /dev/null -w "GET / -> %{http_code}\n" --max-time 20 \
-              https://mlops-31-130-130-11.sslip.io:4443/
+            echo "=== host Caddy (gpx-tracker, :443) ==="
+            sh /root/mlops-tutor/deploy/sync_host_caddy.sh
+
+      # Смоук СНАРУЖИ, с раннера GitHub. Прежний смоук ходил с самого сервера
+      # и не ловил закрытый хостером порт: хостер режет :4443 до сервера, а
+      # изнутри он открывался. Без -k: проверяем и валидность сертификата.
+      # Первый выпуск сертификата идёт через TLS-ALPN и занимает до минуты,
+      # поэтому ретраим.
+      - name: External smoke (public :443)
+        run: |
+          URL=https://mlops-31-130-130-11.sslip.io/
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$URL" || true)
+            echo "attempt $i: GET / -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::$URL недоступен снаружи после деплоя"
+          exit 1
 
       # Анти-регресс: после деплоя сверяем md5 файлов на проде с тем,
       # что в текущем коммите main. Если разъезжается — значит кто-то
